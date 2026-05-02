@@ -2,12 +2,12 @@
 
 namespace App\Http\Resources;
 
-use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Spatie\Activitylog\Models\Activity;
 
 /**
- * @mixin AuditLog
+ * @mixin Activity
  */
 class AuditLogResource extends JsonResource
 {
@@ -18,19 +18,19 @@ class AuditLogResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'user' => $this->whenLoaded('user', fn () => [
-                'id' => $this->user?->id,
-                'name' => $this->user?->name,
-                'email' => $this->user?->email,
+            'user' => $this->whenLoaded('causer', fn () => [
+                'id' => $this->causer?->id,
+                'name' => $this->causer?->name,
+                'email' => $this->causer?->email,
             ]),
-            'action' => $this->action,
-            'module' => $this->module,
-            'model_type' => $this->model_type,
-            'model_id' => $this->model_id,
-            'old_values' => $this->old_values,
-            'new_values' => $this->new_values,
-            'ip_address' => $this->ip_address,
-            'user_agent' => $this->user_agent,
+            'action' => $this->description,
+            'module' => $this->log_name,
+            'model_type' => $this->subject_type,
+            'model_id' => $this->subject_id,
+            'old_values' => $this->getExtraProperty('old_values'),
+            'new_values' => $this->getExtraProperty('new_values'),
+            'ip_address' => $this->getExtraProperty('ip_address'),
+            'user_agent' => $this->getExtraProperty('user_agent'),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

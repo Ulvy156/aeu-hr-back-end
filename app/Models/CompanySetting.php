@@ -26,6 +26,20 @@ class CompanySetting extends Model
     use HasFactory;
 
     /**
+     * The model's default values for attributes.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'allowed_radius_meters' => 100,
+        'working_start_time' => '08:00:00',
+        'working_end_time' => '17:00:00',
+        'working_days' => '["monday","tuesday","wednesday","thursday","friday","saturday"]',
+        'salary_currency' => 'USD',
+        'payroll_day_rate' => 26,
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

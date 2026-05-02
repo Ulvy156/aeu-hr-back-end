@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Models\AuditLog;
 use App\Models\User;
+use Spatie\Activitylog\Models\Activity;
 
 class AuditLogPolicy
 {
@@ -12,7 +12,7 @@ class AuditLogPolicy
         return $user->hasPermissionTo('audit_logs.view');
     }
 
-    public function view(User $user, AuditLog $auditLog): bool
+    public function view(User $user, Activity $activity): bool
     {
         return $user->hasPermissionTo('audit_logs.view');
     }

@@ -34,7 +34,10 @@ class AuthService
         return [
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->loadMissing('roles:id,name'),
+            'user' => $user->loadMissing(
+                'roles:id,name',
+                'employee:id,user_id,employee_id,full_name',
+            ),
         ];
     }
 
@@ -51,6 +54,9 @@ class AuthService
      */
     public function me(User $user): User
     {
-        return $user->loadMissing('roles:id,name');
+        return $user->loadMissing(
+            'roles:id,name',
+            'employee:id,user_id,employee_id,full_name',
+        );
     }
 }

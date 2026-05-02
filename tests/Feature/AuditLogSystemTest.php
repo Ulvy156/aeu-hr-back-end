@@ -1,14 +1,14 @@
 <?php
 
-use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\AuditLogService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Activitylog\Models\Activity;
 
 uses(RefreshDatabase::class);
 
-test('login and logout actions are written to the audit log', function () {
+test('login and logout actions are written to the spatie activity log', function () {
     $this->seed(RoleSeeder::class);
 
     $user = User::factory()->create([
@@ -26,25 +26,35 @@ test('login and logout actions are written to the audit log', function () {
 
     $plainTextToken = $loginResponse->json('data.token');
 
-    expect(AuditLog::query()->count())->toBe(1)
-        ->and(AuditLog::query()->first()->action)->toBe('login')
-        ->and(AuditLog::query()->first()->module)->toBe('auth');
+    $loginActivity = Activity::query()->first();
+
+    $this->assertDatabaseCount('activity_log', 1);
+
+    expect(Activity::query()->count())->toBe(1)
+        ->and($loginActivity->log_name)->toBe('auth')
+        ->and($loginActivity->description)->toBe('login')
+        ->and($loginActivity->causer_id)->toBe($user->id)
+        ->and($loginActivity->properties->get('new_values')['device_name'])->toBe('web-client');
 
     $this->withToken($plainTextToken)
         ->postJson('/api/logout')
         ->assertSuccessful();
 
-    $auditLogs = AuditLog::query()
-        ->where('module', 'auth')
+    $activities = Activity::query()
+        ->where('log_name', 'auth')
         ->orderBy('id')
         ->get();
 
-    expect($auditLogs)->toHaveCount(2)
-        ->and($auditLogs[0]->action)->toBe('login')
-        ->and($auditLogs[1]->action)->toBe('logout');
+    $this->assertDatabaseCount('activity_log', 2);
+
+    expect($activities)->toHaveCount(2)
+        ->and($activities[0]->description)->toBe('login')
+        ->and($activities[1]->description)->toBe('logout')
+        ->and($activities[1]->properties->get('old_values'))->toBeNull()
+        ->and($activities[1]->properties->toJson())->not->toContain('token');
 });
 
-test('admin can view paginated audit logs', function () {
+test('admin can view paginated audit logs from the spatie activity table', function () {
     $this->seed(RoleSeeder::class);
 
     $admin = User::factory()->create();
@@ -68,6 +78,31 @@ test('admin can view paginated audit logs', function () {
         ->assertJsonPath('meta.current_page', 1)
         ->assertJsonPath('meta.per_page', 1)
         ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.module', 'auth')
+        ->assertJsonPath('data.0.action', 'login');
+});
+
+test('audit log list can be filtered by user module action and date range', function () {
+    $this->seed(RoleSeeder::class);
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+
+    $actor = User::factory()->create();
+    $otherActor = User::factory()->create();
+
+    $auditLogService = app(AuditLogService::class);
+    $auditLogService->log('login', 'auth', $actor, $actor, null, ['status' => 'logged_in']);
+    $auditLogService->log('approve', 'leaves', $otherActor, $otherActor, ['status' => 'pending'], ['status' => 'approved']);
+
+    $token = $admin->createToken('admin-device')->plainTextToken;
+    $today = now()->toDateString();
+
+    $this->withToken($token)
+        ->getJson("/api/audit-logs?user_id={$actor->id}&module=auth&action=login&date_from={$today}&date_to={$today}")
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.user.id', $actor->id)
         ->assertJsonPath('data.0.module', 'auth')
         ->assertJsonPath('data.0.action', 'login');
 });
@@ -97,6 +132,20 @@ test('hr cannot view audit logs', function () {
     $hrToken = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($hrToken)
+        ->getJson('/api/audit-logs')
+        ->assertForbidden();
+});
+
+test('employee cannot view audit logs', function () {
+    $this->seed(RoleSeeder::class);
+
+    app(AuditLogService::class)->log('login', 'auth', null, User::class, null, ['status' => 'logged_in']);
+
+    $employee = User::factory()->create();
+    $employee->assignRole('employee');
+    $employeeToken = $employee->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($employeeToken)
         ->getJson('/api/audit-logs')
         ->assertForbidden();
 });

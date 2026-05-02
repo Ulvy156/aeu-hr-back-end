@@ -52,10 +52,12 @@ For every backend feature, follow this order:
 After every backend module, update:
 
 ```txt
-API_CONTRACT.md
+.claude/api/<RELATED_MODULE_FILE>.md
 ```
 
-The frontend should consume the API contract instead of guessing fields.
+Keep `.claude/API_CONTRACT.md` as the index only.
+
+The frontend should consume the module API contract instead of guessing fields.
 
 ---
 
@@ -142,7 +144,18 @@ D:\AEU\Thesis\HR\aeu-hr-back-end\.claude
 ├── AI_AGENT.md
 ├── DB_SCHEMA.md
 ├── API_CONTRACT.md
-└── PHASE_BREAKDOWN.md
+├── PHASE_BREAKDOWN.md
+└── api\
+    ├── AUTH_API.md
+    ├── EMPLOYEE_API.md
+    ├── ATTENDANCE_API.md
+    ├── LEAVE_API.md
+    ├── PAYROLL_API.md
+    ├── DEPARTMENT_API.md
+    ├── POSITION_API.md
+    ├── ROLE_PERMISSION_API.md
+    ├── COMPANY_SETTING_API.md
+    └── AUDIT_LOG_API.md
 ```
 
 ## Deliverables
@@ -375,17 +388,18 @@ Never expose stack traces or sensitive server errors in production.
 
 Use `spatie/laravel-activitylog` as the audit log package.
 
+The package is already installed, so do **not** reinstall it.
+
 Do **not** build a fully custom audit log system from scratch.
 
-Remove custom audit log migration and custom `AuditLog` model tasks because Spatie Activitylog already provides the table/model structure.
-
-Before installing the package, check `composer.json` first. Install it only if missing.
+Do **not** create a custom audit log migration or custom `AuditLog` model because Spatie Activitylog already provides the table/model structure.
 
 
 ### Tasks
 
-- Use `spatie/laravel-activitylog`
-- Publish Activitylog config and migration
+- Confirm `spatie/laravel-activitylog` exists in `composer.json`
+- Publish Activitylog config if not already published
+- Publish Activitylog migration if not already published
 - Run the migration
 - Configure Activitylog
 - Create `AuditLogService` as a small wrapper service
@@ -430,7 +444,7 @@ Before installing the package, check `composer.json` first. Install it only if m
 
 ### Deliverables
 
-- Spatie Activitylog is installed or confirmed existing
+- Spatie Activitylog package is confirmed installed
 - Activitylog config and migration are completed
 - `AuditLogService` exists
 - Important MVP actions are logged
@@ -457,8 +471,9 @@ working_start_time = 08:00
 working_end_time = 17:00
 working_days = Monday to Saturday
 salary_currency = USD
-payroll_day_rate = 26
-allowed_radius_meters = 100
+salary_calculation_day_rate = 26
+payroll_day = 05
+allowed_radius_meters = 30
 ```
 
 ## Deliverables
@@ -1415,7 +1430,9 @@ Check:
 
 ## 9.4 Documentation
 
-Finalize:
+Finalize and keep documentation updated.
+
+### Required Documentation
 
 - API contract
 - Database schema
@@ -1423,6 +1440,17 @@ Finalize:
 - Seeder guide
 - Role/permission guide
 - Testing checklist
+
+### API Contract Rule
+
+`API_CONTRACT.md` is only the API contract index.
+
+Do not place endpoint details directly inside `API_CONTRACT.md`.
+
+When creating or changing an API endpoint:
+
+1. Identify the related API module.
+2. Add or update the related module API contract file in this path: D:\AEU\Thesis\HR\aeu-hr-back-end\.claude\api
 
 ## Deliverables
 

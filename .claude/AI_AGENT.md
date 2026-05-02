@@ -128,6 +128,8 @@ Use clear, grouped permissions:
 - Implement proper indexing and eager loading.
 - Return consistent JSON responses.
 - Log all important actions via Audit Log.
+- When creating or changing a backend API, update the related file inside `.claude/api/`.
+- Keep `.claude/API_CONTRACT.md` as the index only.
 
 ---
 

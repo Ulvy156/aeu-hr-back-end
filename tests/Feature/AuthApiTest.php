@@ -1,13 +1,14 @@
 <?php
 
+use App\Models\Employee;
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
 test('a user can login and receive a sanctum token', function () {
-    Role::findOrCreate('employee', 'web');
+    $this->seed(RoleSeeder::class);
 
     $user = User::factory()->create([
         'email' => 'employee@example.com',
@@ -28,7 +29,9 @@ test('a user can login and receive a sanctum token', function () {
         ->assertJsonPath('message', 'Login successful.')
         ->assertJsonPath('data.token_type', 'Bearer')
         ->assertJsonPath('data.user.email', 'employee@example.com')
-        ->assertJsonPath('data.user.roles.0', 'employee');
+        ->assertJsonPath('data.user.roles.0', 'employee')
+        ->assertJsonPath('data.user.permissions.0', 'attendance.clock_in')
+        ->assertJsonPath('data.user.employee', null);
 
     expect($user->tokens()->count())->toBe(1);
 });
@@ -71,13 +74,21 @@ test('inactive users cannot login', function () {
 });
 
 test('the authenticated user can be fetched from the me endpoint', function () {
-    Role::findOrCreate('employee', 'web');
+    $this->seed(RoleSeeder::class);
 
     $user = User::factory()->create([
-        'email' => 'employee@example.com',
+        'name' => 'Admin User',
+        'email' => 'admin@example.com',
     ]);
 
     $user->assignRole('employee');
+
+    Employee::query()->create([
+        'user_id' => $user->id,
+        'employee_id' => 'EMP001',
+        'full_name' => 'Admin User',
+        'join_date' => now()->toDateString(),
+    ]);
 
     $token = $user->createToken('test-device')->plainTextToken;
 
@@ -86,8 +97,15 @@ test('the authenticated user can be fetched from the me endpoint', function () {
     $response
         ->assertSuccessful()
         ->assertJsonPath('success', true)
-        ->assertJsonPath('data.email', 'employee@example.com')
-        ->assertJsonPath('data.roles.0', 'employee');
+        ->assertJsonPath('message', 'Authenticated user fetched successfully.')
+        ->assertJsonPath('data.email', 'admin@example.com')
+        ->assertJsonPath('data.roles.0', 'employee')
+        ->assertJsonPath('data.employee.employee_id', 'EMP001')
+        ->assertJsonPath('data.employee.full_name', 'Admin User');
+
+    expect($response->json('data.permissions'))
+        ->toContain('attendance.clock_in', 'leaves.create', 'payslips.view_own')
+        ->not->toContain('roles_permissions.manage');
 });
 
 test('the authenticated user can logout and revoke the current token', function () {

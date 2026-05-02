@@ -1,0 +1,253 @@
+# Employee API
+
+## Purpose
+
+Manage employee profiles, linked user accounts, and profile photos.
+
+## Base Endpoint
+
+```txt
+/api/employees
+```
+
+## Auth Requirement
+
+All employee endpoints require a Sanctum bearer token.
+
+## Permissions
+
+- List employees: `employees.view_any`
+- View employee detail: `employees.view`
+- Create employee: `employees.create`
+- Update employee: `employees.update`
+- Update employee salary during update: `employees.update_salary`
+- Delete employee: `employees.delete`
+
+HR and Admin can manage employees with the current seeded role setup.
+
+## Endpoint List
+
+- `GET /api/employees`
+- `POST /api/employees`
+- `GET /api/employees/{employee}`
+- `PUT /api/employees/{employee}`
+- `DELETE /api/employees/{employee}`
+
+---
+
+## GET /api/employees
+
+Return a paginated employee list.
+
+### Query Parameters
+
+- `search`: optional string, searches `employee_id`, `full_name`, and `email`
+- `department_id`: optional integer, filters by department
+- `position_id`: optional integer, filters by position
+- `employment_status`: optional enum, `active`, `resigned`, or `terminated`
+- `per_page`: optional integer, `1` to `100`
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "Employees fetched successfully.",
+  "data": [
+    {
+      "id": 1,
+      "employee_id": "EMP001",
+      "full_name": "Admin User",
+      "gender": "female",
+      "date_of_birth": null,
+      "phone_number": null,
+      "email": "admin.employee@example.com",
+      "address": null,
+      "join_date": "2026-05-01",
+      "last_working_date": null,
+      "base_salary": "1200.50",
+      "employment_status": "active",
+      "emergency_contact": null,
+      "profile_photo": "employee-profile-photos/avatar.jpg",
+      "profile_photo_url": "http://localhost/storage/employee-profile-photos/avatar.jpg",
+      "user": {
+        "id": 5,
+        "name": "Admin User",
+        "email": "admin.employee@example.com",
+        "status": "active",
+        "roles": ["employee"]
+      },
+      "department": {
+        "id": 1,
+        "name": "Finance",
+        "status": "active"
+      },
+      "position": {
+        "id": 2,
+        "name": "Accountant",
+        "status": "active"
+      },
+      "created_at": "2026-05-02T10:00:00.000000Z",
+      "updated_at": "2026-05-02T10:00:00.000000Z"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "last_page": 1,
+    "per_page": 15,
+    "total": 1
+  }
+}
+```
+
+---
+
+## POST /api/employees
+
+Create an employee and create the linked user account automatically.
+
+### Request Body
+
+Use `multipart/form-data` when sending `profile_photo`.
+
+```json
+{
+  "employee_id": "EMP001",
+  "full_name": "Admin User",
+  "email": "admin.employee@example.com",
+  "password": "secretpass123",
+  "gender": "female",
+  "department_id": 1,
+  "position_id": 2,
+  "join_date": "2026-05-01",
+  "base_salary": "1200.50",
+  "employment_status": "active"
+}
+```
+
+### Request Fields
+
+- `employee_id`: required string, max `50`, unique in `employees`
+- `full_name`: required string, max `255`
+- `email`: required valid email, unique in `users` and active employee records
+- `password`: required string, min `8`, used for the linked user account
+- `gender`: optional enum, `male`, `female`, or `other`
+- `date_of_birth`: optional date
+- `phone_number`: optional string, max `50`
+- `address`: optional string
+- `department_id`: optional integer, must exist in `departments`
+- `position_id`: optional integer, must exist in `positions`
+- `join_date`: required date
+- `last_working_date`: optional date
+- `base_salary`: required numeric, minimum `0`
+- `employment_status`: required enum, `active`, `resigned`, or `terminated`
+- `emergency_contact`: optional string
+- `profile_photo`: optional image, `jpg`, `jpeg`, `png`, or `webp`, max `2048 KB`
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "Employee created successfully.",
+  "data": {
+    "id": 1,
+    "employee_id": "EMP001",
+    "full_name": "Admin User",
+    "gender": "female",
+    "date_of_birth": null,
+    "phone_number": null,
+    "email": "admin.employee@example.com",
+    "address": null,
+    "join_date": "2026-05-01",
+    "last_working_date": null,
+    "base_salary": "1200.50",
+    "employment_status": "active",
+    "emergency_contact": null,
+    "profile_photo": "employee-profile-photos/avatar.jpg",
+    "profile_photo_url": "http://localhost/storage/employee-profile-photos/avatar.jpg",
+    "user": {
+      "id": 5,
+      "name": "Admin User",
+      "email": "admin.employee@example.com",
+      "status": "active",
+      "roles": ["employee"]
+    },
+    "department": {
+      "id": 1,
+      "name": "Finance",
+      "status": "active"
+    },
+    "position": {
+      "id": 2,
+      "name": "Accountant",
+      "status": "active"
+    },
+    "created_at": "2026-05-02T10:00:00.000000Z",
+    "updated_at": "2026-05-02T10:00:00.000000Z"
+  }
+}
+```
+
+---
+
+## GET /api/employees/{employee}
+
+Return one employee.
+
+### Response Example
+
+The response uses the same `data` shape as the employee list item.
+
+---
+
+## PUT /api/employees/{employee}
+
+Update an employee and sync the linked user name, email, and active/inactive status.
+
+### Request Body
+
+Use `multipart/form-data` when replacing `profile_photo`.
+
+```json
+{
+  "employee_id": "EMP001",
+  "full_name": "Updated User",
+  "email": "updated.employee@example.com",
+  "department_id": 1,
+  "position_id": 2,
+  "join_date": "2026-05-01",
+  "last_working_date": "2026-05-20",
+  "base_salary": "1200.50",
+  "employment_status": "resigned"
+}
+```
+
+### Validation Notes
+
+- Active employees must not have `last_working_date`.
+- Resigned or terminated employees must have `last_working_date`.
+- `last_working_date` must be on or after `join_date`.
+- If `position_id` belongs to a department, it must match `department_id`.
+- Changing `base_salary` is protected by the additional `employees.update_salary` permission.
+
+---
+
+## DELETE /api/employees/{employee}
+
+Soft delete an employee.
+
+### Validation Notes
+
+- Employee deletion soft deletes the `employees` row.
+- The linked user account is kept but is set to `inactive`.
+- Profile photo is removed from Laravel Storage when present.
+
+## Frontend Notes
+
+- `POST /api/employees` creates the linked user automatically and assigns the `employee` role.
+- Use `multipart/form-data` for create or update when a profile photo is included.
+- `profile_photo_url` should be used for display; `profile_photo` is the stored path.
+- The backend syncs the user account email and name from the employee payload.
+- When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`.
+- Salary updates are audited in the backend through Spatie Activitylog.
