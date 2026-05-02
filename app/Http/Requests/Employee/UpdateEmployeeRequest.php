@@ -23,7 +23,7 @@ class UpdateEmployeeRequest extends FormRequest
         $employee = $this->route('employee');
 
         return [
-            'employee_id' => ['required', 'string', 'max:50', Rule::unique('employees', 'employee_id')->ignore($employee?->id)],
+            'employee_id' => ['prohibited'],
             'full_name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',
@@ -43,7 +43,7 @@ class UpdateEmployeeRequest extends FormRequest
             'base_salary' => ['required', 'numeric', 'min:0'],
             'employment_status' => ['required', Rule::in(['active', 'resigned', 'terminated'])],
             'emergency_contact' => ['nullable', 'string'],
-            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'profile_photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 

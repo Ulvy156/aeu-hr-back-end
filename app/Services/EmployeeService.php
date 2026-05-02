@@ -51,16 +51,19 @@ class EmployeeService
         ?string $userAgent = null,
     ): Employee {
         return DB::transaction(function () use ($data, $profilePhoto, $actor, $ipAddress, $userAgent): Employee {
+            $employeeId = $this->generateEmployeeId();
+
             $user = User::query()->create([
                 'name' => $data['full_name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
-            $user->assignRole('employee');
+            $user->syncRoles(['employee']);
 
             $employee = Employee::query()->create([
                 ...$this->employeeAttributes($data),
+                'employee_id' => $employeeId,
                 'user_id' => $user->id,
                 'profile_photo' => $profilePhoto?->store('employee-profile-photos', 'public'),
             ]);
@@ -102,8 +105,8 @@ class EmployeeService
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
 
-            if (! $employee->user->hasRole('employee')) {
-                $employee->user->assignRole('employee');
+            if (! $employee->user->hasRole('employee') || $employee->user->roles()->count() !== 1) {
+                $employee->user->syncRoles(['employee']);
             }
 
             $attributes = $this->employeeAttributes($data);
@@ -173,7 +176,6 @@ class EmployeeService
     protected function employeeAttributes(array $data): array
     {
         return [
-            'employee_id' => $data['employee_id'],
             'full_name' => $data['full_name'],
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
@@ -188,6 +190,23 @@ class EmployeeService
             'employment_status' => $data['employment_status'],
             'emergency_contact' => $data['emergency_contact'] ?? null,
         ];
+    }
+
+    public function generateEmployeeId(): string
+    {
+        $latestEmployeeId = Employee::withTrashed()
+            ->where('employee_id', 'like', 'EMP-%')
+            ->lockForUpdate()
+            ->orderByDesc('employee_id')
+            ->value('employee_id');
+
+        if (! $latestEmployeeId) {
+            return 'EMP-00001';
+        }
+
+        $nextNumber = ((int) substr($latestEmployeeId, 4)) + 1;
+
+        return 'EMP-'.str_pad((string) $nextNumber, 5, '0', STR_PAD_LEFT);
     }
 
     /**

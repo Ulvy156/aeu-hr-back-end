@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Describe the currently implemented authorization foundation: seeded roles, permission naming, and how frontend can discover user roles and effective permissions from auth responses.
+Describe the authorization foundation: seeded roles, permission naming, and where frontend can fetch role and permission data safely.
 
 ## Base Endpoint
 
-No standalone public role or permission API endpoints are implemented yet.
+Role and permission lookup endpoints are implemented as part of the User Management API.
 
 ## Auth Requirement
 
-- There is no dedicated role/permission route yet.
-- Role names and effective permissions are currently exposed through the Auth API response for `POST /api/login` and `GET /api/me`.
+- `GET /api/roles` and `GET /api/permissions` require admin access.
+- Role names and effective permissions are also exposed through the Auth API response for `POST /api/login` and `GET /api/me`.
 
 ## Permissions
 
@@ -37,20 +37,15 @@ Permissions use `module.action` names. Examples from backend config:
 
 ## Endpoint List
 
-- No standalone role/permission API endpoints are implemented yet.
-- Read [AUTH_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/AUTH_API.md) for the currently available role and permission data in auth responses.
-
-## Request Body Fields
-
-None for this module at the moment.
-
-## Query Parameters
-
-None for this module at the moment.
+- Read [USER_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/USER_API.md) for:
+  - `GET /api/roles`
+  - `GET /api/permissions`
+  - `PUT /api/users/{user}/roles`
+- Read [AUTH_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/AUTH_API.md) for role and permission data in auth responses.
 
 ## Response Example
 
-Role data currently appears inside the authenticated user payload:
+Role data still appears inside the authenticated user payload:
 
 ```json
 {
@@ -75,11 +70,11 @@ Role data currently appears inside the authenticated user payload:
 
 ## Validation Notes
 
-- Do not assume future role or permission endpoints exist until they are added to backend routes.
+- Do not assume any role or permission endpoint outside the documented user management routes exists.
 
 ## Frontend Notes
 
 - Use `roles` and `permissions` from auth responses for role-aware and permission-aware UI state.
 - Effective permissions are resolved from Spatie Laravel Permission. Do not expect a `role_id` column on the users table.
+- Use [USER_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/USER_API.md) for admin-facing role and permission lookup endpoints.
 - Do not hardcode authorization behavior from frontend assumptions alone.
-- When user management or role APIs are implemented later, document them in this file only.
