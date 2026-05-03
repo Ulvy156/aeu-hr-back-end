@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\ApiException;
 use App\Support\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -45,6 +46,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (HttpResponseException $exception) {
             return $exception->getResponse();
+        });
+
+        $exceptions->render(function (ApiException $exception) {
+            return ApiResponse::error(
+                message: $exception->getMessage(),
+                errors: $exception->errors(),
+                status: $exception->status(),
+                headers: $exception->headers(),
+            );
         });
 
         $exceptions->render(function (AuthenticationException $exception) {

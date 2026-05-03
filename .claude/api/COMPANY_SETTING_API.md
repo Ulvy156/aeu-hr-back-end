@@ -2,71 +2,143 @@
 
 ## Purpose
 
-Describe the current backend foundation for singleton company settings used by attendance and payroll logic.
+Manage the singleton company settings record used by attendance, payroll, and organization-wide configuration.
 
 ## Base Endpoint
 
-No public company settings API endpoint is implemented yet.
+```txt
+/api/settings/company
+```
 
 ## Auth Requirement
 
-No public endpoint is available yet.
+All company settings endpoints require a Sanctum bearer token.
 
 ## Permissions
 
-Relevant seeded permissions already exist for future settings APIs:
+- View company settings: `company_settings.view`
+- Update company settings: `company_settings.update`
 
-- `company_settings.view`
-- `company_settings.update`
+With the current seeded roles:
+
+- `admin` can view and update company settings
+- `hr` can view company settings
+- `ceo` can view company settings
 
 ## Endpoint List
 
-- No public company settings endpoints are implemented yet.
+- `GET /api/settings/company`
+- `PUT /api/settings/company`
 
-## Request Body Fields
+---
 
-None for this module at the moment.
+## GET /api/settings/company
 
-## Query Parameters
+Return the singleton company settings record.
 
-None for this module at the moment.
-
-## Response Example
-
-The backend currently seeds one singleton settings row with these defaults:
+### Response Example
 
 ```json
 {
-  "company_name": "Laravel",
-  "company_logo": null,
-  "company_address": null,
-  "company_phone": null,
-  "company_email": null,
-  "office_latitude": null,
-  "office_longitude": null,
-  "allowed_radius_meters": 100,
-  "working_start_time": "08:00:00",
-  "working_end_time": "17:00:00",
+  "success": true,
+  "message": "Company settings fetched successfully.",
+  "data": {
+    "id": 1,
+    "company_name": "Laravel",
+    "company_logo": null,
+    "company_logo_url": null,
+    "company_address": null,
+    "company_phone": null,
+    "company_email": null,
+    "office_latitude": null,
+    "office_longitude": null,
+    "allowed_radius_meters": 100,
+    "working_start_time": "08:00:00",
+    "working_end_time": "17:00:00",
+    "working_days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday"
+    ],
+    "salary_currency": "USD",
+    "payroll_day_rate": 26,
+    "created_at": "2026-05-03T00:00:00.000000Z",
+    "updated_at": "2026-05-03T00:00:00.000000Z"
+  }
+}
+```
+
+### Notes
+
+- The backend auto-creates the default singleton row on first read if it does not exist yet.
+
+---
+
+## PUT /api/settings/company
+
+Update the singleton company settings record.
+
+### Request Body
+
+Use JSON for normal updates or `multipart/form-data` when uploading `company_logo`.
+
+```json
+{
+  "company_name": "AEU HR",
+  "company_address": "Phnom Penh, Cambodia",
+  "company_phone": "+85512345678",
+  "company_email": "hr@aeu.test",
+  "office_latitude": 11.5564,
+  "office_longitude": 104.9282,
+  "allowed_radius_meters": 250,
+  "working_start_time": "09:00",
+  "working_end_time": "18:00",
   "working_days": [
     "monday",
     "tuesday",
     "wednesday",
     "thursday",
-    "friday",
-    "saturday"
+    "friday"
   ],
-  "salary_currency": "USD",
-  "payroll_day_rate": 26
+  "salary_currency": "KHR",
+  "payroll_day_rate": 24
 }
 ```
 
-## Validation Notes
+### Request Fields
 
-- The backend enforces company settings as a single-row record through `CompanySettingService`.
-- If duplicates ever exist, the service collapses them back to one row before returning or updating settings.
+- `company_name`: optional string, max `255`
+- `company_logo`: optional image file, `jpg`, `jpeg`, `png`, `webp`, or `svg`, max `2048 KB`
+- `company_address`: optional nullable string
+- `company_phone`: optional nullable string, max `50`
+- `company_email`: optional nullable valid email, max `255`
+- `office_latitude`: optional nullable numeric, between `-90` and `90`
+- `office_longitude`: optional nullable numeric, between `-180` and `180`
+- `allowed_radius_meters`: optional integer, between `1` and `100000`
+- `working_start_time`: optional time, accepts `HH:MM` or `HH:MM:SS`
+- `working_end_time`: optional time, accepts `HH:MM` or `HH:MM:SS`
+- `working_days`: optional array, `1` to `7` unique weekday values
+- `working_days.*`: one of `monday`, `tuesday`, `wednesday`, `thursday`, `friday`, `saturday`, `sunday`
+- `salary_currency`: optional 3-letter alphabetic currency code; backend normalizes it to uppercase
+- `payroll_day_rate`: optional integer, between `1` and `31`
+
+### Validation Notes
+
+- `office_latitude` and `office_longitude` must be provided together.
+- `working_end_time` must be after `working_start_time`.
+- Existing company logos are replaced when a new file is uploaded.
+- The backend enforces a single-row company settings record and collapses duplicates during reads and updates.
+
+### Audit Notes
+
+- Successful updates create an audit log entry with module `company_settings` and action `update`.
 
 ## Frontend Notes
 
-- Do not assume `GET /api/settings/company` exists yet. It is planned for a later phase, not currently implemented.
-- Later attendance and payroll UIs should expect these defaults unless the future settings API changes them.
-- When the settings API is implemented, update this file only.
+- Treat this as a singleton settings page, not a list/detail module.
+- Use `company_logo_url` to display the current logo preview.
+- Send `multipart/form-data` only when replacing the logo; JSON is fine for normal updates.
+- Time inputs can submit `HH:MM`; the backend normalizes them to `HH:MM:SS` in the response.

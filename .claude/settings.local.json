@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem *)",
+      "PowerShell(Get-ChildItem \"D:\\\\AEU\\\\Thesis\\\\HR\\\\aeu-hr-front-end\\\\src\\\\components\" -Recurse -File | ForEach-Object { $_.FullName })",
+      "Bash(npx vue-tsc *)",
+      "Bash(cmd *)"
+    ]
+  }
+}

@@ -2,14 +2,20 @@
 
 namespace App\Providers;
 
+use App\Models\Attendance;
+use App\Models\CompanySetting;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Position;
+use App\Models\PublicHoliday;
 use App\Models\User;
+use App\Policies\AttendancePolicy;
 use App\Policies\AuditLogPolicy;
+use App\Policies\CompanySettingPolicy;
 use App\Policies\DepartmentPolicy;
 use App\Policies\EmployeePolicy;
 use App\Policies\PositionPolicy;
+use App\Policies\PublicHolidayPolicy;
 use App\Policies\UserPolicy;
 use App\Support\ApiResponse;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -36,9 +42,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(Activity::class, AuditLogPolicy::class);
+        Gate::policy(Attendance::class, AttendancePolicy::class);
         Gate::policy(Department::class, DepartmentPolicy::class);
         Gate::policy(Position::class, PositionPolicy::class);
         Gate::policy(Employee::class, EmployeePolicy::class);
+        Gate::policy(CompanySetting::class, CompanySettingPolicy::class);
+        Gate::policy(PublicHoliday::class, PublicHolidayPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
 
         RateLimiter::for('login', function (Request $request) {
