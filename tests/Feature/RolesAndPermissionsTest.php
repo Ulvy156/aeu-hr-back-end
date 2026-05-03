@@ -34,10 +34,32 @@ test('roles and permissions are seeded with grouped assignments', function () {
         ->and(Role::findByName('ceo', 'web'))->not->toBeNull()
         ->and(Role::findByName('employee', 'web'))->not->toBeNull()
         ->and(Permission::findByName('departments.view_any', 'web'))->not->toBeNull()
+        ->and(Permission::findByName('attendance.view_correction', 'web'))->not->toBeNull()
+        ->and(Permission::findByName('users.assign_permissions', 'web'))->not->toBeNull()
         ->and(Permission::findByName('payrolls.approve', 'web'))->not->toBeNull()
         ->and(Role::findByName('employee', 'web')->hasPermissionTo('attendance.clock_in'))->toBeTrue()
+        ->and(Role::findByName('hr', 'web')->hasPermissionTo('attendance.view_correction'))->toBeTrue()
+        ->and(Role::findByName('employee', 'web')->hasPermissionTo('attendance.view_correction'))->toBeFalse()
+        ->and(Role::findByName('admin', 'web')->hasPermissionTo('users.assign_permissions'))->toBeTrue()
         ->and(Role::findByName('ceo', 'web')->hasPermissionTo('audit_logs.view'))->toBeTrue()
         ->and(Role::findByName('hr', 'web')->hasPermissionTo('departments.create'))->toBeTrue();
+});
+
+test('admin role receives every seeded permission in the users group', function () {
+    $this->seed(RoleSeeder::class);
+
+    $usersPermissions = collect(config('hr_permissions.groups.users'))
+        ->filter()
+        ->values();
+
+    $adminRole = Role::findByName('admin', 'web');
+
+    expect($usersPermissions)->not->toBeEmpty();
+
+    foreach ($usersPermissions as $permissionName) {
+        expect(Permission::findByName($permissionName, 'web'))->not->toBeNull()
+            ->and($adminRole->hasPermissionTo($permissionName))->toBeTrue();
+    }
 });
 
 test('role and permission helpers work on the user model', function () {

@@ -40,4 +40,11 @@ class UserPolicy
     {
         return $user->hasRole('admin') && $user->hasPermissionTo('users.assign_roles');
     }
+
+    public function assignPermissions(User $user, User $model): bool
+    {
+        return $user->hasRole('admin')
+            && $user->hasPermissionTo('users.assign_permissions')
+            && ! $user->is($model);
+    }
 }

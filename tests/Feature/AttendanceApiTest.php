@@ -13,6 +13,16 @@ use Spatie\Activitylog\Models\Activity;
 
 uses(RefreshDatabase::class);
 
+const ATTENDANCE_VALID_GPS = [
+    'latitude' => 11.55640000,
+    'longitude' => 104.92820000,
+];
+
+const ATTENDANCE_OUTSIDE_GPS = [
+    'latitude' => 11.60000000,
+    'longitude' => 104.98000000,
+];
+
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
 });
@@ -25,8 +35,8 @@ function attendanceCompanySettings(array $overrides = []): CompanySetting
 {
     return CompanySetting::query()->create(array_merge([
         'company_name' => 'Attendance Test Company',
-        'office_latitude' => '11.55640000',
-        'office_longitude' => '104.92820000',
+        'office_latitude' => (string) ATTENDANCE_VALID_GPS['latitude'],
+        'office_longitude' => (string) ATTENDANCE_VALID_GPS['longitude'],
         'allowed_radius_meters' => 100,
         'working_start_time' => '08:00:00',
         'working_end_time' => '17:00:00',
@@ -64,16 +74,17 @@ test('employee can clock in within allowed radius and late status is calculated 
     $token = $user->createToken('employee-device')->plainTextToken;
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
         ->assertCreated()
         ->assertJsonPath('message', 'Clock-in successful.')
         ->assertJsonPath('data.status', 'late')
         ->assertJsonPath('data.is_late', true);
 
-    expect(Attendance::query()->count())->toBe(1);
+    $attendance = Attendance::query()->sole();
+
+    expect(Attendance::query()->count())->toBe(1)
+        ->and((float) $attendance->clock_in_latitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['latitude'], 0.00000001)
+        ->and((float) $attendance->clock_in_longitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['longitude'], 0.00000001);
 });
 
 test('clock in is rejected outside the allowed radius and when office gps settings are missing', function () {
@@ -86,10 +97,7 @@ test('clock in is rejected outside the allowed radius and when office gps settin
     $token = $user->createToken('employee-device')->plainTextToken;
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5664,
-            'longitude' => 104.9382,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_OUTSIDE_GPS)
         ->assertUnprocessable()
         ->assertJsonPath('message', 'You are outside the allowed clock-in location.');
 
@@ -100,12 +108,37 @@ test('clock in is rejected outside the allowed radius and when office gps settin
     ]);
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Office GPS settings are not configured.');
+});
+
+test('clock in location checks use office gps from company settings', function () {
+    Carbon::setTestNow('2026-05-05 08:00:00');
+    $settings = attendanceCompanySettings([
+        'office_latitude' => (string) ATTENDANCE_VALID_GPS['latitude'],
+        'office_longitude' => (string) ATTENDANCE_VALID_GPS['longitude'],
+        'allowed_radius_meters' => 25,
+    ]);
+
+    [$user] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+        ->assertCreated();
+
+    Carbon::setTestNow('2026-05-06 08:00:00');
+    $settings->update([
+        'office_latitude' => (string) ATTENDANCE_OUTSIDE_GPS['latitude'],
+        'office_longitude' => (string) ATTENDANCE_OUTSIDE_GPS['longitude'],
+        'allowed_radius_meters' => 25,
+    ]);
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You are outside the allowed clock-in location.');
 });
 
 test('duplicate clock in and duplicate clock out are prevented and clock out requires an existing clock in', function () {
@@ -116,47 +149,36 @@ test('duplicate clock in and duplicate clock out are prevented and clock out req
     Carbon::setTestNow('2026-05-05 07:55:00');
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-out', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertUnprocessable()
         ->assertJsonPath('message', 'You must clock in before clocking out.');
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
         ->assertCreated();
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
         ->assertUnprocessable()
         ->assertJsonPath('message', 'You have already clocked in today.');
 
     Carbon::setTestNow('2026-05-05 17:10:00');
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-out', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertSuccessful()
         ->assertJsonPath('message', 'Clock-out successful.');
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-out', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertUnprocessable()
         ->assertJsonPath('message', 'You have already clocked out today.');
 
-    expect($employee->attendances()->sole()->clock_out_time)->not->toBeNull();
+    $attendance = $employee->attendances()->sole();
+
+    expect($attendance->clock_out_time)->not->toBeNull()
+        ->and((float) $attendance->clock_out_latitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['latitude'], 0.00000001)
+        ->and((float) $attendance->clock_out_longitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['longitude'], 0.00000001);
 });
 
 test('attendance list scopes employees to their own records', function () {
@@ -245,18 +267,12 @@ test('clock in and clock out return 403 when no employee profile is linked to th
     $token = $user->createToken('employee-device')->plainTextToken;
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-in', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
         ->assertForbidden()
         ->assertJsonPath('message', 'No employee profile is linked to this user account.');
 
     $this->withToken($token)
-        ->postJson('/api/attendance/clock-out', [
-            'latitude' => 11.5564,
-            'longitude' => 104.9282,
-        ])
+        ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertForbidden()
         ->assertJsonPath('message', 'No employee profile is linked to this user account.');
 });

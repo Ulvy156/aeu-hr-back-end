@@ -18,6 +18,7 @@ All attendance endpoints require a Sanctum bearer token.
 
 - List any attendance: `attendance.view_any`
 - List own attendance: `attendance.view_own`
+- View attendance correction UI/data: `attendance.view_correction`
 - Clock in: `attendance.clock_in`
 - Clock out: `attendance.clock_out`
 - Correct attendance: `attendance.correct`
@@ -194,6 +195,7 @@ Only these fields are accepted:
 
 - `correction_reason` is always required.
 - `status` must be one of `present`, `late`, `absent`, `missing_clock_out`.
+- `attendance.view_correction` is for viewing correction-related UI/data only and does not authorize updates.
 - Backend stores `corrected_by` from the authenticated user.
 - Backend stores `corrected_at` as current server time.
 - Backend recalculates `is_late` from corrected `clock_in_time`, company `working_start_time`, and final attendance status.

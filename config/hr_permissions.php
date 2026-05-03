@@ -40,6 +40,7 @@ return [
         'attendance' => [
             'attendance.view_any',
             'attendance.view_own',
+            'attendance.view_correction',
             'attendance.clock_in',
             'attendance.clock_out',
             'attendance.correct',
@@ -93,6 +94,7 @@ return [
             'users.delete',
             'users.reset_password',
             'users.assign_roles',
+            'users.assign_permissions',
         ],
         'roles_permissions' => [
             'roles_permissions.roles_view',
@@ -126,6 +128,7 @@ return [
             'permissions' => [
                 'attendance.view_any',
                 'attendance.view_own',
+                'attendance.view_correction',
                 'attendance.clock_in',
                 'attendance.clock_out',
                 'attendance.correct',

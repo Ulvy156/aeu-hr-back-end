@@ -29,6 +29,7 @@ Permissions use `module.action` names. Examples from backend config:
 - `departments.view_any`
 - `positions.create`
 - `employees.update_salary`
+- `attendance.view_correction`
 - `attendance.clock_in`
 - `leaves.approve_hr`
 - `payrolls.approve`
@@ -41,6 +42,10 @@ Permissions use `module.action` names. Examples from backend config:
   - `GET /api/roles`
   - `GET /api/permissions`
   - `PUT /api/users/{user}/roles`
+  - `GET /api/users/{user}/permissions`
+  - `PUT /api/users/{user}/permissions`
+  - `POST /api/users/{user}/permissions`
+  - `DELETE /api/users/{user}/permissions`
 - Read [AUTH_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/AUTH_API.md) for role and permission data in auth responses.
 
 ## Response Example
@@ -76,5 +81,6 @@ Role data still appears inside the authenticated user payload:
 
 - Use `roles` and `permissions` from auth responses for role-aware and permission-aware UI state.
 - Effective permissions are resolved from Spatie Laravel Permission. Do not expect a `role_id` column on the users table.
+- Direct user permissions are separate from role permissions and are managed through the user permission endpoints.
 - Use [USER_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/USER_API.md) for admin-facing role and permission lookup endpoints.
 - Do not hardcode authorization behavior from frontend assumptions alone.

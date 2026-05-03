@@ -23,6 +23,7 @@ All user management endpoints require a Sanctum bearer token.
 - Role lookup uses `roles_permissions.roles_view`.
 - Permission lookup uses `roles_permissions.permissions_view`.
 - Role assignment uses `users.assign_roles`.
+- Direct user permission management uses `users.assign_permissions`.
 
 ## Endpoint List
 
@@ -34,6 +35,10 @@ All user management endpoints require a Sanctum bearer token.
 - `GET /api/roles`
 - `GET /api/permissions`
 - `PUT /api/users/{user}/roles`
+- `GET /api/users/{user}/permissions`
+- `PUT /api/users/{user}/permissions`
+- `POST /api/users/{user}/permissions`
+- `DELETE /api/users/{user}/permissions`
 
 ---
 
@@ -347,7 +352,109 @@ Replace the assigned role of a user.
 }
 ```
 
+---
+
+## GET /api/users/{user}/permissions
+
+Return a user permission summary split by direct permissions, role permissions, and effective permissions.
+
+### Required Permission
+
+- `users.view`
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "User permissions fetched successfully.",
+  "data": {
+    "user_id": 10,
+    "direct_permissions": ["attendance.view_correction"],
+    "role_permissions": ["attendance.clock_in", "attendance.view_own"],
+    "all_permissions": ["attendance.clock_in", "attendance.view_correction", "attendance.view_own"]
+  }
+}
+```
+
+---
+
+## PUT /api/users/{user}/permissions
+
+Replace only the user's direct permissions.
+
+### Required Permission
+
+- `users.assign_permissions`
+
+### Request Body
+
+```json
+{
+  "permissions": [
+    "attendance.view_any",
+    "attendance.view_correction"
+  ]
+}
+```
+
+### Validation Notes
+
+- `permissions` must be an array.
+- Every permission name must already exist in the Spatie `permissions` table.
+- This endpoint replaces direct permissions only.
+- Role-based permissions are not removed or changed.
+- Admin users cannot assign direct permissions to themselves through this endpoint.
+
+---
+
+## POST /api/users/{user}/permissions
+
+Add one direct permission to the user.
+
+### Required Permission
+
+- `users.assign_permissions`
+
+### Request Body
+
+```json
+{
+  "permission": "attendance.view_correction"
+}
+```
+
+### Notes
+
+- Unknown permission names are rejected.
+- Duplicate direct permissions are ignored safely.
+- Role-based permissions are not changed.
+
+---
+
+## DELETE /api/users/{user}/permissions
+
+Remove one direct permission from the user.
+
+### Required Permission
+
+- `users.assign_permissions`
+
+### Request Body
+
+```json
+{
+  "permission": "attendance.view_correction"
+}
+```
+
+### Notes
+
+- This removes direct permission assignment only.
+- If the same permission still comes from the user's role, it remains in `role_permissions` and `all_permissions`.
+- Admin users cannot remove their own direct permissions through this endpoint.
+
 ## Audit Notes
 
-- User create, update, deactivate, and role assignment actions are written through `AuditLogService`.
+- User create, update, deactivate, role assignment, and direct permission assignment actions are written through `AuditLogService`.
 - Audit records do not include passwords, remember tokens, or Sanctum token values.
