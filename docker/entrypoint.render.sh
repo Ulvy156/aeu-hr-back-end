@@ -20,7 +20,7 @@ fi
 echo "Waiting for database..."
 until php -r "
 try {
-    \$dsn = 'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE');
+    \$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE');
     new PDO(\$dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
     exit(0);
 } catch (Exception \$e) {
