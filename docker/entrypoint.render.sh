@@ -4,6 +4,12 @@ set -e
 # Render injects $PORT — write it into the nginx config
 envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/http.d/default.conf
 
+# Laravel requires a .env file on disk even when env vars come from the OS.
+# Copy .env.example as a placeholder — Render's env vars override all values in it.
+if [ ! -f .env ]; then
+    cp .env.example .env
+fi
+
 # Generate app key if not provided
 if [ -z "$APP_KEY" ]; then
     echo "Generating APP_KEY..."
