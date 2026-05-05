@@ -21,6 +21,8 @@ class IndexUserRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'without_employee' => ['nullable', 'boolean'],
+            'exclude_admin' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

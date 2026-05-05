@@ -21,15 +21,22 @@ class StoreEmployeeRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'user_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
+                'unique:employees,user_id',
+            ],
+            'employee_id' => ['prohibited'],
             'full_name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',
                 'email',
                 'max:255',
-                'unique:users,email',
+                Rule::unique('users', 'email')->ignore($this->input('user_id')),
                 Rule::unique('employees', 'email')->where(fn ($query) => $query->whereNull('deleted_at')),
             ],
-            'password' => ['required', 'string', 'min:8', 'max:255'],
+            'password' => ['prohibited'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date'],
             'phone_number' => ['nullable', 'string', 'max:50'],
@@ -42,6 +49,16 @@ class StoreEmployeeRequest extends FormRequest
             'employment_status' => ['required', Rule::in(['active', 'resigned', 'terminated'])],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'user_id.unique' => 'The selected user already has an employee profile.',
         ];
     }
 

@@ -97,7 +97,7 @@ class UserController extends Controller
 
         return ApiResponse::success(
             data: UserResource::make($user)->resolve($request),
-            message: 'User deactivated successfully.',
+            message: 'User deleted successfully.',
         );
     }
 }

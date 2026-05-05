@@ -20,7 +20,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'unpaid_deduction',
     'absence_deduction',
     'taxable_salary',
+    'tax_rate',
     'tax_amount',
+    'nssf_deduction',
+    'tax_breakdown',
     'net_salary',
     'status',
 ])]
@@ -56,7 +59,10 @@ class PayrollItem extends Model
             'unpaid_deduction' => 'decimal:2',
             'absence_deduction' => 'decimal:2',
             'taxable_salary' => 'decimal:2',
+            'tax_rate' => 'decimal:4',
             'tax_amount' => 'decimal:2',
+            'nssf_deduction' => 'decimal:2',
+            'tax_breakdown' => 'array',
             'net_salary' => 'decimal:2',
         ];
     }

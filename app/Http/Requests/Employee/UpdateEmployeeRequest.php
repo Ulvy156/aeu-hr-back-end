@@ -24,6 +24,7 @@ class UpdateEmployeeRequest extends FormRequest
 
         return [
             'employee_id' => ['prohibited'],
+            'user_id' => ['prohibited'],
             'full_name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',

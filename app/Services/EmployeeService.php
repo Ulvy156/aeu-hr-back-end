@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -24,7 +25,7 @@ class EmployeeService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return Employee::query()
-            ->with(['user.roles:id,name', 'department', 'position'])
+            ->with(['user:id,name,email,status', 'department', 'position'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $query->where(function (Builder $query) use ($search): void {
                     $query
@@ -52,14 +53,23 @@ class EmployeeService
     ): Employee {
         return DB::transaction(function () use ($data, $profilePhoto, $actor, $ipAddress, $userAgent): Employee {
             $employeeId = $this->generateEmployeeId();
+            $user = User::query()
+                ->with('employeeWithTrashed')
+                ->lockForUpdate()
+                ->findOrFail($data['user_id']);
 
-            $user = User::query()->create([
+            if ($user->employeeWithTrashed) {
+                throw ApiException::unprocessable(
+                    'The selected user already has an employee profile.',
+                    ['user_id' => ['The selected user already has an employee profile.']],
+                );
+            }
+
+            $user->update([
                 'name' => $data['full_name'],
                 'email' => $data['email'],
-                'password' => $data['password'],
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
-            $user->syncRoles(['employee']);
 
             $employee = Employee::query()->create([
                 ...$this->employeeAttributes($data),
@@ -68,7 +78,7 @@ class EmployeeService
                 'profile_photo' => $profilePhoto?->store('employee-profile-photos', 'public'),
             ]);
 
-            $employee->load(['user.roles:id,name', 'department', 'position']);
+            $employee->load(['user:id,name,email,status', 'department', 'position']);
 
             $this->auditLogService->log(
                 action: 'create',
@@ -96,7 +106,7 @@ class EmployeeService
         ?string $userAgent = null,
     ): Employee {
         return DB::transaction(function () use ($employee, $data, $profilePhoto, $actor, $ipAddress, $userAgent): Employee {
-            $employee->loadMissing(['user.roles:id,name', 'department', 'position']);
+            $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
             $oldValues = $this->auditAttributes($employee);
 
             $employee->user->update([
@@ -104,10 +114,6 @@ class EmployeeService
                 'email' => $data['email'],
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
-
-            if (! $employee->user->hasRole('employee') || $employee->user->roles()->count() !== 1) {
-                $employee->user->syncRoles(['employee']);
-            }
 
             $attributes = $this->employeeAttributes($data);
 
@@ -120,7 +126,7 @@ class EmployeeService
             }
 
             $employee->update($attributes);
-            $employee = $employee->fresh(['user.roles:id,name', 'department', 'position']);
+            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position']);
 
             $this->auditLogService->log(
                 action: 'update',
@@ -144,12 +150,16 @@ class EmployeeService
         ?string $userAgent = null,
     ): void {
         DB::transaction(function () use ($employee, $actor, $ipAddress, $userAgent): void {
-            $employee->loadMissing(['user.roles:id,name', 'department', 'position']);
+            $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
             $oldValues = $this->auditAttributes($employee);
 
-            $employee->user->update([
-                'status' => 'inactive',
-            ]);
+            if ($employee->user && ! $employee->user->trashed()) {
+                $employee->user->update([
+                    'status' => 'inactive',
+                ]);
+                $employee->user->tokens()->delete();
+                $employee->user->delete();
+            }
 
             if ($employee->profile_photo) {
                 Storage::disk('public')->delete($employee->profile_photo);
@@ -163,6 +173,11 @@ class EmployeeService
                 user: $actor,
                 subject: $employee,
                 oldValues: $oldValues,
+                newValues: [
+                    ...$oldValues,
+                    'deleted_at' => $employee->deleted_at?->toISOString(),
+                    'user_deleted_at' => $employee->user?->deleted_at?->toISOString(),
+                ],
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
             );

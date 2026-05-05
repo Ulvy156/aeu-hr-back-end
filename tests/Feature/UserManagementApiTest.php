@@ -70,6 +70,243 @@ test('admin can list users with search filters and roles without exposing sensit
         ->assertJsonMissingPath('data.0.remember_token');
 });
 
+test('admin can filter users without linked employee profiles', function () {
+    $linkedUser = User::factory()->create([
+        'name' => 'Linked User',
+        'email' => 'linked.filter@example.com',
+        'status' => 'active',
+    ]);
+    $linkedUser->assignRole('employee');
+
+    Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP302',
+        'full_name' => 'Linked User',
+        'email' => 'linked.filter@example.com',
+        'join_date' => now()->toDateString(),
+        'base_salary' => 1000,
+        'employment_status' => 'active',
+    ]);
+
+    $availableUser = User::factory()->create([
+        'name' => 'Available User',
+        'email' => 'available.filter@example.com',
+        'status' => 'active',
+    ]);
+    $availableUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users?without_employee=1')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $availableUser->id,
+            'email' => 'available.filter@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $linkedUser->id,
+            'email' => 'linked.filter@example.com',
+        ]);
+});
+
+test('admin can filter users without linked employee profiles while excluding admin users', function () {
+    $linkedUser = User::factory()->create([
+        'name' => 'Linked User',
+        'email' => 'linked.exclude@example.com',
+        'status' => 'active',
+    ]);
+    $linkedUser->assignRole('employee');
+
+    Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP303',
+        'full_name' => 'Linked User',
+        'email' => 'linked.exclude@example.com',
+        'join_date' => now()->toDateString(),
+        'base_salary' => 1000,
+        'employment_status' => 'active',
+    ]);
+
+    $adminCandidate = User::factory()->create([
+        'name' => 'Admin Candidate',
+        'email' => 'admin.candidate@example.com',
+        'status' => 'active',
+    ]);
+    $adminCandidate->assignRole('admin');
+
+    $availableUser = User::factory()->create([
+        'name' => 'Available User',
+        'email' => 'available.exclude@example.com',
+        'status' => 'active',
+    ]);
+    $availableUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users?without_employee=1&exclude_admin=1')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $availableUser->id,
+            'email' => 'available.exclude@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $linkedUser->id,
+            'email' => 'linked.exclude@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $adminCandidate->id,
+            'email' => 'admin.candidate@example.com',
+        ]);
+});
+
+test('users with soft deleted employee profiles are excluded from without employee filter', function () {
+    $softDeletedLinkedUser = User::factory()->create([
+        'name' => 'Former Employee User',
+        'email' => 'former.employee@example.com',
+        'status' => 'inactive',
+    ]);
+    $softDeletedLinkedUser->assignRole('employee');
+
+    $employee = Employee::query()->create([
+        'user_id' => $softDeletedLinkedUser->id,
+        'employee_id' => 'EMP304',
+        'full_name' => 'Former Employee User',
+        'email' => 'former.employee@example.com',
+        'join_date' => now()->toDateString(),
+        'base_salary' => 1000,
+        'employment_status' => 'terminated',
+        'last_working_date' => now()->toDateString(),
+    ]);
+    $employee->delete();
+
+    $availableUser = User::factory()->create([
+        'name' => 'Available User',
+        'email' => 'available.softdelete@example.com',
+        'status' => 'active',
+    ]);
+    $availableUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users?without_employee=1')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $availableUser->id,
+            'email' => 'available.softdelete@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $softDeletedLinkedUser->id,
+            'email' => 'former.employee@example.com',
+        ]);
+});
+
+test('soft deleted users are excluded from available employee user selector', function () {
+    $softDeletedUser = User::factory()->create([
+        'name' => 'Deleted User',
+        'email' => 'deleted.selector@example.com',
+        'status' => 'inactive',
+    ]);
+    $softDeletedUser->assignRole('employee');
+    $softDeletedUser->delete();
+
+    $availableUser = User::factory()->create([
+        'name' => 'Available User',
+        'email' => 'available.selector@example.com',
+        'status' => 'active',
+    ]);
+    $availableUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users?without_employee=1&exclude_admin=1')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $availableUser->id,
+            'email' => 'available.selector@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $softDeletedUser->id,
+            'email' => 'deleted.selector@example.com',
+        ]);
+});
+
+test('default user list behavior remains unchanged when no safe selector filters are provided', function () {
+    $adminCandidate = User::factory()->create([
+        'name' => 'Admin Candidate',
+        'email' => 'admin.default@example.com',
+        'status' => 'active',
+    ]);
+    $adminCandidate->assignRole('admin');
+
+    $availableUser = User::factory()->create([
+        'name' => 'Available User',
+        'email' => 'available.default@example.com',
+        'status' => 'active',
+    ]);
+    $availableUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $adminCandidate->id,
+            'email' => 'admin.default@example.com',
+        ])
+        ->assertJsonFragment([
+            'id' => $availableUser->id,
+            'email' => 'available.default@example.com',
+        ]);
+});
+
+test('default user list excludes soft deleted users', function () {
+    $visibleUser = User::factory()->create([
+        'name' => 'Visible User',
+        'email' => 'visible.user@example.com',
+        'status' => 'active',
+    ]);
+    $visibleUser->assignRole('employee');
+
+    $deletedUser = User::factory()->create([
+        'name' => 'Deleted User',
+        'email' => 'deleted.user@example.com',
+        'status' => 'inactive',
+    ]);
+    $deletedUser->assignRole('employee');
+    $deletedUser->delete();
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $visibleUser->id,
+            'email' => 'visible.user@example.com',
+        ])
+        ->assertJsonMissing([
+            'id' => $deletedUser->id,
+            'email' => 'deleted.user@example.com',
+        ]);
+});
+
 test('admin can view user detail with permissions and linked employee profile', function () {
     $department = Department::query()->create([
         'name' => 'Operations',
@@ -276,7 +513,7 @@ test('user update rejects invalid roles', function () {
         ->assertJsonValidationErrors('roles.0');
 });
 
-test('admin can deactivate target accounts without exposing sensitive fields', function () {
+test('deleting a user soft deletes the user and linked employee without hard deleting either record', function () {
     $targetUser = User::factory()->create([
         'name' => 'Original User',
         'email' => 'original.user@example.com',
@@ -284,6 +521,16 @@ test('admin can deactivate target accounts without exposing sensitive fields', f
     ]);
     $targetUser->assignRole('employee');
     $targetUser->createToken('target-device');
+
+    $employee = Employee::query()->create([
+        'user_id' => $targetUser->id,
+        'employee_id' => 'EMP401',
+        'full_name' => 'Original User',
+        'email' => 'original.user@example.com',
+        'join_date' => now()->toDateString(),
+        'base_salary' => 1000,
+        'employment_status' => 'active',
+    ]);
 
     $admin = User::factory()->create();
     $admin->assignRole('admin');
@@ -294,11 +541,38 @@ test('admin can deactivate target accounts without exposing sensitive fields', f
 
     $deleteResponse
         ->assertSuccessful()
-        ->assertJsonPath('message', 'User deactivated successfully.')
+        ->assertJsonPath('message', 'User deleted successfully.')
         ->assertJsonPath('data.status', 'inactive');
 
-    expect($targetUser->fresh()->status)->toBe('inactive')
-        ->and($targetUser->fresh()->tokens()->count())->toBe(0);
+    expect(User::query()->find($targetUser->id))->toBeNull()
+        ->and(Employee::query()->find($employee->id))->toBeNull()
+        ->and(User::withTrashed()->find($targetUser->id))->not->toBeNull()
+        ->and(Employee::withTrashed()->find($employee->id))->not->toBeNull()
+        ->and(User::withTrashed()->find($targetUser->id)->status)->toBe('inactive')
+        ->and($targetUser->tokens()->count())->toBe(0)
+        ->and(Activity::query()->where('log_name', 'users')->where('description', 'delete')->exists())->toBeTrue();
+});
+
+test('deleting an unlinked user soft deletes only the user', function () {
+    $targetUser = User::factory()->create([
+        'name' => 'Unlinked User',
+        'email' => 'unlinked.user@example.com',
+        'status' => 'active',
+    ]);
+    $targetUser->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->deleteJson("/api/users/{$targetUser->id}")
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'User deleted successfully.');
+
+    expect(User::query()->find($targetUser->id))->toBeNull()
+        ->and(User::withTrashed()->find($targetUser->id))->not->toBeNull()
+        ->and(Employee::withTrashed()->where('user_id', $targetUser->id)->exists())->toBeFalse();
 });
 
 test('admin cannot deactivate self through update or delete', function () {

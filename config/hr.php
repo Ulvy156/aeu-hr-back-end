@@ -23,4 +23,25 @@ return [
         'salary_currency' => 'USD',
         'payroll_day_rate' => 26,
     ],
+    'leave' => [
+        'entitlements' => [
+            'annual' => 18.0,
+            'sick' => 7.0,
+            'maternity' => 90.0,
+        ],
+    ],
+    'payroll' => [
+        'tax_brackets' => [
+            ['up_to' => 375.00, 'rate' => 0.00],
+            ['up_to' => 500.00, 'rate' => 0.05],
+            ['up_to' => 2125.00, 'rate' => 0.10],
+            ['up_to' => 3125.00, 'rate' => 0.15],
+            ['up_to' => null, 'rate' => 0.20],
+        ],
+        'nssf' => [
+            'salary_threshold' => 300.00,
+            'lower_deduction' => 4.00,
+            'higher_deduction' => 6.00,
+        ],
+    ],
 ];

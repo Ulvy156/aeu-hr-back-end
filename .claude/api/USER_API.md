@@ -46,10 +46,14 @@ All user management endpoints require a Sanctum bearer token.
 
 Return a paginated user list.
 
+Soft-deleted users are excluded from the default list.
+
 ### Query Parameters
 
 - `search`: optional string, searches by user name, user email, employee full name, employee department name, and employee position name
 - `status`: optional enum, `active` or `inactive`
+- `without_employee`: optional boolean-like flag; when `1`, only users without a linked employee profile are returned
+- `exclude_admin`: optional boolean-like flag; when `1`, users with the `admin` role are excluded
 - `per_page`: optional integer, `1` to `100`
 
 ### Response Example
@@ -97,6 +101,9 @@ Return a paginated user list.
 - Sensitive fields like `password`, `remember_token`, and tokens are never returned.
 - `employee` can be `null` when the user is not linked to an employee record.
 - `roles` is still returned as an array for response consistency, but the backend enforces exactly one role per user.
+- `GET /api/users?without_employee=1` can be used to populate employee-linking selectors safely.
+- `GET /api/users?without_employee=1&exclude_admin=1` is the safer query for employee-linking selectors because it returns only unlinked non-admin users.
+- The safe selector query also excludes soft-deleted users and users linked to soft-deleted employee records.
 
 ---
 
@@ -217,7 +224,7 @@ Update user basic fields and optionally replace the single assigned role.
 - `roles` is optional on update.
 - If `roles` is provided, it must contain exactly one valid Spatie role name.
 - If `roles` is omitted, the current role stays unchanged.
-- Admin users cannot deactivate themselves through this endpoint.
+- Admin users cannot delete themselves through this endpoint.
 - When a target user is set to `inactive`, current Sanctum tokens for that target user are revoked by the backend.
 
 ### Response Notes
@@ -228,14 +235,14 @@ Update user basic fields and optionally replace the single assigned role.
 
 ## DELETE /api/users/{user}
 
-Deactivate a user instead of hard deleting the database record.
+Soft delete a user instead of hard deleting the database record.
 
 ### Response Example
 
 ```json
 {
   "success": true,
-  "message": "User deactivated successfully.",
+  "message": "User deleted successfully.",
   "data": {
     "id": 9,
     "name": "Updated User",
@@ -251,10 +258,11 @@ Deactivate a user instead of hard deleting the database record.
 
 ### Validation Notes
 
-- This endpoint deactivates the user by setting `status` to `inactive`.
-- Admin users cannot deactivate themselves.
-- Linked employee records are kept intact.
+- This endpoint sets the user `status` to `inactive` and then soft deletes the user record.
+- Admin users cannot delete themselves.
+- If the user has a linked employee profile, the employee record is also soft deleted in the same transaction.
 - Current Sanctum tokens for the target user are revoked.
+- No hard delete is used in the normal delete flow.
 
 ---
 
@@ -456,5 +464,5 @@ Remove one direct permission from the user.
 
 ## Audit Notes
 
-- User create, update, deactivate, role assignment, and direct permission assignment actions are written through `AuditLogService`.
+- User create, update, delete, role assignment, and direct permission assignment actions are written through `AuditLogService`.
 - Audit records do not include passwords, remember tokens, or Sanctum token values.

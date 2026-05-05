@@ -33,15 +33,14 @@ class EmployeeResource extends JsonResource
             'emergency_contact' => $this->emergency_contact,
             'profile_photo' => $this->profile_photo,
             'profile_photo_url' => $this->profile_photo ? Storage::disk('public')->url($this->profile_photo) : null,
-            'user' => $this->whenLoaded('user', fn () => [
-                'id' => $this->user?->id,
-                'name' => $this->user?->name,
-                'email' => $this->user?->email,
-                'status' => $this->user?->status,
-                'roles' => $this->user?->relationLoaded('roles')
-                    ? $this->user->roles->pluck('name')->values()->all()
-                    : [],
-            ]),
+            'user' => $this->whenLoaded('user', fn () => $this->user
+                ? [
+                    'id' => $this->user->id,
+                    'name' => $this->user->name,
+                    'email' => $this->user->email,
+                    'status' => $this->user->status,
+                ]
+                : null),
             'department' => $this->whenLoaded('department', fn () => $this->department
                 ? [
                     'id' => $this->department->id,

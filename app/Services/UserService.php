@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,6 +41,22 @@ class UserService
                 });
             })
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
+            ->when(
+                filter_var($filters['without_employee'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $query) => $query->whereNotIn(
+                    'users.id',
+                    Employee::withTrashed()
+                        ->whereNotNull('user_id')
+                        ->select('user_id')
+                )
+            )
+            ->when(
+                filter_var($filters['exclude_admin'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $query) => $query->whereDoesntHave(
+                    'roles',
+                    fn (Builder $roleQuery) => $roleQuery->where('name', 'admin')
+                )
+            )
             ->orderBy('name')
             ->paginate($perPage);
     }
@@ -139,29 +156,40 @@ class UserService
         ?string $userAgent = null,
     ): User {
         return DB::transaction(function () use ($user, $actor, $ipAddress, $userAgent): User {
-            $user->load(['roles:id,name', 'employee.department', 'employee.position']);
+            $user->load(['roles:id,name']);
+            $user->setRelation(
+                'employee',
+                $user->employeeWithTrashed()->with(['department', 'position'])->first()
+            );
             $oldValues = $this->auditAttributes($user);
 
             if ($actor->is($user)) {
                 throw ValidationException::withMessages([
-                    'user' => ['You cannot deactivate your own account.'],
+                    'user' => ['You cannot delete your own account.'],
                 ]);
+            }
+
+            if ($user->employee && ! $user->employee->trashed()) {
+                $user->employee->delete();
             }
 
             $user->update([
                 'status' => 'inactive',
             ]);
             $user->tokens()->delete();
-
-            $user = $user->fresh(['roles:id,name', 'employee.department', 'employee.position']);
+            $user->delete();
 
             $this->auditLogService->log(
-                action: 'deactivate',
+                action: 'delete',
                 module: 'users',
                 user: $actor,
                 subject: $user,
                 oldValues: $oldValues,
-                newValues: $this->auditAttributes($user),
+                newValues: [
+                    ...$this->auditAttributes($user),
+                    'deleted_at' => $user->deleted_at?->toISOString(),
+                    'employee_deleted_at' => $user->employee?->deleted_at?->toISOString(),
+                ],
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
             );

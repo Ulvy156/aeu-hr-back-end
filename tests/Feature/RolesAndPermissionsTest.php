@@ -45,6 +45,38 @@ test('roles and permissions are seeded with grouped assignments', function () {
         ->and(Role::findByName('hr', 'web')->hasPermissionTo('departments.create'))->toBeTrue();
 });
 
+test('leave permissions are assigned with least privilege by role', function () {
+    $this->seed(RoleSeeder::class);
+
+    $admin = Role::findByName('admin', 'web');
+    $hr = Role::findByName('hr', 'web');
+    $ceo = Role::findByName('ceo', 'web');
+    $employee = Role::findByName('employee', 'web');
+
+    expect($admin->hasPermissionTo('leaves.view_any'))->toBeTrue()
+        ->and($admin->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
+        ->and($admin->hasPermissionTo('leaves.approve_ceo'))->toBeTrue()
+        ->and($admin->hasPermissionTo('leaves.cancel'))->toBeTrue()
+        ->and($hr->hasPermissionTo('leaves.view_any'))->toBeTrue()
+        ->and($hr->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
+        ->and($hr->hasPermissionTo('leaves.reject_hr'))->toBeTrue()
+        ->and($hr->hasPermissionTo('leaves.create'))->toBeFalse()
+        ->and($hr->hasPermissionTo('leaves.cancel'))->toBeFalse()
+        ->and($hr->hasPermissionTo('leaves.approve_ceo'))->toBeFalse()
+        ->and($ceo->hasPermissionTo('leaves.view_any'))->toBeTrue()
+        ->and($ceo->hasPermissionTo('leaves.approve_ceo'))->toBeTrue()
+        ->and($ceo->hasPermissionTo('leaves.reject_ceo'))->toBeTrue()
+        ->and($ceo->hasPermissionTo('leaves.create'))->toBeFalse()
+        ->and($ceo->hasPermissionTo('leaves.cancel'))->toBeFalse()
+        ->and($ceo->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
+        ->and($employee->hasPermissionTo('leaves.view_own'))->toBeTrue()
+        ->and($employee->hasPermissionTo('leaves.create'))->toBeTrue()
+        ->and($employee->hasPermissionTo('leaves.cancel'))->toBeTrue()
+        ->and($employee->hasPermissionTo('leaves.view_any'))->toBeFalse()
+        ->and($employee->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
+        ->and($employee->hasPermissionTo('leaves.approve_ceo'))->toBeFalse();
+});
+
 test('admin role receives every seeded permission in the users group', function () {
     $this->seed(RoleSeeder::class);
 

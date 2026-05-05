@@ -4,12 +4,22 @@ use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CompanySettingController;
+use App\Http\Controllers\Api\Dashboard\AdminDashboardController;
+use App\Http\Controllers\Api\Dashboard\CeoDashboardController;
+use App\Http\Controllers\Api\Dashboard\EmployeeDashboardController;
+use App\Http\Controllers\Api\Dashboard\HrDashboardController;
 use App\Http\Controllers\Api\Dashboard\UserSummaryController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PositionController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicHolidayController;
+use App\Http\Controllers\Api\Reports\AttendanceReportController;
+use App\Http\Controllers\Api\Reports\LeaveReportController;
+use App\Http\Controllers\Api\Reports\PayrollReportController;
 use App\Http\Controllers\Api\RolePermissionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\UserPermissionController;
@@ -23,6 +33,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/profile', [ProfileController::class, 'show']);
+    Route::get('/leave-balances', [LeaveController::class, 'balances']);
+    Route::apiResource('leaves', LeaveController::class)
+        ->parameters(['leaves' => 'leave'])
+        ->only(['index', 'store', 'show']);
+    Route::apiResource('payrolls', PayrollController::class)
+        ->parameters(['payrolls' => 'payroll'])
+        ->only(['index', 'store', 'show', 'update']);
+    Route::post('/payrolls/{payroll}/submit', [PayrollController::class, 'submit']);
+    Route::post('/payrolls/{payroll}/approve', [PayrollController::class, 'approve']);
+    Route::post('/payrolls/{payroll}/reject', [PayrollController::class, 'reject']);
+    Route::apiResource('payslips', PayslipController::class)
+        ->parameters(['payslips' => 'payslip'])
+        ->only(['index', 'show']);
+    Route::get('/payslips/{payslip}/download', [PayslipController::class, 'download']);
+    Route::post('/leaves/{leave}/approve', [LeaveController::class, 'approve']);
+    Route::post('/leaves/{leave}/reject', [LeaveController::class, 'reject']);
+    Route::post('/leaves/{leave}/cancel', [LeaveController::class, 'cancel']);
     Route::prefix('attendance')->group(function () {
         Route::get('/', [AttendanceController::class, 'index']);
         Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
@@ -31,8 +58,30 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/mark-absent', [AttendanceController::class, 'markAbsent']);
     });
     Route::prefix('dashboard')->group(function () {
+        Route::get('/employee', EmployeeDashboardController::class)
+            ->middleware('permission:dashboards.employee_view');
+        Route::get('/hr', HrDashboardController::class)
+            ->middleware('permission:dashboards.hr_view');
+        Route::get('/ceo', CeoDashboardController::class)
+            ->middleware('permission:dashboards.ceo_view');
+        Route::get('/admin', AdminDashboardController::class)
+            ->middleware('permission:dashboards.admin_view');
         Route::get('/users-summary', UserSummaryController::class)
             ->middleware('permission:dashboards.admin_view');
+    });
+    Route::prefix('reports')->group(function () {
+        Route::get('/payroll', [PayrollReportController::class, 'index'])
+            ->middleware('permission:reports.payroll_view');
+        Route::get('/payroll/export', [PayrollReportController::class, 'export'])
+            ->middleware('permission:reports.payroll_export');
+        Route::get('/attendance', [AttendanceReportController::class, 'index'])
+            ->middleware('permission:reports.attendance_view');
+        Route::get('/attendance/export', [AttendanceReportController::class, 'export'])
+            ->middleware('permission:reports.attendance_export');
+        Route::get('/leave', [LeaveReportController::class, 'index'])
+            ->middleware('permission:reports.leave_view');
+        Route::get('/leave/export', [LeaveReportController::class, 'export'])
+            ->middleware('permission:reports.leave_export');
     });
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
     Route::get('/settings/company', [CompanySettingController::class, 'show']);

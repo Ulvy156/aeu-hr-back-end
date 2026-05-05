@@ -23,6 +23,7 @@ All module API contract files are stored in: D:\AEU\Thesis\HR\aeu-hr-back-end\.c
 - Leave: `.claude/api/LEAVE_API.md`
 - Payroll: `.claude/api/PAYROLL_API.md`
 - Dashboard: `.claude/api/DASHBOARD_API.md`
+- Reports: `.claude/api/REPORTS_API.md`
 - Departments: `.claude/api/DEPARTMENT_API.md`
 - Positions: `.claude/api/POSITION_API.md`
 - Public Holidays: `.claude/api/PUBLIC_HOLIDAY_API.md`
