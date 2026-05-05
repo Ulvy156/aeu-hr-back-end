@@ -1,0 +1,72 @@
+FROM php:8.3-fpm-alpine
+
+# System packages: nginx, supervisord, gettext (envsubst), and build deps
+RUN apk add --no-cache \
+    nginx \
+    supervisor \
+    gettext \
+    git \
+    curl \
+    libpng-dev \
+    libxml2-dev \
+    libzip-dev \
+    icu-dev \
+    freetype-dev \
+    libjpeg-turbo-dev \
+    oniguruma-dev \
+    zip \
+    unzip
+
+# PHP extensions required by Laravel, DomPDF, and maatwebsite/excel
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install \
+        pdo_mysql \
+        mbstring \
+        xml \
+        dom \
+        gd \
+        zip \
+        bcmath \
+        intl \
+        opcache \
+        exif \
+        pcntl \
+        fileinfo
+
+RUN printf "opcache.enable=1\nopcache.memory_consumption=256\nopcache.max_accelerated_files=20000\nopcache.validate_timestamps=0\n" \
+        > /usr/local/etc/php/conf.d/opcache.ini \
+    && printf "upload_max_filesize=50M\npost_max_size=50M\nmemory_limit=256M\n" \
+        > /usr/local/etc/php/conf.d/limits.ini
+
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+# Install PHP dependencies (cached layer)
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+# Copy application source
+COPY . .
+
+RUN composer run-script post-autoload-dump
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage bootstrap/cache
+
+# Nginx & supervisord configuration
+RUN rm -f /etc/nginx/http.d/default.conf
+COPY docker/nginx/render.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/supervisord.conf /etc/supervisord.conf
+
+# Entrypoint
+COPY docker/entrypoint.render.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Render injects $PORT at runtime (default 10000)
+EXPOSE 10000
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

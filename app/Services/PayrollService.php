@@ -425,6 +425,7 @@ class PayrollService
                 presentDays: 0,
                 absentDays: 0,
                 unpaidLeaveDays: 0,
+                maternityLeaveDays: 0,
                 settings: $settings,
             );
         }
@@ -449,7 +450,7 @@ class PayrollService
             $settings,
             $holidayDates,
         );
-        $absentDays = max(0, $workingDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days']);
+        $absentDays = max(0, $workingDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days']);
 
         return $this->calculatedItemPayload(
             baseSalary: (float) $employee->base_salary,
@@ -457,6 +458,7 @@ class PayrollService
             presentDays: $presentDays,
             absentDays: $absentDays,
             unpaidLeaveDays: $leaveBreakdown['unpaid_leave_days'],
+            maternityLeaveDays: $leaveBreakdown['maternity_leave_days'],
             settings: $settings,
         );
     }
@@ -476,6 +478,7 @@ class PayrollService
             presentDays: (float) ($overrides['present_days'] ?? $currentItem->present_days),
             absentDays: (float) ($overrides['absent_days'] ?? $currentItem->absent_days),
             unpaidLeaveDays: (float) ($overrides['unpaid_leave_days'] ?? $currentItem->unpaid_leave_days),
+            maternityLeaveDays: (float) ($overrides['maternity_leave_days'] ?? $currentItem->maternity_leave_days),
             settings: $settings,
         );
     }
@@ -489,6 +492,7 @@ class PayrollService
         float $presentDays,
         float $absentDays,
         float $unpaidLeaveDays,
+        float $maternityLeaveDays,
         CompanySetting $settings,
     ): array {
         $baseSalarySnapshot = $this->calculateBaseSalary(
@@ -501,6 +505,7 @@ class PayrollService
             grossSalary: $baseSalarySnapshot['gross_salary'],
             unpaidLeaveDays: $unpaidLeaveDays,
             absentDays: $absentDays,
+            maternityLeaveDays: $maternityLeaveDays,
         );
         $tax = $this->calculateTax($deductions['taxable_salary']);
         $nssfDeduction = $this->calculateNssfDeduction($deductions['taxable_salary']);
@@ -517,9 +522,11 @@ class PayrollService
             'present_days' => $this->roundMetric($presentDays),
             'absent_days' => $this->roundMetric($absentDays),
             'unpaid_leave_days' => $this->roundMetric($unpaidLeaveDays),
+            'maternity_leave_days' => $this->roundMetric($maternityLeaveDays),
             'gross_salary' => $baseSalarySnapshot['gross_salary'],
             'unpaid_deduction' => $deductions['unpaid_deduction'],
             'absence_deduction' => $deductions['absence_deduction'],
+            'maternity_deduction' => $deductions['maternity_deduction'],
             'taxable_salary' => $deductions['taxable_salary'],
             'tax_rate' => $tax['tax_rate'],
             'tax_amount' => $tax['tax_amount'],
@@ -638,7 +645,7 @@ class PayrollService
     /**
      * @param  Collection<int, LeaveRequest>  $leaveRows
      * @param  array<string, true>  $holidayDates
-     * @return array{paid_leave_days: float, unpaid_leave_days: float}
+     * @return array{paid_leave_days: float, unpaid_leave_days: float, maternity_leave_days: float}
      */
     protected function leaveBreakdown(
         Collection $leaveRows,
@@ -649,6 +656,7 @@ class PayrollService
     ): array {
         $paidLeaveDays = 0.0;
         $unpaidLeaveDays = 0.0;
+        $maternityLeaveDays = 0.0;
 
         foreach ($leaveRows as $leave) {
             if (! $leave->start_date || ! $leave->end_date) {
@@ -676,16 +684,17 @@ class PayrollService
 
             if ($leave->leave_type === 'unpaid') {
                 $unpaidLeaveDays += $days;
-
-                continue;
+            } elseif ($leave->leave_type === 'maternity') {
+                $maternityLeaveDays += $days;
+            } else {
+                $paidLeaveDays += $days;
             }
-
-            $paidLeaveDays += $days;
         }
 
         return [
             'paid_leave_days' => $this->roundMetric($paidLeaveDays),
             'unpaid_leave_days' => $this->roundMetric($unpaidLeaveDays),
+            'maternity_leave_days' => $this->roundMetric($maternityLeaveDays),
         ];
     }
 
@@ -759,21 +768,24 @@ class PayrollService
     }
 
     /**
-     * @return array{unpaid_deduction: float, absence_deduction: float, taxable_salary: float}
+     * @return array{unpaid_deduction: float, absence_deduction: float, maternity_deduction: float, taxable_salary: float}
      */
     protected function calculateDeductions(
         float $dailyRate,
         float $grossSalary,
         float $unpaidLeaveDays,
         float $absentDays,
+        float $maternityLeaveDays,
     ): array {
         $unpaidDeduction = $this->roundMoney($dailyRate * $unpaidLeaveDays);
         $absenceDeduction = $this->roundMoney($dailyRate * $absentDays);
+        $maternityDeduction = $this->roundMoney($dailyRate * 0.5 * $maternityLeaveDays);
 
         return [
             'unpaid_deduction' => $unpaidDeduction,
             'absence_deduction' => $absenceDeduction,
-            'taxable_salary' => $this->roundMoney(max(0, $grossSalary - $unpaidDeduction - $absenceDeduction)),
+            'maternity_deduction' => $maternityDeduction,
+            'taxable_salary' => $this->roundMoney(max(0, $grossSalary - $unpaidDeduction - $absenceDeduction - $maternityDeduction)),
         ];
     }
 

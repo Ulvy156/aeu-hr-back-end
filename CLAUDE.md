@@ -14,7 +14,6 @@ You are an expert Laravel backend developer building the secure, clean, scalable
   - DomPDF
   - Laravel Excel
 
-The frontend is a separate Vue 3 project. **Do not generate any frontend code here.**
 
 ---
 

@@ -563,6 +563,57 @@ test('employees can view and download only their own approved payslips while man
         ->assertJsonPath('data.id', $draftOwnPayslip->id);
 });
 
+test('maternity leave deducts 50% of daily rate and employee receives half salary', function () {
+    payrollCompanySettings();
+
+    $hr = payrollManagerUser('hr', [
+        'email' => 'hr.maternity@example.com',
+    ]);
+    Sanctum::actingAs($hr);
+
+    [, $employee] = payrollEmployeeUser('employee', [
+        'email' => 'employee.maternity@example.com',
+    ], [
+        'employee_id' => 'EMP-60001',
+        'full_name' => 'Maternity Employee',
+        'base_salary' => 5000,
+    ]);
+
+    makeApprovedLeave($employee, [
+        'leave_type' => 'maternity',
+        'start_date' => '2026-04-01',
+        'end_date' => '2026-04-30',
+        'duration_type' => 'full_day',
+        'total_days' => 30,
+    ]);
+
+    $batchId = $this->postJson('/api/payrolls', [
+        'month' => 4,
+        'year' => 2026,
+    ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $item = PayrollItem::query()
+        ->where('payroll_batch_id', $batchId)
+        ->where('employee_id', $employee->id)
+        ->sole();
+
+    expect($item->working_days)->toBe('30.00')
+        ->and($item->present_days)->toBe('0.00')
+        ->and($item->absent_days)->toBe('0.00')
+        ->and($item->maternity_leave_days)->toBe('30.00')
+        ->and($item->gross_salary)->toBe('5000.00')
+        ->and($item->unpaid_deduction)->toBe('0.00')
+        ->and($item->absence_deduction)->toBe('0.00')
+        ->and($item->maternity_deduction)->toBe('2500.00')
+        ->and($item->taxable_salary)->toBe('2500.00')
+        ->and($item->tax_amount)->toBe('225.00')
+        ->and($item->tax_rate)->toBe('0.0900')
+        ->and($item->nssf_deduction)->toBe('6.00')
+        ->and($item->net_salary)->toBe('2269.00');
+});
+
 test('nssf deduction uses lower threshold for low salary payroll items', function () {
     payrollCompanySettings();
 
