@@ -6,7 +6,7 @@ services:
     dockerfilePath: Dockerfile.render
     plan: starter          # Change to "free" for testing (spins down when idle)
     region: singapore      # Closest to Cambodia — change if needed
-    healthCheckPath: /api  # Render checks this path to confirm the app is up
+    healthCheckPath: /api/health
     envVars:
       - key: APP_NAME
         value: "HR Management System"

@@ -25,6 +25,9 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\UserPermissionController;
 use Illuminate\Support\Facades\Route;
 
+// Render health check — must return 200 for the service to be marked healthy
+Route::get('/health', fn () => response()->json(['status' => 'ok']));
+
 Route::middleware('throttle:login')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
