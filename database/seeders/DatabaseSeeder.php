@@ -17,15 +17,19 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RoleSeeder::class);
         $this->call(CompanySettingSeeder::class);
+        $this->call(DepartmentSeeder::class);
+        $this->call(PositionSeeder::class);
 
-        $admin = User::query()->updateOrCreate([
-            'email' => 'admin@example.com',
-        ], [
-            'name' => 'System Admin',
-            'password' => 'password',
-            'status' => 'active',
-        ]);
+        // Admin user (no employee record — system account)
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@example.com'],
+            ['name' => 'System Admin', 'password' => 'password', 'status' => 'active']
+        );
 
-        $admin->assignRole('admin');
+        if ($admin->roles->isEmpty()) {
+            $admin->assignRole('admin');
+        }
+
+        $this->call(UserSeeder::class);
     }
 }
