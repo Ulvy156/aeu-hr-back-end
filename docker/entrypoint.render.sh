@@ -16,17 +16,18 @@ if [ -z "$APP_KEY" ]; then
     php artisan key:generate --force
 fi
 
-# Wait for the MySQL database to be reachable
-echo "Waiting for database..."
+# Wait for the PostgreSQL database to be reachable
+echo "Waiting for database ($DB_HOST:$DB_PORT)..."
 until php -r "
+\$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE') . ';sslmode=prefer';
 try {
-    \$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE');
-    new PDO(\$dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
+    new PDO(\$dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'), [PDO::ATTR_TIMEOUT => 5]);
     exit(0);
 } catch (Exception \$e) {
+    fwrite(STDERR, '  error: ' . \$e->getMessage() . PHP_EOL);
     exit(1);
 }
-" 2>/dev/null; do
+"; do
     echo "  not ready, retrying in 3s..."
     sleep 3
 done
