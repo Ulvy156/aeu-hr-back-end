@@ -201,6 +201,31 @@ class UserService
     /**
      * @param  array<int, string>  $roles
      */
+    public function resetPassword(
+        User $user,
+        string $newPassword,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): User {
+        return DB::transaction(function () use ($user, $newPassword, $actor, $ipAddress, $userAgent): User {
+            $user->update(['password' => $newPassword]);
+            $user->tokens()->delete();
+
+            $this->auditLogService->log(
+                action: 'reset_password',
+                module: 'users',
+                user: $actor,
+                subject: $user,
+                newValues: ['password' => '********'],
+                ipAddress: $ipAddress,
+                userAgent: $userAgent,
+            );
+
+            return $user;
+        });
+    }
+
     public function syncRoles(
         User $user,
         array $roles,

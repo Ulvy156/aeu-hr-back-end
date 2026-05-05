@@ -96,6 +96,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);
+        Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])
+            ->middleware('permission:users.reset_password');
         Route::put('/users/{user}/roles', [RolePermissionController::class, 'syncUserRoles'])
             ->middleware('permission:users.assign_roles');
         Route::get('/users/{user}/permissions', [UserPermissionController::class, 'show'])

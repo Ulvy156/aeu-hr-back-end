@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\IndexUserRequest;
+use App\Http\Requests\User\ResetUserPasswordRequest;
 use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Http\Resources\UserResource;
@@ -82,6 +83,21 @@ class UserController extends Controller
             data: UserResource::make($user)->resolve($request),
             message: 'User updated successfully.',
         );
+    }
+
+    public function resetPassword(ResetUserPasswordRequest $request, User $user): JsonResponse
+    {
+        $this->authorize('resetPassword', $user);
+
+        $this->userService->resetPassword(
+            user: $user,
+            newPassword: $request->validated('password'),
+            actor: $request->user(),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return ApiResponse::success(message: 'Password reset successfully.');
     }
 
     public function destroy(Request $request, User $user): JsonResponse
