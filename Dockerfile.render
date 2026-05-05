@@ -9,7 +9,7 @@ ADD --chmod=0755 \
 # PHP extensions — cached between builds via BuildKit mount
 RUN --mount=type=cache,target=/tmp/ipe-cache \
     IPE_CACHE_DIR=/tmp/ipe-cache install-php-extensions \
-        pdo_mysql mbstring xml dom gd zip bcmath intl opcache exif pcntl fileinfo
+        pdo_pgsql pgsql mbstring xml dom gd zip bcmath intl opcache exif pcntl fileinfo
 
 # PHP runtime settings
 RUN printf "opcache.enable=1\nopcache.memory_consumption=256\nopcache.max_accelerated_files=20000\nopcache.validate_timestamps=0\n" \
