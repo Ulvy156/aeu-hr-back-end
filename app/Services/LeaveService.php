@@ -344,11 +344,15 @@ class LeaveService
         }
 
         if ($leaveType === 'maternity') {
-            $totalDays = $this->calculateLeaveDays($startDate, $endDate, $durationType);
-            $entitlement = (float) config('hr.leave.entitlements.maternity', 90);
+            // $totalDays = $this->calculateLeaveDays($startDate, $endDate, $durationType);
+            // $entitlement = (float) config('hr.leave.entitlements.maternity', 90);
 
-            if ($totalDays > $entitlement) {
-                throw ApiException::unprocessable('Requested maternity leave exceeds the 90-day entitlement for a single case.');
+            // if ($totalDays > $entitlement) {
+            //     throw ApiException::unprocessable('Requested maternity leave exceeds the 90-day entitlement for a single case.');
+            // }
+
+            if($employee->gender !== 'female') {
+                throw ApiException::unprocessable('Maternity Leave is for female employee only!');
             }
 
             return;

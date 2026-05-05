@@ -187,6 +187,8 @@ return [
                 'payslips.view_own',
                 'payslips.download_own',
                 'dashboards.employee_view',
+                'public_holidays.view',
+                'public_holidays.view_any'
             ],
         ],
     ],
