@@ -51,15 +51,7 @@ echo "Database is ready."
 # Run migrations (Laravel uses a lock so concurrent runs are safe)
 php artisan migrate --force
 
-# Seed only on first deploy — skip if users table already has data
-USER_COUNT=$(php artisan tinker --execute="echo \App\Models\User::count();" 2>/dev/null | tr -d '[:space:]')
-if [ "$USER_COUNT" = "0" ]; then
-    echo "Empty database detected — running seeders..."
-    php artisan db:seed --force
-    echo "Seeding complete."
-else
-    echo "Database already has data — skipping seed."
-fi
+php artisan db:seed --force
 
 # Storage symlink (fails silently if already linked)
 php artisan storage:link 2>/dev/null || true
