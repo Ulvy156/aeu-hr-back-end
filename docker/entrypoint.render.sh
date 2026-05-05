@@ -19,7 +19,7 @@ fi
 # Wait for the PostgreSQL database to be reachable
 echo "Waiting for database ($DB_HOST:$DB_PORT)..."
 until php -r "
-\$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE') . ';sslmode=require';
+\$dsn = 'pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE') . ';sslmode=disable';
 try {
     new PDO(\$dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'), [PDO::ATTR_TIMEOUT => 5]);
     exit(0);
