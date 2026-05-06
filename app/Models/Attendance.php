@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'correction_reason',
     'corrected_by',
     'corrected_at',
+    'proxied_clock_in_by',
+    'proxied_clock_out_by',
 ])]
 class Attendance extends Model
 {
@@ -34,6 +36,16 @@ class Attendance extends Model
     public function correctedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'corrected_by');
+    }
+
+    public function proxiedClockInBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'proxied_clock_in_by');
+    }
+
+    public function proxiedClockOutBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'proxied_clock_out_by');
     }
 
     /**

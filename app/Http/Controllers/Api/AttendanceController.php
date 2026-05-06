@@ -9,6 +9,8 @@ use App\Http\Requests\Attendance\CorrectAttendanceRequest;
 use App\Http\Requests\Attendance\IndexAttendanceRequest;
 use App\Http\Requests\Attendance\IndexAttendanceSummaryRequest;
 use App\Http\Requests\Attendance\MarkAbsentRequest;
+use App\Http\Requests\Attendance\ProxyClockInRequest;
+use App\Http\Requests\Attendance\ProxyClockOutRequest;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
 use App\Services\AttendanceService;
@@ -100,6 +102,43 @@ class AttendanceController extends Controller
         return ApiResponse::success(
             data: $result,
             message: 'Attendance summary fetched successfully.',
+        );
+    }
+
+    public function proxyClockIn(ProxyClockInRequest $request): JsonResponse
+    {
+        $this->authorize('proxyClock', Attendance::class);
+
+        $attendance = $this->attendanceService->proxyClockIn(
+            actor: $request->user(),
+            employeeId: (int) $request->validated('employee_id'),
+            attendanceDate: (string) $request->validated('attendance_date'),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return ApiResponse::success(
+            data: AttendanceResource::make($attendance)->resolve($request),
+            message: 'Proxy clock-in recorded successfully.',
+            status: 201,
+        );
+    }
+
+    public function proxyClockOut(ProxyClockOutRequest $request): JsonResponse
+    {
+        $this->authorize('proxyClock', Attendance::class);
+
+        $attendance = $this->attendanceService->proxyClockOut(
+            actor: $request->user(),
+            employeeId: (int) $request->validated('employee_id'),
+            attendanceDate: (string) $request->validated('attendance_date'),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return ApiResponse::success(
+            data: AttendanceResource::make($attendance)->resolve($request),
+            message: 'Proxy clock-out recorded successfully.',
         );
     }
 

@@ -45,6 +45,7 @@ return [
             'attendance.clock_out',
             'attendance.correct',
             'attendance.mark_absent',
+            'attendance.proxy_clock'
         ],
         'leaves' => [
             'leaves.view_any',
@@ -153,6 +154,7 @@ return [
                 'payslips.download_own',
                 'company_settings.view',
                 'dashboards.hr_view',
+                'attendance.proxy_clock'
             ],
         ],
         'ceo' => [

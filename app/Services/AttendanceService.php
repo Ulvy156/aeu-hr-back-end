@@ -29,7 +29,7 @@ class AttendanceService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = Attendance::query()
-            ->with(['employee', 'correctedBy'])
+            ->with(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy'])
             ->when($filters['attendance_date'] ?? null, fn (Builder $query, string $attendanceDate) => $query->whereDate('attendance_date', $attendanceDate))
             ->when($filters['date_from'] ?? null, fn (Builder $query, string $dateFrom) => $query->whereDate('attendance_date', '>=', $dateFrom))
             ->when($filters['date_to'] ?? null, fn (Builder $query, string $dateTo) => $query->whereDate('attendance_date', '<=', $dateTo))
@@ -73,7 +73,7 @@ class AttendanceService
             'clock_in_longitude' => $longitude,
             'status' => $this->isLateForTime($clockInAt, 'present', $settings) ? 'late' : 'present',
             'is_late' => $this->isLateForTime($clockInAt, 'present', $settings),
-        ])->load(['employee', 'correctedBy']);
+        ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
     }
 
     public function clockOut(User $user, float $latitude, float $longitude): Attendance
@@ -107,7 +107,7 @@ class AttendanceService
                 : $attendance->status,
         ]);
 
-        return $attendance->fresh(['employee', 'correctedBy']);
+        return $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
     }
 
     /**
@@ -151,7 +151,7 @@ class AttendanceService
             $attributes['is_late'] = $this->isLateForTime($finalClockInTime, $finalStatus, $settings);
 
             $attendance->update($attributes);
-            $attendance = $attendance->fresh(['employee', 'correctedBy']);
+            $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
 
             $this->auditLogService->log(
                 action: 'correction',
@@ -219,6 +219,99 @@ class AttendanceService
         ];
     }
 
+    public function proxyClockIn(
+        User $actor,
+        int $employeeId,
+        string $attendanceDate,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): Attendance {
+        $employee = Employee::query()->findOrFail($employeeId);
+        $settings = $this->companySettingService->current();
+
+        $date        = Carbon::parse($attendanceDate)->startOfDay();
+        $clockInTime = Carbon::parse($date->toDateString().' '.$settings->working_start_time);
+
+        if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date->toDateString())->exists()) {
+            throw ApiException::unprocessable('An attendance record already exists for this employee on the selected date.');
+        }
+
+        $attendance = Attendance::query()->create([
+            'employee_id'        => $employee->id,
+            'attendance_date'    => $date->toDateString(),
+            'clock_in_time'      => $clockInTime,
+            'status'             => 'present',
+            'is_late'            => false,
+            'proxied_clock_in_by' => $actor->id,
+        ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+
+        $this->auditLogService->log(
+            action: 'proxy_clock_in',
+            module: 'attendance',
+            user: $actor,
+            subject: $attendance,
+            oldValues: [],
+            newValues: $this->auditAttributes($attendance),
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
+        );
+
+        return $attendance;
+    }
+
+    public function proxyClockOut(
+        User $actor,
+        int $employeeId,
+        string $attendanceDate,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): Attendance {
+        $employee = Employee::query()->findOrFail($employeeId);
+        $settings = $this->companySettingService->current();
+
+        $date = Carbon::parse($attendanceDate)->startOfDay();
+
+        $attendance = Attendance::query()
+            ->whereBelongsTo($employee)
+            ->whereDate('attendance_date', $date->toDateString())
+            ->first();
+
+        if (! $attendance) {
+            throw ApiException::unprocessable('No clock-in record found for this employee on the selected date. Clock in first.');
+        }
+
+        if ($attendance->clock_out_time) {
+            throw ApiException::unprocessable('This employee has already clocked out on the selected date.');
+        }
+
+        $clockOutTime = Carbon::parse($date->toDateString().' '.$settings->working_end_time);
+        $oldValues    = $this->auditAttributes($attendance);
+
+        $attendance->update([
+            'clock_out_time'       => $clockOutTime,
+            'proxied_clock_out_by' => $actor->id,
+            // Fix missing_clock_out status now that clock-out is provided
+            'status' => $attendance->status === 'missing_clock_out'
+                ? ($attendance->is_late ? 'late' : 'present')
+                : $attendance->status,
+        ]);
+
+        $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+
+        $this->auditLogService->log(
+            action: 'proxy_clock_out',
+            module: 'attendance',
+            user: $actor,
+            subject: $attendance,
+            oldValues: $oldValues,
+            newValues: $this->auditAttributes($attendance),
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
+        );
+
+        return $attendance;
+    }
+
     /**
      * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
@@ -242,11 +335,14 @@ class AttendanceService
 
         $present         = $records->where('status', 'present')->count();
         $late            = $records->where('status', 'late')->count();
-        $absent          = $records->where('status', 'absent')->count();
         $missingClockOut = $records->where('status', 'missing_clock_out')->count();
         $attendedDays    = $present + $late + $missingClockOut;
 
         $workingDaysCount = $this->countWorkingDays($periodStart, $effectiveTo);
+
+        // Absent is derived: working days that elapsed with no clock-in, regardless of
+        // whether markAbsent has been run. This ensures the count is always correct.
+        $absent = max(0, $workingDaysCount - $attendedDays);
 
         $attendanceRate = $workingDaysCount > 0
             ? number_format(($attendedDays / $workingDaysCount) * 100, 2)
@@ -415,15 +511,17 @@ class AttendanceService
     protected function auditAttributes(Attendance $attendance): array
     {
         return [
-            'employee_id' => $attendance->employee_id,
-            'attendance_date' => $attendance->attendance_date?->toDateString(),
-            'clock_in_time' => $attendance->clock_in_time?->toISOString(),
-            'clock_out_time' => $attendance->clock_out_time?->toISOString(),
-            'status' => $attendance->status,
-            'is_late' => $attendance->is_late,
-            'correction_reason' => $attendance->correction_reason,
-            'corrected_by' => $attendance->corrected_by,
-            'corrected_at' => $attendance->corrected_at?->toISOString(),
+            'employee_id'          => $attendance->employee_id,
+            'attendance_date'      => $attendance->attendance_date?->toDateString(),
+            'clock_in_time'        => $attendance->clock_in_time?->toISOString(),
+            'clock_out_time'       => $attendance->clock_out_time?->toISOString(),
+            'status'               => $attendance->status,
+            'is_late'              => $attendance->is_late,
+            'correction_reason'    => $attendance->correction_reason,
+            'corrected_by'         => $attendance->corrected_by,
+            'corrected_at'         => $attendance->corrected_at?->toISOString(),
+            'proxied_clock_in_by'  => $attendance->proxied_clock_in_by,
+            'proxied_clock_out_by' => $attendance->proxied_clock_out_by,
         ];
     }
 }

@@ -23,12 +23,15 @@ All attendance endpoints require a Sanctum bearer token.
 - Clock out: `attendance.clock_out`
 - Correct attendance: `attendance.correct`
 - Mark absent: `attendance.mark_absent`
+- Proxy clock in/out for employees: `attendance.proxy_clock`
 
 ## Endpoint List
 
 - `GET /api/attendance/summary`
 - `POST /api/attendance/clock-in`
 - `POST /api/attendance/clock-out`
+- `POST /api/attendance/proxy-clock-in`
+- `POST /api/attendance/proxy-clock-out`
 - `GET /api/attendance`
 - `PUT /api/attendance/{attendance}/correction`
 - `POST /api/attendance/mark-absent`
@@ -142,6 +145,167 @@ Return the authenticated employee's own attendance summary for a given month.
     },
     "today": null
   }
+}
+```
+
+---
+
+## POST /api/attendance/proxy-clock-in
+
+Clock in on behalf of a remote or system-impaired employee. Restricted to Admin and HR.
+
+### Permission
+
+`attendance.proxy_clock`
+
+### Request Body
+
+```json
+{
+  "employee_id": 5,
+  "attendance_date": "2026-05-06"
+}
+```
+
+### Rules
+
+- `employee_id` is required and must exist in the employees table.
+- `attendance_date` is required, must be a valid date, and cannot be in the future.
+- If a record already exists for that employee on that date, the request is rejected.
+- Clock-in time is automatically set to the company `working_start_time` (default `08:00:00`). Frontend must not send a time.
+- Status is set to `present`, `is_late` to `false` — because the time is exactly the working start time.
+- No GPS validation is applied (remote work use case).
+- The acting admin/HR is recorded in `proxied_clock_in_by_user` on the response.
+- Action is audited under the `attendance` module as `proxy_clock_in`.
+
+### Success Example
+
+```json
+{
+  "success": true,
+  "message": "Proxy clock-in recorded successfully.",
+  "data": {
+    "id": 42,
+    "attendance_date": "2026-05-06",
+    "clock_in_time": "2026-05-06T01:00:00.000000Z",
+    "clock_out_time": null,
+    "status": "present",
+    "is_late": false,
+    "correction_reason": null,
+    "corrected_at": null,
+    "employee": {
+      "id": 5,
+      "employee_id": "EMP-00005",
+      "full_name": "John Remote"
+    },
+    "corrected_by_user": null,
+    "proxied_clock_in_by_user": {
+      "id": 2,
+      "name": "Admin Alice",
+      "email": "alice@company.com"
+    },
+    "proxied_clock_out_by_user": null,
+    "created_at": "2026-05-06T03:00:00.000000Z",
+    "updated_at": "2026-05-06T03:00:00.000000Z"
+  }
+}
+```
+
+### Error — Record Already Exists
+
+```json
+{
+  "success": false,
+  "message": "An attendance record already exists for this employee on the selected date.",
+  "errors": []
+}
+```
+
+---
+
+## POST /api/attendance/proxy-clock-out
+
+Clock out on behalf of a remote or system-impaired employee. Restricted to Admin and HR.
+
+### Permission
+
+`attendance.proxy_clock`
+
+### Request Body
+
+```json
+{
+  "employee_id": 5,
+  "attendance_date": "2026-05-06"
+}
+```
+
+### Rules
+
+- `employee_id` is required and must exist in the employees table.
+- `attendance_date` is required, must be a valid date, and cannot be in the future.
+- A clock-in record must already exist for the employee on the given date (whether it was a regular or proxy clock-in).
+- If the employee has already clocked out, the request is rejected.
+- Clock-out time is automatically set to the company `working_end_time` (default `17:00:00`). Frontend must not send a time.
+- No GPS validation is applied.
+- If the existing record had status `missing_clock_out`, the status is corrected to `late` or `present` based on the original clock-in time.
+- The acting admin/HR is recorded in `proxied_clock_out_by_user` on the response.
+- Action is audited under the `attendance` module as `proxy_clock_out`.
+
+### Success Example
+
+```json
+{
+  "success": true,
+  "message": "Proxy clock-out recorded successfully.",
+  "data": {
+    "id": 42,
+    "attendance_date": "2026-05-06",
+    "clock_in_time": "2026-05-06T01:00:00.000000Z",
+    "clock_out_time": "2026-05-06T10:00:00.000000Z",
+    "status": "present",
+    "is_late": false,
+    "correction_reason": null,
+    "corrected_at": null,
+    "employee": {
+      "id": 5,
+      "employee_id": "EMP-00005",
+      "full_name": "John Remote"
+    },
+    "corrected_by_user": null,
+    "proxied_clock_in_by_user": {
+      "id": 2,
+      "name": "Admin Alice",
+      "email": "alice@company.com"
+    },
+    "proxied_clock_out_by_user": {
+      "id": 3,
+      "name": "HR Bob",
+      "email": "bob@company.com"
+    },
+    "created_at": "2026-05-06T03:00:00.000000Z",
+    "updated_at": "2026-05-06T05:00:00.000000Z"
+  }
+}
+```
+
+### Error — No Clock-In Found
+
+```json
+{
+  "success": false,
+  "message": "No clock-in record found for this employee on the selected date. Clock in first.",
+  "errors": []
+}
+```
+
+### Error — Already Clocked Out
+
+```json
+{
+  "success": false,
+  "message": "This employee has already clocked out on the selected date.",
+  "errors": []
 }
 ```
 
@@ -406,9 +570,23 @@ Create absent attendance records for a date.
 }
 ```
 
+## Attendance Record Fields Reference
+
+All attendance responses include these fields:
+
+| Field | Description |
+|---|---|
+| `corrected_by_user` | Non-null when the record was manually corrected via the correction endpoint |
+| `proxied_clock_in_by_user` | Non-null when an admin/HR clocked in on behalf of the employee |
+| `proxied_clock_out_by_user` | Non-null when an admin/HR clocked out on behalf of the employee |
+
+`proxied_clock_in_by_user` and `proxied_clock_out_by_user` are independent — a record can have a proxy clock-in but a self clock-out, or vice versa.
+
 ## Frontend Notes
 
 - Frontend should send only `latitude` and `longitude` for clock-in and clock-out.
 - Frontend must not calculate late status or GPS distance.
 - Correction UI must not send GPS fields or `is_late`.
 - `mark-absent` should display the returned `created_count` as the backend source of truth.
+- Proxy clock-in/out UI must not send time fields — times are controlled by company settings on the backend.
+- Show `proxied_clock_in_by_user` and `proxied_clock_out_by_user` as a badge or tooltip (e.g. "Clocked in by Admin Alice") so HR managers can identify proxy records at a glance.
