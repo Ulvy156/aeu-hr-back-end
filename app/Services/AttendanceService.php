@@ -219,6 +219,115 @@ class AttendanceService
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function summary(User $viewer, array $filters = []): array
+    {
+        $employee = $this->employeeForUserOrFail($viewer);
+
+        $month = (int) ($filters['month'] ?? now()->month);
+        $year  = (int) ($filters['year'] ?? now()->year);
+
+        $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
+        $periodEnd   = $periodStart->copy()->endOfMonth();
+        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
+
+        $records = Attendance::query()
+            ->whereBelongsTo($employee)
+            ->whereDate('attendance_date', '>=', $periodStart->toDateString())
+            ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
+            ->get(['attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
+
+        $present         = $records->where('status', 'present')->count();
+        $late            = $records->where('status', 'late')->count();
+        $absent          = $records->where('status', 'absent')->count();
+        $missingClockOut = $records->where('status', 'missing_clock_out')->count();
+        $attendedDays    = $present + $late + $missingClockOut;
+
+        $workingDaysCount = $this->countWorkingDays($periodStart, $effectiveTo);
+
+        $attendanceRate = $workingDaysCount > 0
+            ? number_format(($attendedDays / $workingDaysCount) * 100, 2)
+            : '0.00';
+
+        $isCurrentPeriod = $month === now()->month && $year === now()->year;
+        $todayData = null;
+
+        if ($isCurrentPeriod) {
+            $todayRecord = $records->first(
+                fn (Attendance $a) => $a->attendance_date->toDateString() === today()->toDateString()
+            );
+
+            $todayData = $todayRecord ? [
+                'status'         => $todayRecord->status,
+                'clock_in_time'  => $todayRecord->clock_in_time?->toISOString(),
+                'clock_out_time' => $todayRecord->clock_out_time?->toISOString(),
+                'is_late'        => $todayRecord->is_late,
+            ] : null;
+        }
+
+        return [
+            'employee' => [
+                'id'          => $employee->id,
+                'employee_id' => $employee->employee_id,
+                'full_name'   => $employee->full_name,
+            ],
+            'period' => [
+                'month' => $month,
+                'year'  => $year,
+                'from'  => $periodStart->toDateString(),
+                'to'    => $periodEnd->toDateString(),
+            ],
+            'summary' => [
+                'present'                => $present,
+                'late'                   => $late,
+                'absent'                 => $absent,
+                'missing_clock_out'      => $missingClockOut,
+                'attended_days'          => $attendedDays,
+                'working_days_in_period' => $workingDaysCount,
+                'attendance_rate'        => $attendanceRate,
+            ],
+            'today' => $todayData,
+        ];
+    }
+
+    protected function countWorkingDays(CarbonInterface $from, CarbonInterface $to): int
+    {
+        $settings    = $this->companySettingService->current();
+        $workingDays = collect($settings->working_days ?? [])
+            ->map(fn (mixed $day) => strtolower((string) $day))
+            ->values()
+            ->all();
+
+        $holidays = array_flip(
+            PublicHoliday::query()
+                ->where('status', 'active')
+                ->whereDate('holiday_date', '>=', $from->toDateString())
+                ->whereDate('holiday_date', '<=', $to->toDateString())
+                ->pluck('holiday_date')
+                ->map(fn (mixed $date) => $date instanceof CarbonInterface ? $date->toDateString() : (string) $date)
+                ->all()
+        );
+
+        $count    = 0;
+        $cursor   = $from->copy()->startOfDay();
+        $rangeEnd = $to->copy()->startOfDay();
+
+        while ($cursor->lte($rangeEnd)) {
+            if (
+                in_array(strtolower($cursor->format('l')), $workingDays, true)
+                && ! array_key_exists($cursor->toDateString(), $holidays)
+            ) {
+                $count++;
+            }
+            $cursor->addDay();
+        }
+
+        return $count;
+    }
+
     protected function employeeForUserOrFail(User $user): Employee
     {
         $employee = $user->loadMissing('employee')->employee;

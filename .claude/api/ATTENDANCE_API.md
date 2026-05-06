@@ -26,11 +26,124 @@ All attendance endpoints require a Sanctum bearer token.
 
 ## Endpoint List
 
+- `GET /api/attendance/summary`
 - `POST /api/attendance/clock-in`
 - `POST /api/attendance/clock-out`
 - `GET /api/attendance`
 - `PUT /api/attendance/{attendance}/correction`
 - `POST /api/attendance/mark-absent`
+
+---
+
+## GET /api/attendance/summary
+
+Return the authenticated employee's own attendance summary for a given month.
+
+### Permission
+
+- Requires `attendance.view_own`
+
+### Query Parameters
+
+| Parameter | Type    | Required | Description                              |
+|-----------|---------|----------|------------------------------------------|
+| `month`   | integer | No       | Month number `1–12`. Defaults to current month. |
+| `year`    | integer | No       | Four-digit year `2000–2100`. Defaults to current year. |
+
+### Access Rules
+
+- Employees can only view their own summary.
+- If the authenticated user has no linked employee profile, the API returns `403`.
+- For months in the future, all counts will be `0` and `today` will be `null`.
+
+### Summary Calculation Rules
+
+- `present` — count of attendance records with `status = present`.
+- `late` — count of attendance records with `status = late`.
+- `absent` — count of attendance records with `status = absent`.
+- `missing_clock_out` — count of records where the employee clocked in but did not clock out.
+- `attended_days` — `present + late + missing_clock_out` (days physically present regardless of late status).
+- `working_days_in_period` — count of configured company working days in the period, excluding active public holidays and capped at today for the current month.
+- `attendance_rate` — `(attended_days / working_days_in_period) × 100`, formatted to two decimals. Returns `"0.00"` when `working_days_in_period` is zero.
+
+### `today` Field
+
+- Included only when the requested period matches the current calendar month and year.
+- `null` when the employee has no attendance record for today yet.
+- Contains the employee's live clock-in/clock-out state for today when present.
+
+### Success Example
+
+```json
+{
+  "success": true,
+  "message": "Attendance summary fetched successfully.",
+  "data": {
+    "employee": {
+      "id": 1,
+      "employee_id": "EMP-00001",
+      "full_name": "Jane Doe"
+    },
+    "period": {
+      "month": 5,
+      "year": 2026,
+      "from": "2026-05-01",
+      "to": "2026-05-31"
+    },
+    "summary": {
+      "present": 12,
+      "late": 3,
+      "absent": 1,
+      "missing_clock_out": 0,
+      "attended_days": 15,
+      "working_days_in_period": 16,
+      "attendance_rate": "93.75"
+    },
+    "today": {
+      "status": "present",
+      "clock_in_time": "2026-05-06T01:00:00.000000Z",
+      "clock_out_time": null,
+      "is_late": false
+    }
+  }
+}
+```
+
+### Today Not Yet Clocked In Example
+
+```json
+{
+  "success": true,
+  "message": "Attendance summary fetched successfully.",
+  "data": {
+    "employee": { "id": 1, "employee_id": "EMP-00001", "full_name": "Jane Doe" },
+    "period": { "month": 5, "year": 2026, "from": "2026-05-01", "to": "2026-05-31" },
+    "summary": {
+      "present": 12, "late": 3, "absent": 1, "missing_clock_out": 0,
+      "attended_days": 15, "working_days_in_period": 16, "attendance_rate": "93.75"
+    },
+    "today": null
+  }
+}
+```
+
+### Past Month Example (no `today` field)
+
+```json
+{
+  "success": true,
+  "message": "Attendance summary fetched successfully.",
+  "data": {
+    "employee": { "id": 1, "employee_id": "EMP-00001", "full_name": "Jane Doe" },
+    "period": { "month": 4, "year": 2026, "from": "2026-04-01", "to": "2026-04-30" },
+    "summary": {
+      "present": 18, "late": 2, "absent": 0, "missing_clock_out": 1,
+      "attended_days": 21, "working_days_in_period": 21, "attendance_rate": "100.00"
+    },
+    "today": null
+  }
+}
+```
 
 ---
 

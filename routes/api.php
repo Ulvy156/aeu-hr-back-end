@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/leaves/{leave}/cancel', [LeaveController::class, 'cancel']);
     Route::prefix('attendance')->group(function () {
         Route::get('/', [AttendanceController::class, 'index']);
+        Route::get('/summary', [AttendanceController::class, 'summary']);
         Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
         Route::put('/{attendance}/correction', [AttendanceController::class, 'correct']);

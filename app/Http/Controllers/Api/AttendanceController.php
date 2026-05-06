@@ -7,6 +7,7 @@ use App\Http\Requests\Attendance\ClockInRequest;
 use App\Http\Requests\Attendance\ClockOutRequest;
 use App\Http\Requests\Attendance\CorrectAttendanceRequest;
 use App\Http\Requests\Attendance\IndexAttendanceRequest;
+use App\Http\Requests\Attendance\IndexAttendanceSummaryRequest;
 use App\Http\Requests\Attendance\MarkAbsentRequest;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
@@ -84,6 +85,21 @@ class AttendanceController extends Controller
         return ApiResponse::success(
             data: AttendanceResource::make($attendance)->resolve($request),
             message: 'Attendance corrected successfully.',
+        );
+    }
+
+    public function summary(IndexAttendanceSummaryRequest $request): JsonResponse
+    {
+        $this->authorize('viewOwn', Attendance::class);
+
+        $result = $this->attendanceService->summary(
+            viewer: $request->user(),
+            filters: $request->validated(),
+        );
+
+        return ApiResponse::success(
+            data: $result,
+            message: 'Attendance summary fetched successfully.',
         );
     }
 
