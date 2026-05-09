@@ -57,8 +57,6 @@ php artisan db:seed --force
 php artisan storage:link 2>/dev/null || true
 
 # Production caches
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan optimize
 
 exec "$@"
