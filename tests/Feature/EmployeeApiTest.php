@@ -295,6 +295,122 @@ test('employee list filtering works for hr and employees cannot access employee 
         ->assertForbidden();
 });
 
+test('employee dropdown search returns lightweight matches for admin hr and ceo only', function (string $role) {
+    $alphaUser = linkableUser([
+        'name' => 'Vy Rith User',
+        'email' => "{$role}.alpha@example.com",
+    ]);
+    Employee::query()->create([
+        'user_id' => $alphaUser->id,
+        'employee_id' => 'EMP-00100',
+        'full_name' => 'Vy Rith',
+        'email' => "{$role}.alpha@example.com",
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'active',
+    ]);
+
+    $betaUser = linkableUser([
+        'name' => 'Borey User',
+        'email' => "{$role}.beta@example.com",
+    ]);
+    Employee::query()->create([
+        'user_id' => $betaUser->id,
+        'employee_id' => 'EMP-00101',
+        'full_name' => 'Borey',
+        'email' => "{$role}.beta@example.com",
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'active',
+    ]);
+
+    [, $token] = employeeActor($role);
+
+    $this->withToken($token)
+        ->getJson('/api/employees/search?q=vy')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.employee_id', 'EMP-00100')
+        ->assertJsonPath('0.full_name', 'Vy Rith')
+        ->assertJsonPath('0.display', 'EMP-00100 - Vy Rith')
+        ->assertJsonMissingPath('0.email')
+        ->assertJsonMissingPath('meta');
+})->with(['admin', 'hr', 'ceo']);
+
+test('employee dropdown search supports employee id matching case insensitively and returns empty for blank or no matches', function () {
+    $linkedUser = linkableUser([
+        'name' => 'Target User',
+        'email' => 'target.employee.search@example.com',
+    ]);
+    Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00999',
+        'full_name' => 'Target Employee',
+        'email' => 'target.employee.search@example.com',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'active',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/search?q=emp-009')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.employee_id', 'EMP-00999');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/search?q=')
+        ->assertSuccessful()
+        ->assertExactJson([]);
+
+    $this->withToken($token)
+        ->getJson('/api/employees/search?q=missing')
+        ->assertSuccessful()
+        ->assertExactJson([]);
+});
+
+test('employee dropdown search is limited to 15 results and ordered by full name', function () {
+    foreach (range(1, 16) as $index) {
+        $linkedUser = linkableUser([
+            'name' => "Search User {$index}",
+            'email' => "search.user{$index}@example.com",
+        ]);
+
+        Employee::query()->create([
+            'user_id' => $linkedUser->id,
+            'employee_id' => 'EMP-'.str_pad((string) $index, 5, '0', STR_PAD_LEFT),
+            'full_name' => sprintf('Aaron %02d', 17 - $index),
+            'email' => "search.user{$index}@example.com",
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'active',
+        ]);
+    }
+
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)
+        ->getJson('/api/employees/search?q=aaron');
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonCount(15)
+        ->assertJsonPath('0.full_name', 'Aaron 01')
+        ->assertJsonPath('14.full_name', 'Aaron 15');
+
+    expect(collect($response->json())->pluck('full_name'))->not->toContain('Aaron 16');
+});
+
+test('employee dropdown search forbids employee role', function () {
+    [, $token] = employeeActor('employee');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/search?q=vy')
+        ->assertForbidden();
+});
+
 test('default employee list excludes soft deleted employees', function () {
     $visibleUser = linkableUser([
         'name' => 'Visible Employee User',

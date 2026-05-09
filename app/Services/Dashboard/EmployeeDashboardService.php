@@ -31,10 +31,7 @@ class EmployeeDashboardService
                 ->whereDate('attendance_date', $today->toDateString())
                 ->latest('id')
                 ->first(),
-            'leave_balance' => $this->leaveService->balances(
-                viewer: $user,
-                filters: ['year' => $today->year],
-            ),
+            'leave_balance' => $this->leaveService->balances($employee, $today->year),
             'latest_approved_payslip' => PayrollItem::query()
                 ->with([
                     'employee:id,user_id,employee_id,full_name',

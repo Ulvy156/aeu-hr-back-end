@@ -32,7 +32,12 @@ class RoleSeeder extends Seeder
             $role = Role::findOrCreate($roleName, $guard);
 
             if ((bool) ($definition['all'] ?? false)) {
-                $role->syncPermissions($allPermissions->all());
+                $role->syncPermissions(
+                    $allPermissions
+                        ->reject(fn (string $permissionName) => in_array($permissionName, $definition['except'] ?? [], true))
+                        ->values()
+                        ->all()
+                );
 
                 continue;
             }

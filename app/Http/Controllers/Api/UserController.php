@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\IndexUserRequest;
 use App\Http\Requests\User\ResetUserPasswordRequest;
+use App\Http\Requests\User\SearchUserRequest;
 use App\Http\Requests\User\StoreUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
 use App\Http\Resources\UserResource;
@@ -33,6 +34,15 @@ class UserController extends Controller
             paginator: $paginator,
             data: $paginator->items(),
             message: 'Users fetched successfully.',
+        );
+    }
+
+    public function search(SearchUserRequest $request): JsonResponse
+    {
+        $this->authorize('search', User::class);
+
+        return response()->json(
+            $this->userService->search($request->validated('q'))->all()
         );
     }
 

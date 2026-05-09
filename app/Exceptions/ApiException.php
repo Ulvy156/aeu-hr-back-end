@@ -24,6 +24,11 @@ class ApiException extends RuntimeException
         return new self($message, 403);
     }
 
+    public static function badRequest(string $message, array $errors = []): self
+    {
+        return new self($message, 400, $errors);
+    }
+
     public static function unprocessable(string $message, array $errors = []): self
     {
         return new self($message, 422, $errors);

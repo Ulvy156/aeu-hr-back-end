@@ -20,6 +20,7 @@ return [
         ],
         'employees' => [
             'employees.view_any',
+            'employees.search',
             'employees.view',
             'employees.create',
             'employees.update',
@@ -92,6 +93,7 @@ return [
         ],
         'users' => [
             'users.view_any',
+            'users.search',
             'users.view',
             'users.create',
             'users.update',
@@ -115,11 +117,16 @@ return [
             'dashboards.ceo_view',
             'dashboards.employee_view',
         ],
-    ],
+        ],
 
     'roles' => [
         'admin' => [
             'all' => true,
+            'except' => [
+                'leave_balances.view_own',
+                'attendance.clock_in',
+                'attendance.clock_out'
+            ],
         ],
         'hr' => [
             'groups' => [
@@ -141,6 +148,7 @@ return [
                 'leaves.approve_hr',
                 'leaves.reject_hr',
                 'leave_balances.view_any',
+                'leave_balances.view_own',
                 'leaves.create',
                 'leaves.cancel',
                 'payrolls.view_any',
@@ -160,8 +168,10 @@ return [
         'ceo' => [
             'permissions' => [
                 'attendance.view_any',
+                'employees.search',
                 'leaves.view_any',
                 'leave_balances.view_any',
+                'leave_balances.view_own',
                 'payrolls.view_any',
                 'payrolls.approve',
                 'payrolls.reject',

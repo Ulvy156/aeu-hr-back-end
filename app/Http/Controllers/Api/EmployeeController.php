@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\IndexEmployeeRequest;
+use App\Http\Requests\Employee\SearchEmployeeRequest;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
@@ -29,6 +30,15 @@ class EmployeeController extends Controller
             paginator: $paginator,
             data: $paginator->items(),
             message: 'Employees fetched successfully.',
+        );
+    }
+
+    public function search(SearchEmployeeRequest $request): JsonResponse
+    {
+        $this->authorize('search', Employee::class);
+
+        return response()->json(
+            $this->employeeService->search($request->validated('q'))->all()
         );
     }
 

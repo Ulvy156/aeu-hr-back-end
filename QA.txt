@@ -1,0 +1,138 @@
+Update existing employee and user dropdowns to use search APIs with debounce.
+
+---
+
+## IMPORTANT RULES (DO NOT BREAK)
+
+* DO NOT create new components
+* DO NOT change component structure
+* DO NOT refactor unrelated logic
+* ONLY replace data source (API call)
+* Keep UI exactly the same
+
+---
+
+## Goal
+
+Replace current dropdown data loading with:
+
+* `/api/employees/search?q=`
+* `/api/users/search?q=`
+
+Use **debounced search** to avoid too many API calls.
+
+---
+
+## What to change
+
+### 1. Modify existing `<el-select>`
+
+```vue
+<el-select
+  v-model="value"
+  filterable
+  remote
+  :remote-method="onSearch"
+  :loading="loading"
+>
+```
+
+---
+
+### 2. Add debounce (IMPORTANT)
+
+Use existing project utilities if available (e.g. `useDebounceFn`), otherwise implement a simple debounce.
+
+Example using VueUse:
+
+```ts
+import { useDebounceFn } from '@vueuse/core'
+
+const debouncedSearch = useDebounceFn(fetchOptions, 300)
+```
+
+---
+
+### 3. Implement search flow
+
+```ts
+const loading = ref(false)
+const options = ref([])
+
+function onSearch(query: string) {
+  debouncedSearch(query)
+}
+
+async function fetchOptions(query: string) {
+  if (!query || query.length < 2) {
+    options.value = []
+    return
+  }
+
+  loading.value = true
+
+  try {
+    const res = await api.get('/api/employees/search', {
+      params: { q: query }
+    })
+
+    options.value = res.data.map((i: any) => ({
+      value: i.employee_id,
+      label: i.display
+    }))
+  } finally {
+    loading.value = false
+  }
+}
+```
+
+---
+
+### 4. For user dropdown
+
+Replace API only:
+
+```ts
+await api.get('/api/users/search', { params: { q: query } })
+```
+
+Mapping:
+
+```ts
+value: i.user_id,
+label: i.display
+```
+
+---
+
+### 5. Behavior rules
+
+* Only search when user types
+* Minimum 2 characters
+* If query empty → clear options
+* DO NOT fetch on mount
+* DO NOT return full dataset
+
+---
+
+## Expected result
+
+* Same UI
+* Smooth typing experience
+* No API spam
+* Dropdown loads results dynamically
+
+---
+
+## DO NOT
+
+* DO NOT introduce new props
+* DO NOT merge employee/user logic
+* DO NOT create abstraction
+* DO NOT modify unrelated files
+
+---
+
+## Goal
+
+Minimal, safe change with debounce to improve performance and UX.

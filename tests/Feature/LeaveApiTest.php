@@ -10,6 +10,7 @@ use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Activitylog\Models\Activity;
+use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
@@ -324,6 +325,22 @@ test('hr ceo and admin can view leave requests based on their permissions', func
     }
 });
 
+test('leave balance role permissions match the expected access matrix', function () {
+    $hrPermissions = Role::findByName('hr')->permissions->pluck('name');
+    $ceoPermissions = Role::findByName('ceo')->permissions->pluck('name');
+    $adminPermissions = Role::findByName('admin')->permissions->pluck('name');
+    $employeePermissions = Role::findByName('employee')->permissions->pluck('name');
+
+    expect($hrPermissions->contains('leave_balances.view_any'))->toBeTrue()
+        ->and($hrPermissions->contains('leave_balances.view_own'))->toBeTrue()
+        ->and($ceoPermissions->contains('leave_balances.view_any'))->toBeTrue()
+        ->and($ceoPermissions->contains('leave_balances.view_own'))->toBeTrue()
+        ->and($adminPermissions->contains('leave_balances.view_any'))->toBeTrue()
+        ->and($adminPermissions->contains('leave_balances.view_own'))->toBeFalse()
+        ->and($employeePermissions->contains('leave_balances.view_any'))->toBeFalse()
+        ->and($employeePermissions->contains('leave_balances.view_own'))->toBeTrue();
+});
+
 test('leave balances are calculated dynamically from approved leave requests and managers can inspect by employee', function () {
     leaveCompanySettings();
     [$employeeUser, $employee] = leaveEmployeeUser();
@@ -369,6 +386,87 @@ test('leave balances are calculated dynamically from approved leave requests and
         ->assertSuccessful()
         ->assertJsonPath('data.employee.id', $employee->id)
         ->assertJsonPath('data.balances.0.remaining', '16.00');
+});
+
+test('hr and ceo default to their own leave balance when employee id is omitted', function (string $role) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser($role);
+    $token = $user->createToken("{$role}-device")->plainTextToken;
+
+    makeLeave($employee, [
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'total_days' => 1,
+        'status' => 'approved',
+        'hr_approval_status' => 'approved',
+        'ceo_approval_status' => 'approved',
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/leave-balances?year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.employee.id', $employee->id)
+        ->assertJsonPath('data.balances.0.used', '1.00')
+        ->assertJsonPath('data.balances.0.remaining', '17.00');
+})->with(['hr', 'ceo']);
+
+test('admin must provide employee id to view leave balances and does not need an employee profile', function () {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+
+    $admin = User::factory()->create([
+        'status' => 'active',
+        'email' => 'admin.balance@example.com',
+    ]);
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/leave-balances?year=2026')
+        ->assertBadRequest()
+        ->assertJsonPath('message', 'The employee_id field is required for this account.');
+
+    $this->withToken($token)
+        ->getJson("/api/leave-balances?employee_id={$employee->id}&year=2026")
+        ->assertSuccessful()
+        ->assertJsonPath('data.employee.id', $employee->id);
+});
+
+test('employee cannot request another employees leave balance', function () {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    [, $otherEmployee] = leaveEmployeeUser('employee', [
+        'email' => 'leave.balance.other@example.com',
+    ], [
+        'employee_id' => 'EMP-90010',
+        'full_name' => 'Leave Balance Other',
+        'email' => 'leave.balance.other@example.com',
+    ]);
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson("/api/leave-balances?employee_id={$otherEmployee->id}&year=2026")
+        ->assertForbidden();
+
+    $this->withToken($token)
+        ->getJson("/api/leave-balances?employee_id={$employee->id}&year=2026")
+        ->assertSuccessful()
+        ->assertJsonPath('data.employee.id', $employee->id);
+});
+
+test('user without leave balance permission cannot view leave balances', function () {
+    leaveCompanySettings();
+
+    $user = User::factory()->create([
+        'status' => 'active',
+        'email' => 'no-balance-permission@example.com',
+    ]);
+    $token = $user->createToken('plain-user-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/leave-balances?year=2026')
+        ->assertForbidden();
 });
 
 test('pending and cancelled leave do not reduce the leave balance', function () {

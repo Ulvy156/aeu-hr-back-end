@@ -680,3 +680,99 @@ test('non admin users cannot access user management endpoints', function () {
         ])
         ->assertForbidden();
 });
+
+test('admin user dropdown search returns lightweight matches', function () {
+    $alpha = User::factory()->create([
+        'name' => 'Vy Rith',
+        'email' => 'vy@gmail.com',
+        'status' => 'active',
+    ]);
+    $alpha->assignRole('employee');
+
+    $beta = User::factory()->create([
+        'name' => 'Borey',
+        'email' => 'borey@gmail.com',
+        'status' => 'active',
+    ]);
+    $beta->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=vy')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.user_id', $alpha->id)
+        ->assertJsonPath('0.name', 'Vy Rith')
+        ->assertJsonPath('0.email', 'vy@gmail.com')
+        ->assertJsonPath('0.display', 'Vy Rith (vy@gmail.com)')
+        ->assertJsonMissingPath('0.roles')
+        ->assertJsonMissingPath('meta');
+});
+
+test('admin user dropdown search supports email matching and returns empty for blank or no matches', function () {
+    $target = User::factory()->create([
+        'name' => 'Target User',
+        'email' => 'target.user@example.com',
+        'status' => 'active',
+    ]);
+    $target->assignRole('employee');
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=TARGET.USER')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.user_id', $target->id);
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=')
+        ->assertSuccessful()
+        ->assertExactJson([]);
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=missing')
+        ->assertSuccessful()
+        ->assertExactJson([]);
+});
+
+test('admin user dropdown search is limited to 15 results and ordered by name', function () {
+    foreach (range(1, 16) as $index) {
+        $user = User::factory()->create([
+            'name' => sprintf('Adam %02d', 17 - $index),
+            'email' => "dropdown{$index}@example.com",
+            'status' => 'active',
+        ]);
+        $user->assignRole('employee');
+    }
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $response = $this->withToken($token)
+        ->getJson('/api/users/search?q=adam');
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonCount(15)
+        ->assertJsonPath('0.name', 'Adam 01')
+        ->assertJsonPath('14.name', 'Adam 15');
+
+    expect(collect($response->json())->pluck('name'))->not->toContain('Adam 16');
+});
+
+test('non admin users cannot access user dropdown search', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=vy')
+        ->assertForbidden();
+});

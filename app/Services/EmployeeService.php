@@ -8,8 +8,10 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class EmployeeService
 {
@@ -39,6 +41,37 @@ class EmployeeService
             ->when($filters['employment_status'] ?? null, fn (Builder $query, $status) => $query->where('employment_status', $status))
             ->orderByDesc('created_at')
             ->paginate($perPage);
+    }
+
+    /**
+     * @return Collection<int, array{employee_id: string, full_name: string, display: string}>
+     */
+    public function search(?string $query): Collection
+    {
+        $term = trim((string) $query);
+
+        if ($term === '') {
+            return collect();
+        }
+
+        $normalizedTerm = '%'.Str::lower($term).'%';
+
+        return Employee::query()
+            ->select(['employee_id', 'full_name', 'id'])
+            ->where(function (Builder $query) use ($normalizedTerm): void {
+                $query
+                    ->whereRaw('LOWER(full_name) LIKE ?', [$normalizedTerm])
+                    ->orWhereRaw('LOWER(employee_id) LIKE ?', [$normalizedTerm]);
+            })
+            ->orderBy('full_name')
+            ->limit(15)
+            ->get()
+            ->map(fn (Employee $employee): array => [
+                'employee_id' => $employee->id,
+                'full_name' => $employee->full_name,
+                'display' => "{$employee->employee_id} - {$employee->full_name}",
+            ])
+            ->values();
     }
 
     /**

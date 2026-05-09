@@ -20,6 +20,7 @@ All user management endpoints require a Sanctum bearer token.
 
 - Only `admin` users can access this module.
 - User CRUD uses the existing `users.*` permissions through the backend policy.
+- User dropdown search uses `users.search`.
 - Role lookup uses `roles_permissions.roles_view`.
 - Permission lookup uses `roles_permissions.permissions_view`.
 - Role assignment uses `users.assign_roles`.
@@ -28,6 +29,7 @@ All user management endpoints require a Sanctum bearer token.
 ## Endpoint List
 
 - `GET /api/users`
+- `GET /api/users/search`
 - `POST /api/users`
 - `GET /api/users/{user}`
 - `PUT /api/users/{user}`
@@ -39,6 +41,51 @@ All user management endpoints require a Sanctum bearer token.
 - `PUT /api/users/{user}/permissions`
 - `POST /api/users/{user}/permissions`
 - `DELETE /api/users/{user}/permissions`
+
+---
+
+## GET /api/users/search
+
+Return a lightweight user list for dropdown search.
+
+This endpoint is not paginated and returns at most `15` results.
+
+### Query Parameters
+
+- `q`: optional string; when blank or missing, the endpoint returns `[]`
+
+### Search Behavior
+
+- Case-insensitive `LIKE %q%`
+- Searches `users.name`
+- Searches `users.email`
+- Orders by `name` ascending
+- Limits results to `15`
+
+### Authorization
+
+- Only `admin` users can access this endpoint
+- Non-admin users receive `403 Forbidden`
+
+### Response Example
+
+```json
+[
+  {
+    "user_id": 1,
+    "name": "Vy Rith",
+    "email": "vy@gmail.com",
+    "display": "Vy Rith (vy@gmail.com)"
+  }
+]
+```
+
+### Frontend Notes
+
+- Use this endpoint for searchable dropdowns only.
+- It intentionally returns a minimal payload.
+- Empty queries return `[]`.
+- No-result queries return `[]`.
 
 ---
 

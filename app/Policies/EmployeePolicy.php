@@ -12,6 +12,11 @@ class EmployeePolicy
         return $user->hasPermissionTo('employees.view_any');
     }
 
+    public function search(User $user): bool
+    {
+        return $user->hasPermissionTo('employees.search');
+    }
+
     public function view(User $user, Employee $employee): bool
     {
         return $user->hasPermissionTo('employees.view');

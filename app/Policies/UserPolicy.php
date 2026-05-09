@@ -11,6 +11,11 @@ class UserPolicy
         return $user->hasRole('admin') && $user->hasPermissionTo('users.view_any');
     }
 
+    public function search(User $user): bool
+    {
+        return $user->hasRole('admin') && $user->hasPermissionTo('users.search');
+    }
+
     public function view(User $user, User $model): bool
     {
         return $user->hasRole('admin') && $user->hasPermissionTo('users.view');

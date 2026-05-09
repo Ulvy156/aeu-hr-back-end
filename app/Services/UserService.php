@@ -8,6 +8,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -59,6 +60,38 @@ class UserService
             )
             ->orderBy('name')
             ->paginate($perPage);
+    }
+
+    /**
+     * @return Collection<int, array{user_id: int, name: string, email: string, display: string}>
+     */
+    public function search(?string $query): Collection
+    {
+        $term = trim((string) $query);
+
+        if ($term === '') {
+            return collect();
+        }
+
+        $normalizedTerm = '%'.Str::lower($term).'%';
+
+        return User::query()
+            ->select(['id', 'name', 'email'])
+            ->where(function (Builder $query) use ($normalizedTerm): void {
+                $query
+                    ->whereRaw('LOWER(name) LIKE ?', [$normalizedTerm])
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$normalizedTerm]);
+            })
+            ->orderBy('name')
+            ->limit(15)
+            ->get()
+            ->map(fn (User $user): array => [
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'display' => "{$user->name} ({$user->email})",
+            ])
+            ->values();
     }
 
     /**

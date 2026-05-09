@@ -22,6 +22,7 @@ All employee endpoints require a Sanctum bearer token.
 ## Permissions
 
 - List employees: `employees.view_any`
+- Search employees for dropdowns: `employees.search`
 - View employee detail: `employees.view`
 - Create employee: `employees.create`
 - Update employee: `employees.update`
@@ -33,10 +34,55 @@ HR and Admin can manage employees with the current seeded role setup.
 ## Endpoint List
 
 - `GET /api/employees`
+- `GET /api/employees/search`
 - `POST /api/employees`
 - `GET /api/employees/{employee}`
 - `PUT /api/employees/{employee}`
 - `DELETE /api/employees/{employee}`
+
+---
+
+## GET /api/employees/search
+
+Return a lightweight employee list for dropdown search.
+
+This endpoint is not paginated and returns at most `15` results.
+
+### Query Parameters
+
+- `q`: optional string; when blank or missing, the endpoint returns `[]`
+
+### Search Behavior
+
+- Case-insensitive `LIKE %q%`
+- Searches `employees.full_name`
+- Searches `employees.employee_id`
+- Orders by `full_name` ascending
+- Limits results to `15`
+
+### Authorization
+
+- Allowed roles in the current backend setup: `admin`, `hr`, `ceo`
+- `employee` users receive `403 Forbidden`
+
+### Response Example
+
+```json
+[
+  {
+    "employee_id": "EMP-00100",
+    "full_name": "Vy Rith",
+    "display": "EMP-00100 - Vy Rith"
+  }
+]
+```
+
+### Frontend Notes
+
+- Use this endpoint for searchable dropdowns only.
+- It intentionally does not return full employee records.
+- Empty queries return `[]`.
+- No-result queries return `[]`.
 
 ---
 

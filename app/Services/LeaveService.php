@@ -99,14 +99,10 @@ class LeaveService
     }
 
     /**
-     * @param  array<string, mixed>  $filters
      * @return array{employee: array<string, mixed>, year: int, balances: array<int, array<string, mixed>>}
      */
-    public function balances(User $viewer, array $filters = []): array
+    public function balances(Employee $employee, int $year): array
     {
-        $employee = $this->balanceEmployee($viewer, $filters);
-        $year = (int) ($filters['year'] ?? now()->year);
-
         return [
             'employee' => [
                 'id' => $employee->id,
@@ -269,23 +265,6 @@ class LeaveService
         });
     }
 
-    protected function balanceEmployee(User $viewer, array $filters): Employee
-    {
-        if ($this->canViewAllLeaveBalances($viewer) && ($filters['employee_id'] ?? null)) {
-            return Employee::query()->findOrFail((int) $filters['employee_id']);
-        }
-
-        if ($this->canViewOwnLeaveBalances($viewer)) {
-            return $this->employeeForUserOrFail($viewer);
-        }
-
-        if ($this->canViewAllLeaveBalances($viewer)) {
-            throw ApiException::unprocessable('The employee_id field is required for this account.');
-        }
-
-        throw ApiException::forbidden();
-    }
-
     protected function employeeForUserOrFail(User $user): Employee
     {
         $employee = $user->loadMissing('employee')->employee;
@@ -305,16 +284,6 @@ class LeaveService
     protected function canViewOwnLeaves(User $user): bool
     {
         return $user->hasPermissionTo('leaves.view_own');
-    }
-
-    protected function canViewAllLeaveBalances(User $user): bool
-    {
-        return $user->hasPermissionTo('leave_balances.view_any');
-    }
-
-    protected function canViewOwnLeaveBalances(User $user): bool
-    {
-        return $user->hasPermissionTo('leave_balances.view_own');
     }
 
     protected function assertPendingForDecision(LeaveRequest $leave): void

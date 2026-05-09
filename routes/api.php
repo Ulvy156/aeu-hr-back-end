@@ -95,9 +95,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('public-holidays', PublicHolidayController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::apiResource('departments', DepartmentController::class);
     Route::apiResource('positions', PositionController::class);
+    Route::get('/employees/search', [EmployeeController::class, 'search']);
     Route::apiResource('employees', EmployeeController::class);
 
     Route::middleware('role:admin')->group(function () {
+        Route::get('/users/search', [UserController::class, 'search']);
         Route::apiResource('users', UserController::class);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])
             ->middleware('permission:users.reset_password');
