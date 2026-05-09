@@ -122,7 +122,7 @@ Soft-deleted employees are excluded from the default list.
       "employment_status": "active",
       "emergency_contact": null,
       "profile_photo": "employee-profile-photos/avatar.jpg",
-      "profile_photo_url": "http://localhost/storage/employee-profile-photos/avatar.jpg",
+      "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
       "user": {
         "id": 5,
         "name": "Admin User",
@@ -227,7 +227,7 @@ Use `multipart/form-data` when sending `profile_photo`.
     "employment_status": "active",
     "emergency_contact": null,
     "profile_photo": "employee-profile-photos/avatar.jpg",
-    "profile_photo_url": "http://localhost/storage/employee-profile-photos/avatar.jpg",
+    "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
     "user": {
       "id": 5,
       "name": "Admin User",
@@ -320,6 +320,7 @@ Soft delete an employee.
 - Send `profile_photo` only when uploading a new file.
 - Do not send the existing `profile_photo` path or `profile_photo_url` back as the `profile_photo` field.
 - `profile_photo_url` should be used for display; `profile_photo` is the stored path.
+- The backend stores only the relative file path and returns a full public file URL in `profile_photo_url`.
 - The backend syncs the user account email and name from the employee payload.
 - When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`.
 - The linked `user_id` cannot be changed through employee update endpoints.

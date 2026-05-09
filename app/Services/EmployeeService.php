@@ -4,13 +4,13 @@ namespace App\Services;
 
 use App\Exceptions\ApiException;
 use App\Models\Employee;
+use App\Support\FileStorage;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EmployeeService
@@ -67,7 +67,7 @@ class EmployeeService
             ->limit(15)
             ->get()
             ->map(fn (Employee $employee): array => [
-                'employee_id' => $employee->id,
+                'employee_id' => $employee->employee_id,
                 'full_name' => $employee->full_name,
                 'display' => "{$employee->employee_id} - {$employee->full_name}",
             ])
@@ -108,7 +108,9 @@ class EmployeeService
                 ...$this->employeeAttributes($data),
                 'employee_id' => $employeeId,
                 'user_id' => $user->id,
-                'profile_photo' => $profilePhoto?->store('employee-profile-photos', 'public'),
+                'profile_photo' => $profilePhoto
+                    ? FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto)
+                    : null,
             ]);
 
             $employee->load(['user:id,name,email,status', 'department', 'position']);
@@ -152,10 +154,10 @@ class EmployeeService
 
             if ($profilePhoto) {
                 if ($employee->profile_photo) {
-                    Storage::disk('public')->delete($employee->profile_photo);
+                    FileStorage::disk()->delete($employee->profile_photo);
                 }
 
-                $attributes['profile_photo'] = $profilePhoto->store('employee-profile-photos', 'public');
+                $attributes['profile_photo'] = FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto);
             }
 
             $employee->update($attributes);
@@ -195,7 +197,7 @@ class EmployeeService
             }
 
             if ($employee->profile_photo) {
-                Storage::disk('public')->delete($employee->profile_photo);
+                FileStorage::disk()->delete($employee->profile_photo);
             }
 
             $employee->delete();

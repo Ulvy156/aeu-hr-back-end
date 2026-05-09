@@ -4,11 +4,11 @@ namespace App\Services;
 
 use App\Exceptions\ApiException;
 use App\Models\PayrollItem;
+use App\Support\FileStorage;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -97,12 +97,12 @@ class PayslipService
 
     protected function companyLogoDataUri(?string $companyLogoPath): ?string
     {
-        if (! $companyLogoPath || ! Storage::disk('public')->exists($companyLogoPath)) {
+        if (! $companyLogoPath || ! FileStorage::disk()->exists($companyLogoPath)) {
             return null;
         }
 
-        $contents = Storage::disk('public')->get($companyLogoPath);
-        $mimeType = Storage::disk('public')->mimeType($companyLogoPath) ?: 'image/png';
+        $contents = FileStorage::disk()->get($companyLogoPath);
+        $mimeType = FileStorage::disk()->mimeType($companyLogoPath) ?: 'image/png';
 
         return 'data:'.$mimeType.';base64,'.base64_encode($contents);
     }

@@ -15,7 +15,7 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
-    Storage::fake('public');
+    Storage::fake(config('filesystems.cloud'));
 });
 
 function employeeActor(string $role): array
@@ -104,7 +104,7 @@ test('admin and hr can create employee with a valid existing user id', function 
         ->and($employee->user->email)->toBe('updated.linked@example.com')
         ->and($employee->user->hasRole('employee'))->toBeTrue();
 
-    Storage::disk('public')->assertExists($employee->profile_photo);
+    Storage::disk(config('filesystems.cloud'))->assertExists($employee->profile_photo);
 })->with(['admin', 'hr']);
 
 test('employee create fails when user id is missing', function () {
@@ -472,7 +472,7 @@ test('deleting an employee soft deletes the employee and linked user without har
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'active',
-        'profile_photo' => UploadedFile::fake()->image('avatar.jpg')->store('employee-profile-photos', 'public'),
+        'profile_photo' => UploadedFile::fake()->image('avatar.jpg')->store('employee-profile-photos', config('filesystems.cloud')),
     ]);
 
     [, $token] = employeeActor('hr');
@@ -490,7 +490,7 @@ test('deleting an employee soft deletes the employee and linked user without har
         ->and(User::withTrashed()->find($linkedUser->id)->status)->toBe('inactive')
         ->and(Activity::query()->where('log_name', 'employees')->where('description', 'delete')->exists())->toBeTrue();
 
-    Storage::disk('public')->assertMissing($employee->profile_photo);
+    Storage::disk(config('filesystems.cloud'))->assertMissing($employee->profile_photo);
 });
 
 test('employee update syncs linked user fields and audits salary changes', function () {

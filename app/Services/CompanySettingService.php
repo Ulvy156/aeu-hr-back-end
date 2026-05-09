@@ -3,10 +3,10 @@
 namespace App\Services;
 
 use App\Models\CompanySetting;
+use App\Support\FileStorage;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class CompanySettingService
 {
@@ -60,10 +60,10 @@ class CompanySettingService
 
             if ($companyLogo) {
                 if ($setting->company_logo) {
-                    Storage::disk('public')->delete($setting->company_logo);
+                    FileStorage::disk()->delete($setting->company_logo);
                 }
 
-                $attributes['company_logo'] = $companyLogo->store('company-logos', 'public');
+                $attributes['company_logo'] = FileStorage::disk()->putFile('company-logos', $companyLogo);
             }
 
             $setting->fill($attributes);

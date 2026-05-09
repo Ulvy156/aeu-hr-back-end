@@ -74,6 +74,7 @@ Return the singleton company settings record.
 ### Notes
 
 - The backend auto-creates the default singleton row on first read if it does not exist yet.
+- `company_logo` stores only the relative object path; `company_logo_url` is the generated public file URL.
 
 ---
 
@@ -140,5 +141,6 @@ Use JSON for normal updates or `multipart/form-data` when uploading `company_log
 
 - Treat this as a singleton settings page, not a list/detail module.
 - Use `company_logo_url` to display the current logo preview.
+- `company_logo` remains the stored relative path, not the full public URL.
 - Send `multipart/form-data` only when replacing the logo; JSON is fine for normal updates.
 - Time inputs can submit `HH:MM`; the backend normalizes them to `HH:MM:SS` in the response.

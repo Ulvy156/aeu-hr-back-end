@@ -3,9 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Models\CompanySetting;
+use App\Support\FileStorage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * @mixin CompanySetting
@@ -21,7 +21,7 @@ class CompanySettingResource extends JsonResource
             'id' => $this->id,
             'company_name' => $this->company_name,
             'company_logo' => $this->company_logo,
-            'company_logo_url' => $this->company_logo ? Storage::disk('public')->url($this->company_logo) : null,
+            'company_logo_url' => FileStorage::url($this->company_logo),
             'company_address' => $this->company_address,
             'company_phone' => $this->company_phone,
             'company_email' => $this->company_email,

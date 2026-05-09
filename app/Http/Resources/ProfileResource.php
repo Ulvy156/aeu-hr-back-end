@@ -3,9 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Support\FileStorage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * @mixin User
@@ -75,9 +75,7 @@ class ProfileResource extends JsonResource
                     'join_date' => $this->employee->join_date?->toDateString(),
                     'last_working_date' => $this->employee->last_working_date?->toDateString(),
                     'employment_status' => $this->employee->employment_status,
-                    'profile_photo_url' => $this->employee->profile_photo
-                        ? Storage::disk('public')->url($this->employee->profile_photo)
-                        : null,
+                    'profile_photo_url' => FileStorage::url($this->employee->profile_photo),
                 ];
             }),
         ];

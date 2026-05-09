@@ -11,7 +11,7 @@ use Spatie\Activitylog\Models\Activity;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    Storage::fake('public');
+    Storage::fake(config('filesystems.cloud'));
     $this->seed(RoleSeeder::class);
 });
 
@@ -32,7 +32,7 @@ test('hr can view the singleton company settings and defaults are created on dem
 });
 
 test('admin can update company settings with a logo and the update is audited', function () {
-    Storage::disk('public')->put('company-logos/old-logo.png', 'old-logo-content');
+    Storage::disk(config('filesystems.cloud'))->put('company-logos/old-logo.png', 'old-logo-content');
 
     CompanySetting::query()->create([
         'company_name' => 'Old Company',
@@ -99,8 +99,8 @@ test('admin can update company settings with a logo and the update is audited', 
         ->and($activity->properties->get('new_values')['company_name'])->toBe('AEU HR')
         ->and($activity->properties->get('new_values')['payroll_day_rate'])->toBe(24);
 
-    Storage::disk('public')->assertMissing('company-logos/old-logo.png');
-    Storage::disk('public')->assertExists($setting->company_logo);
+    Storage::disk(config('filesystems.cloud'))->assertMissing('company-logos/old-logo.png');
+    Storage::disk(config('filesystems.cloud'))->assertExists($setting->company_logo);
 });
 
 test('employees cannot view company settings and hr cannot update them', function () {

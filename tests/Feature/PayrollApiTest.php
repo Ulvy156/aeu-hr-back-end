@@ -437,7 +437,9 @@ test('tax snapshot remains stable after config changes and payslip reads stored 
 });
 
 test('employees can view and download only their own approved payslips while managers can inspect any status', function () {
-    Storage::disk('public')->put(
+    Storage::fake(config('filesystems.cloud'));
+
+    Storage::disk(config('filesystems.cloud'))->put(
         'company-logos/test-logo.png',
         base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnXnX8AAAAASUVORK5CYII=')
     );
