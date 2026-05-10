@@ -9,7 +9,7 @@ return [
         'company_email' => env('HR_COMPANY_EMAIL'),
         'office_latitude' => 11.5585283,
         'office_longitude' => 104.885771,
-        'allowed_radius_meters' => 100,
+        'allowed_radius_meters' => 30,
         'working_start_time' => '08:00:00',
         'working_end_time' => '17:00:00',
         'working_days' => [
