@@ -117,7 +117,7 @@ return [
             'dashboards.ceo_view',
             'dashboards.employee_view',
         ],
-        ],
+    ],
 
     'roles' => [
         'admin' => [

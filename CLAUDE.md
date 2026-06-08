@@ -146,4 +146,4 @@ When the user asks for a feature, follow this order:
 6. Policy (if complex)
 7. Provide **Frontend Integration Summary**
 
-Now, let's build the system step by step.
+Now, let's build the system step by step from aeu-hr-back-end/.claude/PHASE_BREAKDOWN.md

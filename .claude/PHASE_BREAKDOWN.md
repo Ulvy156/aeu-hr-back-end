@@ -83,1447 +83,1188 @@ Do not generate frontend code.
 Do not skip service classes, form requests, API resources, policies, permissions, tests, or API contract updates.
 ```
 
+# Phase 1: Announcement Management
+
+## Objective
+
+Implement a complete Announcement Management module within the existing Laravel backend application.
+
+This module acts as an internal communication board and supports:
+
+* Announcement Categories
+* Announcement Approval Workflow
+* Rich Text Content Storage
+* Single Attachment
+* Read Tracking
+* Audience Targeting
+* Audit Logging
+
+Target audiences may include:
+
+* Everyone
+* Roles
+* Departments
+* Specific Employees
+
 ---
 
-# Phase 0: Backend Setup
+# Implementation Rules
 
-## Status
+Before implementation:
 
-Mostly completed.
+* Inspect existing project structure
+* Reuse existing architecture
+* Reuse existing API response format
+* Reuse existing Service Layer pattern
+* Reuse existing Form Request pattern
+* Reuse existing Resource pattern
+* Reuse existing Policy pattern
+* Reuse existing Audit Log implementation
+* Reuse existing Permission structure
 
-The Laravel backend project has already been created and the base environment setup is mostly ready.
+Do not:
 
-Some required packages are already installed, but they are not fully configured yet. This is acceptable because package installation and package configuration are different steps.
+* Generate frontend code
+* Create Vue components
+* Modify unrelated modules
+* Refactor existing modules
+* Introduce new architecture patterns
+* Introduce repository pattern if project does not already use it
+* Introduce CQRS
+* Introduce event sourcing
+* Introduce websocket functionality
 
-Package configuration must be completed inside the related backend phase before the package is used.
+Follow implementation order:
 
-### Current Setup Status
+1. Migration
+2. Model + Relationships
+3. Enum (if needed)
+4. Service
+5. Form Request
+6. Controller
+7. API Resource
+8. Policy
+9. Route
+10. Feature Test
+11. API Contract Update
 
-```txt
-Project setup: Mostly completed
-Package installation: Some packages already installed
-Package configuration: Not fully completed yet
-Backend development: Ready to continue phase by phase
-```
+All business logic must live in Service classes.
 
-### Package Configuration Rule
+Controllers should only:
 
-Do not configure every package randomly at the beginning.
+* authorize
+* validate
+* call service
+* return response/resource
 
-Configure each package only when its related backend phase starts.
+---
+
+# Module 1: Announcement Categories
+
+## Table: announcement_categories
+
+Columns:
+
+* id
+* name
+* description nullable
+* status enum(active,inactive)
+* created_at
+* updated_at
+
+Rules:
+
+* name unique
+* no hard delete
+* inactive categories cannot be selected for new announcements
+
+## Seeder
+
+Seed default categories:
+
+* General
+* HR
+* Payroll
+* Policy
+* Holiday
+* Event
+* Training
+* Safety
+
+---
+
+# Module 2: Announcements
+
+## Table: announcements
+
+Columns:
+
+* id
+
+* category_id
+
+* title
+
+* content
+
+* priority enum(
+  normal,
+  important,
+  urgent
+  )
+
+* status enum(
+  draft,
+  pending_approval,
+  rejected,
+  published,
+  archived
+  )
+
+* attachment_path nullable
+
+* attachment_name nullable
+
+* attachment_size nullable
+
+* created_by
+
+* submitted_by nullable
+
+* submitted_at nullable
+
+* approved_by nullable
+
+* approved_at nullable
+
+* rejected_by nullable
+
+* rejected_at nullable
+
+* rejection_reason nullable
+
+* created_at
+
+* updated_at
+
+Relationships:
+
+* category
+* creator
+* submitter
+* approver
+* rejector
+
+Indexes:
+
+* status
+* category_id
+* created_by
+* priority
+
+---
+
+# Module 3: Announcement Targets
+
+## Table: announcement_targets
+
+Columns:
+
+* id
+
+* announcement_id
+
+* target_type enum(
+  all,
+  role,
+  department,
+  employee
+  )
+
+* target_id nullable
+
+* created_at
+
+* updated_at
+
+Rules:
+
+* supports multiple targets per announcement
+* uses OR matching logic
+* at least one target is required
 
 Examples:
 
-```txt
-Sanctum configuration       -> Phase 1.2 Authentication
-Spatie Permission config    -> Phase 1.3 Roles and Permissions
-PDF package configuration   -> Phase 5.5 Payslip API
-Excel/export configuration  -> Phase 7 Reports and Exports API
-```
+Announcement targets:
 
-Before installing any package, check `composer.json` first.
+* HR Role
+* Finance Department
+* Employee #15
 
-If the package is already installed, do not reinstall it. Configure it properly instead.
+Any matching target may view the announcement.
 
-## Tasks
+Indexes:
 
-- Laravel backend project created
-- `.env` configured or prepared
-- MySQL database configured or prepared
-- Sanctum installed or ready to configure
-- Spatie Laravel Permission installed or ready to configure
-- AI Agent files prepared
-- Database diagram/schema prepared
-- Backend folder structure reviewed
-- Package configuration will be completed in the correct backend phase
-
-## Recommended Backend Docs
-
-```txt
-D:\AEU\Thesis\HR\aeu-hr-back-end\.claude
-├── AI_AGENT.md
-├── DB_SCHEMA.md
-├── API_CONTRACT.md
-├── PHASE_BREAKDOWN.md
-└── api\
-    ├── AUTH_API.md
-    ├── EMPLOYEE_API.md
-    ├── ATTENDANCE_API.md
-    ├── LEAVE_API.md
-    ├── PAYROLL_API.md
-    ├── DEPARTMENT_API.md
-    ├── POSITION_API.md
-    ├── ROLE_PERMISSION_API.md
-    ├── COMPANY_SETTING_API.md
-    └── AUDIT_LOG_API.md
-```
-
-## Deliverables
-
-- Laravel app runs successfully
-- Database connection works
-- Backend folder is clean
-- AI Agent can read project requirements
-- Backend docs are ready
+* announcement_id
+* target_type
+* target_id
 
 ---
 
-# Phase 1: Backend Foundation
+# Module 4: Announcement Views
 
-This is the most important backend phase.
+## Table: announcement_views
 
-Build this before all business modules.
+Columns:
 
----
+* id
+* announcement_id
+* employee_id
+* viewed_at
 
-## 1.1 Database Foundation
+Rules:
 
-### Tasks
+* unique(announcement_id, employee_id)
+* first open creates record
+* subsequent opens do nothing
 
-- Create base migrations from `DB_SCHEMA.md`
-- Add foreign keys
-- Add indexes
-- Add soft deletes where needed
-- Add seeders where needed
+Indexes:
 
-### Required MVP Tables
-
-```txt
-users
-Spatie permission tables
-departments
-positions
-employees
-company_settings
-public_holidays
-attendances
-leave_requests
-payroll_batches
-payroll_items
-audit_logs
-```
-
-### Optional Later Tables
-
-```txt
-attendance_corrections
-leave_balances
-tax_brackets
-backups
-```
-
-## Deliverables
-
-- All MVP migrations exist
-- Tables migrate successfully
-- Foreign keys work
-- Indexes are added
-- Optional tables are not created unless needed
+* unique(announcement_id, employee_id)
 
 ---
 
-## 1.2 Authentication
+# Permissions
 
-### Tasks
+Create permissions:
 
-- Install/configure Laravel Sanctum
-- Create login API
-- Create logout API
-- Create `/api/me` API
-- Hash passwords properly
-- Revoke token on logout
-- Add login rate limiting
+announcements.view
+announcements.view_draft
+announcements.create
+announcements.update
+announcements.submit
+announcements.cancel_submission
+announcements.approve
+announcements.archive
 
-### Endpoints
+announcement_categories.view
+announcement_categories.create
+announcement_categories.update
+announcement_categories.deactivate
 
-```txt
-POST /api/login
-POST /api/logout
-GET  /api/me
-```
+Do not assign permissions to roles automatically.
 
-## Deliverables
-
-- User can login
-- User receives token
-- User can logout
-- `/api/me` returns authenticated user
-- Invalid login is rejected
-- Login is rate limited
+Use existing role-permission management.
 
 ---
 
-## 1.3 Roles and Permissions
+# Business Rules
 
-### Tasks
+## Workflow
 
-- Install/configure Spatie Laravel Permission
-- Create roles:
-  - `admin`
-  - `hr`
-  - `ceo`
-  - `employee`
-- Create grouped permissions
-- Create role/permission seeder
-- Assign permissions to roles
-- Add middleware checks
-- Add policy checks where needed
+Draft
+→ Pending Approval
+→ Published
 
-### Important Rule
+Draft
+→ Pending Approval
+→ Rejected
 
-Do **not** add `role_id` to users table.
+Rejected
+→ Edit
+→ Resubmit
 
-Spatie handles roles through:
-
-```txt
-roles
-permissions
-model_has_roles
-model_has_permissions
-role_has_permissions
-```
-
-## Deliverables
-
-- Roles are seeded
-- Permissions are seeded
-- Users can be assigned roles
-- Protected routes reject unauthorized users
-- `$user->can()` works
-- `$user->hasRole()` works
+Published
+→ Archived
 
 ---
 
-## 1.4 Global API Response Format
+## Approval Rules
 
-### Tasks
-
-Create consistent JSON responses.
-
-### Success Response
-
-```json
-{
-  "success": true,
-  "message": "Action completed successfully",
-  "data": {}
-}
-```
-
-### Error Response
-
-```json
-{
-  "success": false,
-  "message": "Something went wrong",
-  "errors": {}
-}
-```
-
-### Validation Error
-
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": {
-    "email": ["The email field is required."]
-  }
-}
-```
-
-### Paginated Response
-
-```json
-{
-  "success": true,
-  "message": "Data fetched successfully",
-  "data": [],
-  "meta": {
-    "current_page": 1,
-    "last_page": 1,
-    "per_page": 15,
-    "total": 0
-  }
-}
-```
-
-## Deliverables
-
-- API responses are consistent
-- Validation errors are clean
-- Frontend can handle all response formats easily
+* creator cannot approve own announcement
+* rejection reason required
+* approval immediately publishes announcement
 
 ---
 
-## 1.5 Global Exception Handling
+## Submission Rules
 
-### Tasks
+Pending Approval
+→ Cancel Submission
+→ Draft
 
-Handle:
+Rules:
 
-- 400 bad request
-- 401 unauthenticated
-- 403 forbidden
-- 404 not found
-- 422 validation error
-- 429 too many requests
-- 500 server error
-
-### Security Rule
-
-Never expose stack traces or sensitive server errors in production.
-
-## Deliverables
-
-- Errors return JSON
-- Sensitive errors are hidden
-- Frontend receives readable messages
+* only creator can cancel submission
+* only pending approval announcements can be cancelled
 
 ---
 
-## 1.6 Audit Log System
+## Editing Rules
 
-### Package
+Draft:
 
-Use `spatie/laravel-activitylog` as the audit log package.
+* editable
 
-The package is already installed, so do **not** reinstall it.
+Pending Approval:
 
-Do **not** build a fully custom audit log system from scratch.
+* not editable
 
-Do **not** create a custom audit log migration or custom `AuditLog` model because Spatie Activitylog already provides the table/model structure.
+Rejected:
 
+* editable
 
-### Tasks
+Published:
 
-- Confirm `spatie/laravel-activitylog` exists in `composer.json`
-- Publish Activitylog config if not already published
-- Publish Activitylog migration if not already published
-- Run the migration
-- Configure Activitylog
-- Create `AuditLogService` as a small wrapper service
-- Log important MVP actions manually through `AuditLogService`
-- Store IP address and user agent inside Activitylog `properties`
-- Create `GET /api/audit-logs` endpoint
-- Add filters for:
-  - user
-  - module
-  - action
-  - date_from
-  - date_to
-- Protect audit logs so only Admin and CEO can view them
-- HR and Employee must not view audit logs
+* not editable
 
+Archived:
 
-### Track Actions for MVP
-
-- Login/logout if possible
-- Attendance correction
-- Payroll generation
-- Payroll edit
-- Payroll approval/rejection
-- Leave approval/rejection/cancellation
-- Employee created/updated/deleted
-- Employee salary change
-- Company settings update
-- User created/updated/disabled
-- User role change
-
-
-### Security Rules
-
-- Do not log passwords
-- Do not log tokens
-- Do not log full request payloads blindly
-- Do not log sensitive server errors
-- Audit logs are read-only
-- Audit logs cannot be edited or deleted from normal UI
-- For salary/payroll, log only necessary old/new values
-
-
-### Deliverables
-
-- Spatie Activitylog package is confirmed installed
-- Activitylog config and migration are completed
-- `AuditLogService` exists
-- Important MVP actions are logged
-- Logs include user, action, module, old/new values when needed, IP, and user agent
-- Audit log list API exists
-- Audit log filters work
-- Only Admin and CEO can view audit logs
-- HR and Employee cannot view audit logs
+* not editable
 
 ---
 
-## 1.7 Base Company Settings
+## Archive Rules
 
-### Tasks
-
-- Create company setting model/service
-- Seed default company settings
-- Enforce single-row setting in service logic
-
-### Default Settings
-
-```txt
-working_start_time = 08:00
-working_end_time = 17:00
-working_days = Monday to Saturday
-salary_currency = USD
-salary_calculation_day_rate = 26
-payroll_day = 05
-allowed_radius_meters = 30
-```
-
-## Deliverables
-
-- Company settings exist
-- Attendance can use GPS settings later
-- Payroll can use payroll day rate later
-- Service prevents multiple company setting rows
+* only published announcements can be archived
+* archived announcements are read-only
+* archived announcements remain visible to management
 
 ---
 
-# Phase 2: Employee and Organization API
+## Category Rules
 
-This phase builds the company structure.
-
----
-
-## 2.1 Department API
-
-### Tasks
-
-- Department migration
-- Department model
-- Department enum/status
-- Department service
-- Store/update request validation
-- Department controller
-- Department resource
-- Department policy/permissions
-- Routes
-
-### Endpoints
-
-```txt
-GET    /api/departments
-POST   /api/departments
-GET    /api/departments/{department}
-PUT    /api/departments/{department}
-DELETE /api/departments/{department}
-```
-
-## Deliverables
-
-- HR/Admin can manage departments
-- Department list supports pagination
-- Department status works
-- Department deletion is safe
+* category required
+* category must be active
 
 ---
 
-## 2.2 Position API
+## Attachment Rules
 
-### Tasks
+Optional
 
-- Position migration
-- Position model
-- Position service
-- Store/update request validation
-- Position controller
-- Position resource
-- Position policy/permissions
-- Routes
+Allowed:
 
-### Endpoints
+* pdf
+* jpg
+* jpeg
+* png
 
-```txt
-GET    /api/positions
-POST   /api/positions
-GET    /api/positions/{position}
-PUT    /api/positions/{position}
-DELETE /api/positions/{position}
-```
+Store files using Laravel Storage.
 
-## Deliverables
+Store metadata only:
 
-- HR/Admin can manage positions
-- Position can optionally belong to department
-- Position list supports filtering by department
-- Position status works
+* attachment_path
+* attachment_name
+* attachment_size
+
+Use existing project file size standards.
 
 ---
 
-## 2.3 Employee API
+# Visibility Rules
 
-### Tasks
+## Users with announcements.view_draft
 
-- Employee migration
-- Employee model
-- Employee service
-- Employee form requests
-- Employee controller
-- Employee resource
-- Employee policy/permissions
-- Profile photo upload
-- Link employee to user account
+Can view:
 
-### Rules
-
-- Employee ID must be unique
-- User email must be unique
-- Active employee should not have last working date
-- Resigned/terminated employee must have last working date
-- Base salary uses `decimal(15,2)`
-- Profile photo uses Laravel Storage
-- Validate image type and size
-
-### Endpoints
-
-```txt
-GET    /api/employees
-POST   /api/employees
-GET    /api/employees/{employee}
-PUT    /api/employees/{employee}
-DELETE /api/employees/{employee}
-```
-
-## Deliverables
-
-- HR/Admin can create employees
-- HR/Admin can update employees
-- HR/Admin can upload profile photo
-- Employee status validation works
-- Salary changes are audited
-- Employee list supports pagination/filtering
+* draft
+* pending_approval
+* rejected
+* published
+* archived
 
 ---
 
-# Phase 3: Attendance API
+## Employees
 
-This phase handles GPS attendance, late detection, correction, and absent marking.
+Can only view:
 
----
-
-## 3.1 Clock In API
-
-### Tasks
-
-- Create Attendance model/service/controller/resource
-- Create GPS validation logic using Haversine formula
-- Validate latitude/longitude
-- Read office GPS and radius from company settings
-- Prevent duplicate clock-in
-- Detect late status
-- Store clock-in GPS
-
-### Endpoint
-
-```txt
-POST /api/attendance/clock-in
-```
-
-### Request Example
-
-```json
-{
-  "latitude": 11.5564,
-  "longitude": 104.9282
-}
-```
-
-### Error Example
-
-```json
-{
-  "success": false,
-  "message": "You are outside the allowed clock-in location.",
-  "errors": {}
-}
-```
-
-## Deliverables
-
-- Employee can clock in
-- GPS is validated on backend
-- Missing GPS is rejected
-- Outside radius is rejected
-- Duplicate clock-in is prevented
-- Late status works
+* published announcements
+* announcements targeted to them
 
 ---
 
-## 3.2 Clock Out API
+## Dynamic Targeting
 
-### Tasks
+Do not snapshot recipients.
 
-- Validate GPS
-- Prevent clock-out without clock-in
-- Prevent duplicate clock-out
-- Store clock-out time and GPS
-- Update status if needed
+Example:
 
-### Endpoint
+Announcement targets IT Department.
 
-```txt
-POST /api/attendance/clock-out
-```
+Employee joins IT later.
 
-## Deliverables
+Employee can still view the published announcement.
 
-- Employee can clock out
-- Invalid GPS is rejected
-- Duplicate clock-out is prevented
-- Missing clock-in is handled
+Supported target types:
+
+1. Everyone
+2. Role
+3. Department
+4. Specific Employee
 
 ---
 
-## 3.3 Attendance List API
+# Read Tracking
 
-### Tasks
+## Employee List Response
 
-- Attendance listing
-- Filter by employee
-- Filter by date
-- Filter by status
-- Pagination
-- Eager load employee data
+Include:
 
-### Endpoint
+* is_read
 
-```txt
-GET /api/attendance
-```
+Rules:
 
-## Deliverables
-
-- HR/Admin can view attendance
-- Employee can view own attendance
-- Filters work
-- Pagination works
+* unread = no announcement_view record
+* read = announcement_view exists
 
 ---
 
-## 3.4 Attendance Correction API
+## Management Detail Response
 
-### Tasks
+Include:
 
-- HR/Admin correction
-- Correction reason required
-- Store correction fields:
-  - `correction_reason`
-  - `corrected_by`
-  - `corrected_at`
-- Audit old and new values
-- Use database transaction
+* total_viewed
+* total_unread
 
-### Endpoint
+Support:
 
-```txt
-PUT /api/attendance/{attendance}/correction
-```
-
-## Deliverables
-
-- HR/Admin can correct attendance
-- Employee cannot correct attendance
-- Reason is required
-- Audit log is created
+* viewed_employees
+* unread_employees
 
 ---
 
-## 3.5 Auto Absent Marking
+## Read Logic
 
-### Tasks
+When employee opens announcement detail:
 
-Create service/command/manual endpoint to mark absent when:
+If no view record exists:
 
-- It is a working day
-- It is not a public holiday
-- Employee has no approved leave
-- Employee has no attendance record
+* create announcement_view
 
-### Endpoint
+If view record already exists:
 
-```txt
-POST /api/attendance/mark-absent
-```
+* do nothing
 
-## Deliverables
-
-- Absent records are created safely
-- No duplicate absent records
-- Join date is respected
-- Last working date is respected
-- Public holidays are excluded
-- Approved leave is excluded
+Must be idempotent.
 
 ---
 
-# Phase 4: Leave API
+# List Sorting
 
-This phase handles leave requests, dynamic leave balances, cancellation, and dual approval.
+Employee list default sorting:
 
----
+1. unread first
+2. newest first
 
-## 4.1 Leave Request API
+Management list default sorting:
 
-### Tasks
-
-- LeaveRequest model/service/controller/resource
-- Leave request validation
-- Calculate total days on backend
-- Support full day and half day
-- Exclude public holidays
-- Exclude non-working days
-- Validate leave balance for paid leave
-
-### Endpoint
-
-```txt
-POST /api/leaves
-```
-
-## Deliverables
-
-- Employee can request leave
-- Reason is required
-- Total days calculated on backend
-- Public holidays are excluded
-- Non-working days are excluded
-- Paid leave cannot exceed balance
+1. newest first
 
 ---
 
-## 4.2 Leave List and Detail API
+# Audit Logging
 
-### Tasks
+Use existing audit logging implementation.
 
-- Leave list
-- Leave detail
-- Filter by status
-- Filter by employee
-- Filter by date range
-- Role-based data access
+Log:
 
-### Endpoints
+* announcement created
 
-```txt
-GET /api/leaves
-GET /api/leaves/{leave}
-```
+* announcement updated
 
-## Deliverables
+* announcement submitted
 
-- Employee can view own leave
-- HR/CEO can view approval lists
-- Filters work
-- Pagination works
+* announcement submission cancelled
 
----
+* announcement approved
 
-## 4.3 Leave Balance API
+* announcement rejected
 
-### Rule
+* announcement archived
 
-Do not create `leave_balances` table for MVP.
+* category created
 
-Calculate dynamically from approved leave requests.
+* category updated
 
-### Endpoint
+* category deactivated
 
-```txt
-GET /api/leave-balances
-```
-
-## Deliverables
-
-- Annual balance works
-- Sick balance works
-- Maternity rule works
-- Unpaid leave has no balance limit
+Do not log file contents.
 
 ---
 
-## 4.4 Leave Approval API
+# API Endpoints
 
-### Tasks
+## Announcement Categories
 
-- HR approval
-- CEO approval
-- Approval order does not matter
-- Leave becomes approved only when both approve
-- If either rejects, leave becomes rejected
-- Rejection reason required
-- Use transaction
-- Audit action
+GET    /api/announcement-categories
+POST   /api/announcement-categories
+GET    /api/announcement-categories/{id}
+PUT    /api/announcement-categories/{id}
+DELETE /api/announcement-categories/{id}
 
-### Endpoints
-
-```txt
-POST /api/leaves/{leave}/approve
-POST /api/leaves/{leave}/reject
-```
-
-## Deliverables
-
-- HR can approve/reject
-- CEO can approve/reject
-- Employees cannot approve/reject
-- Final status updates correctly
-- Rejection reason is required
-- Audit logs are created
+DELETE must deactivate category.
 
 ---
 
-## 4.5 Leave Cancellation API
+## Announcements
 
-### Tasks
+GET    /api/announcements
+POST   /api/announcements
+GET    /api/announcements/{id}
+PUT    /api/announcements/{id}
 
-- Employee can cancel own pending leave
-- Cannot cancel approved/rejected leave
-- Audit cancellation if needed
-
-### Endpoint
-
-```txt
-POST /api/leaves/{leave}/cancel
-```
-
-## Deliverables
-
-- Pending leave can be cancelled
-- Non-pending leave cannot be cancelled
-- Employee can only cancel own leave
+POST   /api/announcements/{id}/submit
+POST   /api/announcements/{id}/cancel-submission
+POST   /api/announcements/{id}/approve
+POST   /api/announcements/{id}/reject
+POST   /api/announcements/{id}/archive
 
 ---
 
-# Phase 5: Payroll and Payslip API
+## Read Tracking
 
-This is the most sensitive backend phase.
+POST /api/announcements/{id}/read
 
-Build carefully.
-
----
-
-## 5.1 Payroll Generation API
-
-### Tasks
-
-- PayrollBatch model/service/controller/resource
-- PayrollItem model/resource
-- Generate payroll for all eligible employees
-- Prevent duplicate payroll for same month/year
-- Use transaction
-- Audit payroll generation
-
-### Endpoint
-
-```txt
-POST /api/payrolls/generate
-```
-
-## Deliverables
-
-- HR can generate payroll
-- Duplicate payroll is rejected
-- Payroll batch is created
-- Payroll items are created
-- Payroll generation is audited
+Must be idempotent.
 
 ---
 
-## 5.2 Payroll Calculation Engine
+# Filters
 
-### Must Calculate
+## Management Filters
 
-- Base salary
-- Daily rate
-- Working days
-- Present days
-- Absent days
-- Unpaid leave days
-- Gross salary
-- Unpaid leave deduction
-- Absence deduction
-- Taxable salary
-- Tax amount
-- Net salary
+* search
+* category
+* priority
+* status
+* created_by
 
-### Formula
+Search should include:
 
-```txt
-Daily salary = base_salary / 26
-Unpaid leave deduction = daily salary * unpaid leave days
-Absence deduction = daily salary * absent days
-Taxable salary = gross salary - unpaid leave deduction - absence deduction
-Net salary = taxable salary - tax
-```
-
-### Proration
-
-```txt
-Mid-month join:
-Salary = monthly salary / 26 * working days from join date
-
-Mid-month resignation/termination:
-Salary = monthly salary / 26 * working days until last working date
-```
-
-## Deliverables
-
-- Payroll calculation is backend-only
-- Proration works
-- Public holidays are respected
-- Absent deduction works
-- Unpaid leave deduction works
-- Tax calculation works
+* title
+* content
 
 ---
 
-## 5.3 Payroll Review/Edit API
+## Employee Filters
 
-### Tasks
+* search
+* category
+* read_status
 
-- HR can view payroll
-- HR can edit payroll before CEO approval
-- Approved payroll cannot be edited
-- Audit edits
+read_status values:
 
-### Endpoints
+* read
+* unread
 
-```txt
-GET /api/payrolls
-GET /api/payrolls/{payroll}
-PUT /api/payrolls/{payroll}
-```
+Search should include:
 
-## Deliverables
-
-- Payroll list works
-- Payroll detail works
-- HR can edit before approval
-- Approved payroll is locked
+* title
+* content
 
 ---
 
-## 5.4 Payroll Submit/Approval API
+# Authorization
 
-### Tasks
+Use:
 
-- HR submits payroll to CEO
-- CEO approves payroll
-- CEO rejects payroll with reason
-- Approved payroll becomes locked
-- Payslip becomes visible after approval
-- Use transactions
-- Audit actions
+* existing Policy pattern
+* existing Permission middleware pattern
 
-### Endpoints
+Do not hardcode role checks.
 
-```txt
-POST /api/payrolls/{payroll}/submit
-POST /api/payrolls/{payroll}/approve
-POST /api/payrolls/{payroll}/reject
-```
+Authorization must rely on:
 
-## Deliverables
-
-- HR can submit payroll
-- CEO can approve payroll
-- CEO can reject payroll
-- Rejection reason is required
-- Approved payroll is locked
-- Audit logs are created
+* permissions
+* policies
 
 ---
 
-## 5.5 Payslip API
+# Response Format
 
-### Tasks
+Use the existing standardized API response structure already implemented in the project.
 
-- Employee can view own approved payslips
-- Generate PDF on demand using DomPDF
-- Do not permanently store PDF unless required
-- Protect access by role/permission
-
-### Endpoints
-
-```txt
-GET /api/payslips
-GET /api/payslips/{payslip}
-GET /api/payslips/{payslip}/download
-```
-
-## Deliverables
-
-- Employee can view own payslip
-- Employee can download own payslip PDF
-- HR/Admin/CEO can access based on permission
-- Unapproved payslips are hidden from employees
+Do not introduce a different response format.
 
 ---
 
-# Phase 6: Dashboard API
+# Deliverables
 
-Build dashboard APIs after core modules exist.
+Implement:
 
----
+1. Migrations
+2. Models + Relationships
+3. Seeder
+4. Permission Seeder Update
+5. Form Requests
+6. Services
+7. Policies
+8. API Resources
+9. Controllers
+10. Routes
+11. Audit Logging
+12. Feature Tests
+13. .claude/api/ANNOUNCEMENT_API.md
+14. Update .claude/API_CONTRACT.md
 
-## 6.1 Employee Dashboard API
+Backend implementation only.
 
-### Data
+Do not generate frontend code.
+Do not modify unrelated modules.
 
-- Today attendance
-- Leave balance
-- Latest approved payslip
 
-### Endpoint
+# Phase 2: Announcement Management
 
-```txt
-GET /api/dashboard/employee
-```
+## Purpose
 
----
+Implement a complete Recruitment Management module for the HR Management System.
 
-## 6.2 HR Dashboard API
+The recruitment process is managed internally by HR and Admin.
 
-### Data
+The company does not provide a public recruitment portal.
 
-- Today attendance summary
-- Pending leave requests
-- Payroll status
+Candidates are manually entered into the system after HR receives CVs through channels such as Facebook, Telegram, Email, Referral, Walk-in, LinkedIn, or other recruitment sources.
 
-### Endpoint
+The Recruitment module is independent from Employee Management.
 
-```txt
-GET /api/dashboard/hr
-```
-
----
-
-## 6.3 CEO Dashboard API
-
-### Data
-
-- Pending leave approvals
-- Payroll approval summary
-
-### Endpoint
-
-```txt
-GET /api/dashboard/ceo
-```
+No automatic employee creation is required.
 
 ---
 
-## 6.4 Admin Dashboard API
+# Functional Requirements
 
-### Data
+## Vacancy Management
 
-- User count
-- System settings summary
+The system must allow authorized users to:
 
-### Endpoint
+* Create vacancies
+* Update vacancies
+* View vacancies
+* View vacancy details
+* Close vacancies
+* Search vacancies
+* Filter vacancies
 
-```txt
-GET /api/dashboard/admin
-```
+The system must track:
 
-## Deliverables
+* Vacancy title
+* Department
+* Job description
+* Required headcount
+* Filled headcount
+* Target hiring date
+* Vacancy status
 
-- Dashboard APIs are role-protected
-- Dashboard data is backend-calculated
-- No unauthorized data leaks
+Rules:
 
----
-
-# Phase 7: Reports and Exports API
-
-Reports should be built after attendance, leave, and payroll are ready.
-
----
-
-## 7.1 Payroll Reports
-
-### Reports
-
-- Monthly payroll summary
-- Employee payroll list
-- Payroll status report
-- Export payroll to Excel
-
-### Endpoints
-
-```txt
-GET /api/reports/payroll
-GET /api/reports/payroll/export
-```
+* Required headcount must be greater than zero
+* Filled headcount is maintained by the system
+* Vacancy status defaults to Open
+* Vacancy may be manually closed at any time
+* Closed vacancy cannot be reopened
+* If hiring is needed again, a new vacancy must be created
+* Reaching required headcount does not automatically close a vacancy
+* Reaching required headcount does not prevent new candidates from being added
 
 ---
 
-## 7.2 Attendance Reports
+## Candidate Management
 
-### Reports
+The system must allow authorized users to:
 
-- Daily attendance list
-- Monthly attendance summary
-- Late employee list
-- Absent employee list
-- Attendance correction list
-- Export attendance to Excel
+* Create candidates
+* Update candidates
+* View candidates
+* View candidate details
+* Upload CV
+* Change candidate status
+* Search candidates
+* Filter candidates
 
-### Endpoints
+Rules:
 
-```txt
-GET /api/reports/attendance
-GET /api/reports/attendance/export
-```
-
----
-
-## 7.3 Leave Reports
-
-### Reports
-
-- Leave request list
-- Pending approval list
-- Approved leave list
-- Rejected leave list
-- Leave balance report
-- Export leave report to Excel
-
-### Endpoints
-
-```txt
-GET /api/reports/leave
-GET /api/reports/leave/export
-```
-
-## Deliverables
-
-- Reports support filters
-- Reports use pagination where needed
-- Excel exports work
-- Reports are permission-protected
-- No frontend-generated Excel needed
+* Candidate must belong to a vacancy
+* Candidate can only be created under an Open vacancy
+* Duplicate candidates are allowed
+* Each candidate record represents a single application
+* Candidate becomes read-only when status becomes Hired
+* No public candidate creation
+* Candidates are created by HR/Admin only
 
 ---
 
-# Phase 8: Admin and Settings API
+## Candidate Source Management
+
+The system must support:
+
+* Facebook
+* Telegram
+* LinkedIn
+* Referral
+* Walk-in
+* Email
+* Other
+
+Rules:
+
+* Source is required
 
 ---
 
-## 8.1 Company Settings API
+## CV Management
 
-### Tasks
+Rules:
 
-- View company settings
-- Update company settings
-- Upload company logo
-- Update office GPS
-- Update working hours
-- Update working days
-- Update payroll day rate
-- Enforce single-row settings in service
-
-### Endpoints
-
-```txt
-GET /api/settings/company
-PUT /api/settings/company
-```
-
-## Deliverables
-
-- Admin can update settings
-- Company logo upload works
-- GPS settings update works
-- Settings changes are audited
+* CV is required
+* Single file only
+* PDF only
+* Store using Laravel Storage
+* Candidate cannot be created without CV
 
 ---
 
-## 8.2 Public Holiday API
+## Candidate Status Management
 
-### Tasks
+The system must support:
 
-- Add public holiday
-- Edit public holiday
-- Disable/delete public holiday
-- List public holidays
+Active statuses:
 
-### Endpoints
+* New
+* Shortlisted
+* Contacting Candidate
+* Interview
+* Offer Extended
+* Offer Accepted
 
-```txt
-GET    /api/public-holidays
-POST   /api/public-holidays
-PUT    /api/public-holidays/{holiday}
-DELETE /api/public-holidays/{holiday}
-```
+Final statuses:
 
-## Deliverables
+* Hired
+* Company Rejected
+* Candidate Declined
+* No Show
 
-- Admin/HR can manage holidays
-- Holidays affect attendance/payroll logic
-- Changes are audited where needed
+Rules:
 
----
+* HR/Admin may update status at any time
+* No workflow restrictions
+* Backward status changes are allowed
+* Status represents the candidate's current situation
 
-## 8.3 User Management API
+Examples:
 
-### Tasks
+Interview → Contacting Candidate
 
-- Admin manages users
-- Create user
-- Update user
-- Disable user
-- Assign roles
-- Manual password reset
+Offer Extended → Interview
 
-### Endpoints
-
-```txt
-GET    /api/users
-POST   /api/users
-GET    /api/users/{user}
-PUT    /api/users/{user}
-DELETE /api/users/{user}
-
-GET /api/roles
-GET /api/permissions
-PUT /api/users/{user}/roles
-```
-
-## Deliverables
-
-- Admin can manage users
-- Admin can assign roles
-- Password reset works
-- User management is audited
+Shortlisted → Company Rejected
 
 ---
 
-## 8.4 Audit Logs API
+## Hiring Tracking
 
-### Tasks
+When candidate status becomes:
 
-- Admin/CEO can view audit logs
-- Filter by user
-- Filter by module
-- Filter by action
-- Filter by date
+Hired
 
-### Endpoint
+The system must:
 
-```txt
-GET /api/audit-logs
-```
+* Automatically increment vacancy filled_headcount by 1
 
-## Deliverables
+Rules:
 
-- Admin/CEO can view audit logs
-- HR/Employee cannot view audit logs
-- Filters work
+* Recruitment is independent from Employee Management
+* No employee relationship is required
+* No employee record validation is required
+* No automatic employee creation
+* Employee creation is handled separately by HR/Admin
 
 ---
 
-## 8.5 Manual Backup API
+## Outcome Tracking
 
-### MVP Note
+When status becomes:
 
-No backups table required for MVP.
+* Company Rejected
+* Candidate Declined
+* No Show
 
-Track backup actions in audit logs.
+The system must require:
 
-### Tasks
+* outcome_reason
 
-- Admin triggers backup if environment supports it
-- Admin downloads backup if implemented
-- Log backup action in audit logs
+Rules:
 
-### Endpoints
-
-```txt
-POST /api/backups
-GET  /api/backups/{backup}/download
-```
-
-## Deliverables
-
-- Backup action is Admin-only
-- Backup action is audited
-- Backup file is not publicly exposed
+* outcome_reason is required
+* Supports long text / rich text content
 
 ---
 
-# Phase 9: Backend Testing and Polish
+## Reporting
 
-Final backend phase before demo/release.
+The system must provide summary metrics for:
 
----
+Vacancies:
 
-## 9.1 Feature Tests
+* Total Vacancies
+* Open Vacancies
+* Closed Vacancies
 
-Test:
+Candidates:
 
-- Login
-- Logout
-- `/api/me`
-- Role authorization
-- Permission authorization
-- Department CRUD
-- Position CRUD
-- Employee CRUD
-- GPS validation
-- Clock in
-- Clock out
-- Late detection
-- Missing clock-out
-- Attendance correction
-- Auto absent marking
-- Leave request
-- Leave cancellation
-- HR approval
-- CEO approval
-- Leave rejection
-- Leave balance calculation
-- Payroll generation
-- Duplicate payroll prevention
-- Payroll calculation
-- Payroll approval
-- Payroll rejection
-- Payslip access permission
-- Report permission
-- Audit log permission
+* Total Candidates
+* Hired Candidates
+* Company Rejected Candidates
+* Candidate Declined Candidates
+* No Show Candidates
 
 ---
 
-## 9.2 Performance Review
+# Database Requirements
 
-Check:
+## recruitment_vacancies
 
-- N+1 queries
-- Pagination
-- Index usage
-- Report filter performance
-- Payroll generation transaction safety
-- Duplicate query issues
+Columns:
 
----
+* id
+* title
+* department_id
+* description
+* required_headcount
+* filled_headcount
+* target_hiring_date
+* status
+* created_by
+* created_at
+* updated_at
 
-## 9.3 Security Review
+Status Enum:
 
-Check:
+* open
+* closed
 
-- Sensitive endpoints are protected
-- Payroll data is protected
-- Audit logs are protected
-- Backup is protected
-- File uploads are validated
-- Login is rate limited
-- GPS validation is backend-only
-- No sensitive data in logs
+Relationships:
 
----
+* department
+* creator
+* candidates
 
-## 9.4 Documentation
+Rules:
 
-Finalize and keep documentation updated.
-
-### Required Documentation
-
-- API contract
-- Database schema
-- Setup guide
-- Seeder guide
-- Role/permission guide
-- Testing checklist
-
-### API Contract Rule
-
-`API_CONTRACT.md` is only the API contract index.
-
-Do not place endpoint details directly inside `API_CONTRACT.md`.
-
-When creating or changing an API endpoint:
-
-1. Identify the related API module.
-2. Add or update the related module API contract file in this path: D:\AEU\Thesis\HR\aeu-hr-back-end\.claude\api
-
-## Deliverables
-
-- Backend core flows tested
-- Permission leaks fixed
-- Error handling completed
-- API documented
-- Ready for frontend integration/demo
+* filled_headcount default 0
+* status default open
 
 ---
 
-# Final Backend Phase Order
+## recruitment_candidates
 
-```txt
-Phase 0: Backend Setup
-Phase 1: Backend Foundation
-Phase 2: Employee and Organization API
-Phase 3: Attendance API
-Phase 4: Leave API
-Phase 5: Payroll and Payslip API
-Phase 6: Dashboard API
-Phase 7: Reports and Exports API
-Phase 8: Admin and Settings API
-Phase 9: Backend Testing and Polish
-```
+Columns:
+
+* id
+
+* vacancy_id
+
+* full_name
+
+* phone
+
+* email nullable
+
+* source
+
+* cv_path
+
+* cv_name
+
+* cv_size
+
+* status
+
+* interview_date nullable
+
+* interviewer nullable
+
+* notes nullable
+
+* outcome_reason nullable
+
+* created_by
+
+* created_at
+
+* updated_at
+
+Status Enum:
+
+* new
+* shortlisted
+* contacting_candidate
+* interview
+* offer_extended
+* offer_accepted
+* hired
+* company_rejected
+* candidate_declined
+* no_show
+
+Relationships:
+
+* vacancy
+* creator
+
+Rules:
+
+* vacancy required
+* source required
+* CV required
 
 ---
 
-# Backend Rules Reminder
+# Permission Requirements
 
-## Backend Must Calculate
+Create permissions:
 
-- GPS distance
-- Attendance status
-- Late status
-- Absent days
-- Leave balance
-- Leave approval status
-- Payroll
-- Tax
-- Deductions
-- Net salary
-- Salary proration
+recruitment.vacancies.view
 
-## Backend Must Protect
+recruitment.vacancies.create
 
-- Payroll data
-- Employee salary
-- Audit logs
-- Backup actions
-- Settings
-- User management
+recruitment.vacancies.update
 
-## Backend Must Not Generate
+recruitment.vacancies.close
 
-- Vue pages
-- Vue components
-- Pinia stores
-- Frontend route guards
-- Frontend UI code
+recruitment.candidates.view
+
+recruitment.candidates.create
+
+recruitment.candidates.update
+
+recruitment.candidates.hire
+
+Rules:
+
+* Do not assign permissions automatically
+* Respect existing role-permission implementation
+* Reuse existing permission seeder structure
 
 ---
 
-## Final Setup Statement
+# Policy Requirements
 
-```txt
-The backend project setup is mostly completed.
+Create policies for:
 
-Some required packages are already installed, but not fully configured yet. This is acceptable because package configuration should be completed during the related backend phase.
+Vacancies:
 
-The project is ready to continue with Phase 1: Backend Foundation.
-```
+* view
+* create
+* update
+* close
+
+Candidates:
+
+* view
+* create
+* update
+* hire
+
+Use existing policy implementation pattern.
 
 ---
 
-# End of Document
+# Audit Logging Requirements
+
+Use existing audit logging implementation.
+
+Log:
+
+Vacancies:
+
+* vacancy created
+* vacancy updated
+* vacancy closed
+
+Candidates:
+
+* candidate created
+* candidate updated
+* candidate status changed
+* candidate marked hired
+
+Rules:
+
+* Do not log CV file contents
+* Reuse existing audit log architecture
+
+---
+
+# API Requirements
+
+## Vacancy Endpoints
+
+GET /api/recruitment/vacancies
+
+POST /api/recruitment/vacancies
+
+GET /api/recruitment/vacancies/{id}
+
+PUT /api/recruitment/vacancies/{id}
+
+POST /api/recruitment/vacancies/{id}/close
+
+---
+
+## Candidate Endpoints
+
+GET /api/recruitment/candidates
+
+POST /api/recruitment/candidates
+
+GET /api/recruitment/candidates/{id}
+
+PUT /api/recruitment/candidates/{id}
+
+POST /api/recruitment/candidates/{id}/status
+
+---
+
+# Filter Requirements
+
+## Vacancy Filters
+
+* search
+* department
+* status
+* target_hiring_date
+
+## Candidate Filters
+
+* search
+* vacancy
+* source
+* status
+* interview_date
+
+---
+
+# Validation Rules
+
+Vacancy:
+
+* title required
+* department required
+* required_headcount > 0
+* target_hiring_date required
+
+Candidate:
+
+* full_name required
+* phone required
+* source required
+* vacancy required
+* CV required
+* CV must be PDF
+
+Status Change:
+
+When status becomes:
+
+* company_rejected
+* candidate_declined
+* no_show
+
+Require:
+
+* outcome_reason
+
+---
+
+# Testing Requirements
+
+Create feature tests for:
+
+Vacancies:
+
+* create vacancy
+* update vacancy
+* close vacancy
+* vacancy permissions
+
+Candidates:
+
+* create candidate
+* upload CV
+* update candidate
+* candidate permissions
+
+Status:
+
+* change candidate status
+* require outcome_reason
+* candidate becomes read-only when hired
+* vacancy filled_headcount increments when hired
+
+Authorization:
+
+* permission enforcement
+* policy enforcement
+
+---
+
+# Documentation Requirements
+
+Update:
+
+.claude/api/RECRUITMENT_API.md
+
+Include:
+
+* Endpoints
+* Request payloads
+* Response payloads
+* Filters
+* Validation rules
+* Permission requirements
+
+Also update:
+
+.claude/API_CONTRACT.md
+
+as the API documentation index.
+
+---
+
+# Backend Development Rules
+
+Before implementation:
+
+* Inspect existing backend architecture
+* Reuse existing service architecture
+* Reuse existing API response format
+* Reuse existing policies
+* Reuse existing permission structure
+* Reuse existing audit logging implementation
+* Reuse existing testing patterns
+
+Follow backend development flow:
+
+1. Migration
+2. Model + Relationships
+3. Enum
+4. Service
+5. Form Request
+6. Controller
+7. API Resource
+8. Policy
+9. Route
+10. Test
+11. API Contract Update
+
+Do not generate frontend code.
+
+Do not create Vue components.
+
+Do not create frontend routes.
+
+Do not modify unrelated modules.
+
+Implement backend only.
