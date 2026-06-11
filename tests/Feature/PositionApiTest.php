@@ -98,7 +98,6 @@ test('position deletion is rejected when employees are assigned to it', function
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP100',
         'full_name' => 'Linked Employee',
-        'email' => 'linked.employee@example.com',
         'position_id' => $position->id,
         'join_date' => now()->toDateString(),
         'base_salary' => 500,

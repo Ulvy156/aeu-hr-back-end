@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PositionController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicHolidayController;
+use App\Http\Controllers\Api\RecruitmentCandidateController;
+use App\Http\Controllers\Api\RecruitmentVacancyController;
 use App\Http\Controllers\Api\Reports\AttendanceReportController;
 use App\Http\Controllers\Api\Reports\LeaveReportController;
 use App\Http\Controllers\Api\Reports\PayrollReportController;
@@ -111,6 +113,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/announcements/{announcement}/reject', [AnnouncementController::class, 'reject']);
     Route::post('/announcements/{announcement}/archive', [AnnouncementController::class, 'archive']);
     Route::post('/announcements/{announcement}/read', [AnnouncementController::class, 'read']);
+
+    Route::prefix('recruitment')->group(function () {
+        Route::apiResource('vacancies', RecruitmentVacancyController::class)
+            ->parameters(['vacancies' => 'vacancy'])
+            ->only(['index', 'store', 'show', 'update']);
+        Route::post('/vacancies/{vacancy}/close', [RecruitmentVacancyController::class, 'close']);
+
+        Route::apiResource('candidates', RecruitmentCandidateController::class)
+            ->parameters(['candidates' => 'candidate'])
+            ->only(['index', 'store', 'show', 'update']);
+        Route::post('/candidates/{candidate}/status', [RecruitmentCandidateController::class, 'updateStatus']);
+    });
 
     Route::middleware('role:admin')->group(function () {
         Route::get('/users/search', [UserController::class, 'search']);

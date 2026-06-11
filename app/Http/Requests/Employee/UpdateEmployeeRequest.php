@@ -31,7 +31,6 @@ class UpdateEmployeeRequest extends FormRequest
                 'email',
                 'max:255',
                 Rule::unique('users', 'email')->ignore($employee?->user_id),
-                Rule::unique('employees', 'email')->ignore($employee?->id)->where(fn ($query) => $query->whereNull('deleted_at')),
             ],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date'],

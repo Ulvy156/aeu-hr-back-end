@@ -34,7 +34,6 @@ class StoreEmployeeRequest extends FormRequest
                 'email',
                 'max:255',
                 Rule::unique('users', 'email')->ignore($this->input('user_id')),
-                Rule::unique('employees', 'email')->where(fn ($query) => $query->whereNull('deleted_at')),
             ],
             'password' => ['prohibited'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],

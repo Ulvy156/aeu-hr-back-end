@@ -54,7 +54,7 @@ class ProfileResource extends JsonResource
                     'gender' => $this->employee->gender,
                     'date_of_birth' => $this->employee->date_of_birth?->toDateString(),
                     'phone_number' => $this->employee->phone_number,
-                    'email' => $this->employee->email,
+                    'email' => $this->email,
                     'address' => $this->employee->address,
                     'department' => $this->employee->relationLoaded('department')
                         ? ($this->employee->department

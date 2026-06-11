@@ -133,6 +133,18 @@ return [
             'announcement_categories.update',
             'announcement_categories.deactivate',
         ],
+        'recruitment_vacancies' => [
+            'recruitment.vacancies.view',
+            'recruitment.vacancies.create',
+            'recruitment.vacancies.update',
+            'recruitment.vacancies.close',
+        ],
+        'recruitment_candidates' => [
+            'recruitment.candidates.view',
+            'recruitment.candidates.create',
+            'recruitment.candidates.update',
+            'recruitment.candidates.hire',
+        ],
     ],
 
     'roles' => [
@@ -187,6 +199,13 @@ return [
                 'announcements.archive',
                 'announcement_categories.view',
                 'announcements.view_draft',
+                'recruitment.vacancies.view',
+                'recruitment.vacancies.create',
+                'recruitment.vacancies.update',
+                'recruitment.vacancies.close',
+                'recruitment.candidates.view',
+                'recruitment.candidates.create',
+                'recruitment.candidates.update',
             ],
         ],
         'ceo' => [
@@ -229,7 +248,6 @@ return [
                 'public_holidays.view',
                 'public_holidays.view_any',
                 'announcements.view',
-                'announcement_categories.view',
             ],
         ],
     ],

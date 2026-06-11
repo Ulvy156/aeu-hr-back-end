@@ -33,7 +33,7 @@ class EmployeeService
                     $query
                         ->where('employee_id', 'like', '%'.$search.'%')
                         ->orWhere('full_name', 'like', '%'.$search.'%')
-                        ->orWhere('email', 'like', '%'.$search.'%');
+                        ->orWhereHas('user', fn (Builder $userQuery) => $userQuery->where('email', 'like', '%'.$search.'%'));
                 });
             })
             ->when($filters['department_id'] ?? null, fn (Builder $query, $departmentId) => $query->where('department_id', $departmentId))
@@ -230,7 +230,6 @@ class EmployeeService
             'gender' => $data['gender'] ?? null,
             'date_of_birth' => $data['date_of_birth'] ?? null,
             'phone_number' => $data['phone_number'] ?? null,
-            'email' => $data['email'],
             'address' => $data['address'] ?? null,
             'department_id' => $data['department_id'] ?? null,
             'position_id' => $data['position_id'] ?? null,
@@ -267,7 +266,7 @@ class EmployeeService
         return [
             'employee_id' => $employee->employee_id,
             'full_name' => $employee->full_name,
-            'email' => $employee->email,
+            'email' => $employee->user?->email,
             'department_id' => $employee->department_id,
             'position_id' => $employee->position_id,
             'join_date' => $employee->join_date?->toDateString(),

@@ -48,7 +48,6 @@ test('authenticated users can view their own profile with a linked employee reco
         'gender' => 'male',
         'date_of_birth' => '2000-01-01',
         'phone_number' => '012345678',
-        'email' => 'john@example.com',
         'address' => 'Phnom Penh',
         'department_id' => $department->id,
         'position_id' => $position->id,

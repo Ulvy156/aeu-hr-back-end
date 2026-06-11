@@ -16,7 +16,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'gender',
     'date_of_birth',
     'phone_number',
-    'email',
     'address',
     'department_id',
     'position_id',

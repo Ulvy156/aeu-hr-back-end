@@ -94,7 +94,7 @@ Soft-deleted employees are excluded from the default list.
 
 ### Query Parameters
 
-- `search`: optional string, searches `employee_id`, `full_name`, and `email`
+- `search`: optional string, searches `employee_id`, `full_name`, and the linked user's `email`
 - `department_id`: optional integer, filters by department
 - `position_id`: optional integer, filters by position
 - `employment_status`: optional enum, `active`, `resigned`, or `terminated`
@@ -181,7 +181,7 @@ Use `multipart/form-data` when sending `profile_photo`.
 
 - `user_id`: required integer, must exist in `users.id`, and must not already exist in `employees.user_id`
 - `full_name`: required string, max `255`
-- `email`: required valid email, unique in active employee records, and unique in `users` except for the selected `user_id`
+- `email`: required valid email, unique in `users` except for the selected `user_id`
 - `gender`: optional enum, `male`, `female`, or `other`
 - `date_of_birth`: optional date
 - `phone_number`: optional string, max `50`
@@ -322,6 +322,7 @@ Soft delete an employee.
 - `profile_photo_url` should be used for display; `profile_photo` is the stored path.
 - The backend stores only the relative file path and returns a full public file URL in `profile_photo_url`.
 - The backend syncs the user account email and name from the employee payload.
+- The employee resource's `email` field (top-level and inside `user`) is always the linked user's `users.email` — there is no separate employee-level email column.
 - When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`.
 - The linked `user_id` cannot be changed through employee update endpoints.
 - `DELETE /api/employees/{employee}` soft deletes both the employee and the linked user.

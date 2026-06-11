@@ -715,7 +715,7 @@ Do not generate frontend code.
 Do not modify unrelated modules.
 
 
-# Phase 2: Announcement Management
+# Phase 2: Recruitment Management
 
 ## Purpose
 

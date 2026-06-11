@@ -24,7 +24,7 @@ class EmployeeResource extends JsonResource
             'gender' => $this->gender,
             'date_of_birth' => $this->date_of_birth?->toDateString(),
             'phone_number' => $this->phone_number,
-            'email' => $this->email,
+            'email' => $this->whenLoaded('user', fn () => $this->user?->email),
             'address' => $this->address,
             'join_date' => $this->join_date?->toDateString(),
             'last_working_date' => $this->last_working_date?->toDateString(),

@@ -56,7 +56,6 @@ function announcementEmployee(string $role = 'employee', array $permissions = []
         'user_id' => $user->id,
         'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
-        'email' => $user->email,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,
         'employment_status' => 'active',
