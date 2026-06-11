@@ -30,3 +30,4 @@ All module API contract files are stored in: D:\AEU\Thesis\HR\aeu-hr-back-end\.c
 - Roles & Permissions: `.claude/api/ROLE_PERMISSION_API.md`
 - Company Settings: `.claude/api/COMPANY_SETTING_API.md`
 - Audit Logs: `.claude/api/AUDIT_LOG_API.md`
+- Announcements: `.claude/api/ANNOUNCEMENT_API.md`

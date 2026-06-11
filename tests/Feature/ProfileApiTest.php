@@ -6,6 +6,7 @@ use App\Models\Position;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 
 uses(RefreshDatabase::class);
 
@@ -114,4 +115,88 @@ test('users without an employee profile still receive their own account profile'
         ->assertJsonMissingPath('data.password')
         ->assertJsonMissingPath('data.remember_token')
         ->assertJsonMissingPath('data.tokens');
+});
+
+test('unauthenticated users cannot change password', function () {
+    $this->postJson('/api/profile/change-password', [
+        'current_password' => 'password',
+        'password' => 'new-secret-1',
+        'password_confirmation' => 'new-secret-1',
+    ])
+        ->assertUnauthorized()
+        ->assertJsonPath('success', false)
+        ->assertJsonPath('message', 'Unauthenticated.');
+});
+
+test('authenticated users can change their own password', function () {
+    $user = User::factory()->create([
+        'email' => 'employee@example.com',
+        'password' => 'old-secret-1',
+        'status' => 'active',
+    ]);
+    $user->assignRole('employee');
+
+    $token = $user->createToken('profile-device')->plainTextToken;
+    $otherToken = $user->createToken('other-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/profile/change-password', [
+            'current_password' => 'old-secret-1',
+            'password' => 'new-secret-1',
+            'password_confirmation' => 'new-secret-1',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('message', 'Password changed successfully.');
+
+    expect(Hash::check('new-secret-1', $user->fresh()->password))->toBeTrue();
+
+    // The current device's token stays valid, other tokens are revoked.
+    $this->withToken($token)
+        ->getJson('/api/profile')
+        ->assertSuccessful();
+
+    $this->withToken($otherToken)
+        ->getJson('/api/profile')
+        ->assertUnauthorized();
+});
+
+test('change password fails when the current password is incorrect', function () {
+    $user = User::factory()->create([
+        'password' => 'old-secret-1',
+        'status' => 'active',
+    ]);
+    $user->assignRole('employee');
+
+    $token = $user->createToken('profile-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/profile/change-password', [
+            'current_password' => 'wrong-password',
+            'password' => 'new-secret-1',
+            'password_confirmation' => 'new-secret-1',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('current_password');
+
+    expect(Hash::check('old-secret-1', $user->fresh()->password))->toBeTrue();
+});
+
+test('change password validates required fields and confirmation', function () {
+    $user = User::factory()->create([
+        'password' => 'old-secret-1',
+        'status' => 'active',
+    ]);
+    $user->assignRole('employee');
+
+    $token = $user->createToken('profile-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/profile/change-password', [
+            'current_password' => 'old-secret-1',
+            'password' => 'short',
+            'password_confirmation' => 'mismatch',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('password');
 });

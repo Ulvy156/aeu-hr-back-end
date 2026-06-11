@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
         $this->call(CompanySettingSeeder::class);
         $this->call(DepartmentSeeder::class);
         $this->call(PositionSeeder::class);
+        $this->call(AnnouncementCategorySeeder::class);
 
         // Admin user (no employee record — system account)
         $admin = User::firstOrCreate(

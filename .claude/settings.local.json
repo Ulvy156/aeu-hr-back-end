@@ -4,7 +4,14 @@
       "Bash(Get-ChildItem *)",
       "PowerShell(Get-ChildItem \"D:\\\\AEU\\\\Thesis\\\\HR\\\\aeu-hr-front-end\\\\src\\\\components\" -Recurse -File | ForEach-Object { $_.FullName })",
       "Bash(npx vue-tsc *)",
-      "Bash(cmd *)"
+      "Bash(cmd *)",
+      "Bash(php artisan *)",
+      "Bash(php -m)",
+      "Bash(php -v)",
+      "Bash(pg_isready -h 127.0.0.1 -p 5432)",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -lqt)",
+      "Bash(php -i)",
+      "Bash(dpkg -l)"
     ]
   }
 }

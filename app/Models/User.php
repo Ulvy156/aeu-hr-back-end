@@ -21,16 +21,6 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
 
-    public function employee(): HasOne
-    {
-        return $this->hasOne(Employee::class);
-    }
-
-    public function employeeWithTrashed(): HasOne
-    {
-        return $this->hasOne(Employee::class)->withTrashed();
-    }
-
     /**
      * Get the attributes that should be cast.
      *
@@ -42,5 +32,20 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function employee(): HasOne
+    {
+        return $this->hasOne(Employee::class);
+    }
+
+    public function employeeWithTrashed(): HasOne
+    {
+        return $this->hasOne(Employee::class)->withTrashed();
+    }
+
+    public function announcement()
+    {
+        return $this->hasMany(Announcement::class);
     }
 }

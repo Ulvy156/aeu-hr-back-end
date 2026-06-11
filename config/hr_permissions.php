@@ -46,7 +46,7 @@ return [
             'attendance.clock_out',
             'attendance.correct',
             'attendance.mark_absent',
-            'attendance.proxy_clock'
+            'attendance.proxy_clock',
         ],
         'leaves' => [
             'leaves.view_any',
@@ -117,6 +117,22 @@ return [
             'dashboards.ceo_view',
             'dashboards.employee_view',
         ],
+        'announcements' => [
+            'announcements.view',
+            'announcements.view_draft',
+            'announcements.create',
+            'announcements.update',
+            'announcements.submit',
+            'announcements.cancel_submission',
+            'announcements.approve',
+            'announcements.archive',
+        ],
+        'announcement_categories' => [
+            'announcement_categories.view',
+            'announcement_categories.create',
+            'announcement_categories.update',
+            'announcement_categories.deactivate',
+        ],
     ],
 
     'roles' => [
@@ -125,7 +141,7 @@ return [
             'except' => [
                 'leave_balances.view_own',
                 'attendance.clock_in',
-                'attendance.clock_out'
+                'attendance.clock_out',
             ],
         ],
         'hr' => [
@@ -162,7 +178,15 @@ return [
                 'payslips.download_own',
                 'company_settings.view',
                 'dashboards.hr_view',
-                'attendance.proxy_clock'
+                'attendance.proxy_clock',
+                'announcements.view',
+                'announcements.create',
+                'announcements.update',
+                'announcements.submit',
+                'announcements.cancel_submission',
+                'announcements.archive',
+                'announcement_categories.view',
+                'announcements.view_draft',
             ],
         ],
         'ceo' => [
@@ -185,6 +209,9 @@ return [
                 'dashboards.ceo_view',
                 'leaves.approve_ceo',
                 'leaves.reject_ceo',
+                'announcements.view',
+                'announcements.approve',
+                'announcement_categories.view',
             ],
         ],
         'employee' => [
@@ -200,7 +227,9 @@ return [
                 'payslips.download_own',
                 'dashboards.employee_view',
                 'public_holidays.view',
-                'public_holidays.view_any'
+                'public_holidays.view_any',
+                'announcements.view',
+                'announcement_categories.view',
             ],
         ],
     ],

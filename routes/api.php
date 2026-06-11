@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\AnnouncementCategoryController;
+use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -36,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::get('/profile', [ProfileController::class, 'show']);
+    Route::post('/profile/change-password', [ProfileController::class, 'changePassword']);
     Route::get('/leave-balances', [LeaveController::class, 'balances']);
     Route::apiResource('leaves', LeaveController::class)
         ->parameters(['leaves' => 'leave'])
@@ -97,6 +100,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('positions', PositionController::class);
     Route::get('/employees/search', [EmployeeController::class, 'search']);
     Route::apiResource('employees', EmployeeController::class);
+
+    Route::apiResource('announcement-categories', AnnouncementCategoryController::class)
+        ->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::apiResource('announcements', AnnouncementController::class)
+        ->only(['index', 'store', 'show', 'update']);
+    Route::post('/announcements/{announcement}/submit', [AnnouncementController::class, 'submit']);
+    Route::post('/announcements/{announcement}/cancel-submission', [AnnouncementController::class, 'cancelSubmission']);
+    Route::post('/announcements/{announcement}/approve', [AnnouncementController::class, 'approve']);
+    Route::post('/announcements/{announcement}/reject', [AnnouncementController::class, 'reject']);
+    Route::post('/announcements/{announcement}/archive', [AnnouncementController::class, 'archive']);
+    Route::post('/announcements/{announcement}/read', [AnnouncementController::class, 'read']);
 
     Route::middleware('role:admin')->group(function () {
         Route::get('/users/search', [UserController::class, 'search']);

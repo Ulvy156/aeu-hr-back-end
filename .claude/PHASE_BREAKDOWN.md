@@ -83,7 +83,7 @@ Do not generate frontend code.
 Do not skip service classes, form requests, API resources, policies, permissions, tests, or API contract updates.
 ```
 
-# Phase 1: Announcement Management
+# Phase 1: Announcement Management ( Completed )
 
 ## Objective
 
@@ -787,7 +787,7 @@ Rules:
 
 * Candidate must belong to a vacancy
 * Candidate can only be created under an Open vacancy
-* Duplicate candidates are allowed
+* Duplicate candidates are allowed if in different vacancy, if same vacancy must be block
 * Each candidate record represents a single application
 * Candidate becomes read-only when status becomes Hired
 * No public candidate creation
@@ -820,7 +820,7 @@ Rules:
 * CV is required
 * Single file only
 * PDF only
-* Store using Laravel Storage
+* Store using exist method Storage
 * Candidate cannot be created without CV
 
 ---
