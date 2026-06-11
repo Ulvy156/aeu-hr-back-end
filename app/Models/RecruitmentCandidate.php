@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'cv_size',
     'status',
     'interview_date',
-    'interviewer',
+    'interviewer_id',
     'notes',
     'outcome_reason',
     'created_by',
@@ -35,6 +35,11 @@ class RecruitmentCandidate extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function interviewer(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'interviewer_id');
     }
 
     /**

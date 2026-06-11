@@ -34,7 +34,11 @@ class UpdateCandidateRequest extends FormRequest
             'source' => ['required', Rule::in(['facebook', 'telegram', 'linkedin', 'referral', 'walk_in', 'email', 'other'])],
             'cv' => ['nullable', 'file', 'mimes:pdf', 'max:2048'],
             'interview_date' => ['nullable', 'date'],
-            'interviewer' => ['nullable', 'string', 'max:255'],
+            'interviewer_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('employees', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
+            ],
             'notes' => ['nullable', 'string'],
             'vacancy_id' => ['prohibited'],
             'status' => ['prohibited'],

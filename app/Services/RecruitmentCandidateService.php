@@ -33,7 +33,7 @@ class RecruitmentCandidateService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return RecruitmentCandidate::query()
-            ->with(['vacancy:id,title,status', 'creator:id,name'])
+            ->with(['vacancy:id,title,status', 'creator:id,name', 'interviewer:id,employee_id,full_name'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $query->where(function (Builder $inner) use ($search) {
                     $inner->where('full_name', 'like', '%'.$search.'%')
@@ -69,13 +69,13 @@ class RecruitmentCandidateService
                 'source' => $data['source'],
                 'status' => 'new',
                 'interview_date' => $data['interview_date'] ?? null,
-                'interviewer' => $data['interviewer'] ?? null,
+                'interviewer_id' => $data['interviewer_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actor->id,
                 ...$this->storeCv($cv),
             ]);
 
-            $candidate->load(['vacancy:id,title,status', 'creator:id,name']);
+            $candidate->load(['vacancy:id,title,status', 'creator:id,name', 'interviewer:id,employee_id,full_name']);
 
             $this->auditLogService->log(
                 action: 'create',
@@ -117,7 +117,7 @@ class RecruitmentCandidateService
                 'email' => $data['email'] ?? null,
                 'source' => $data['source'],
                 'interview_date' => $data['interview_date'] ?? null,
-                'interviewer' => $data['interviewer'] ?? null,
+                'interviewer_id' => $data['interviewer_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
             ];
 
@@ -128,7 +128,7 @@ class RecruitmentCandidateService
 
             $candidate->update($attributes);
 
-            $candidate = $candidate->fresh(['vacancy:id,title,status', 'creator:id,name']);
+            $candidate = $candidate->fresh(['vacancy:id,title,status', 'creator:id,name', 'interviewer:id,employee_id,full_name']);
 
             $this->auditLogService->log(
                 action: 'update',
@@ -179,7 +179,7 @@ class RecruitmentCandidateService
                     ->increment('filled_headcount');
             }
 
-            $candidate = $candidate->fresh(['vacancy:id,title,status', 'creator:id,name']);
+            $candidate = $candidate->fresh(['vacancy:id,title,status', 'creator:id,name', 'interviewer:id,employee_id,full_name']);
 
             $this->auditLogService->log(
                 action: 'status_change',
@@ -211,7 +211,7 @@ class RecruitmentCandidateService
 
     public function loadRelations(RecruitmentCandidate $candidate): RecruitmentCandidate
     {
-        return $candidate->load(['vacancy:id,title,status', 'creator:id,name']);
+        return $candidate->load(['vacancy:id,title,status', 'creator:id,name', 'interviewer:id,employee_id,full_name']);
     }
 
     /**

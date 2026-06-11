@@ -983,7 +983,7 @@ Columns:
 
 * interview_date nullable
 
-* interviewer nullable
+* interviewer_id nullable, references employees.id
 
 * notes nullable
 

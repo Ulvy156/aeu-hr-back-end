@@ -20,18 +20,10 @@ class UpdateEmployeeRequest extends FormRequest
      */
     public function rules(): array
     {
-        $employee = $this->route('employee');
-
         return [
             'employee_id' => ['prohibited'],
             'user_id' => ['prohibited'],
             'full_name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('users', 'email')->ignore($employee?->user_id),
-            ],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date'],
             'phone_number' => ['nullable', 'string', 'max:50'],

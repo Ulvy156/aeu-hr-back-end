@@ -653,7 +653,7 @@ test('role sync rejects multiple roles', function () {
         ->assertJsonValidationErrors('roles');
 });
 
-test('non admin users cannot access user management endpoints', function () {
+test('hr can list users but cannot access other admin user management endpoints', function () {
     $hr = User::factory()->create();
     $hr->assignRole('hr');
     $token = $hr->createToken('hr-device')->plainTextToken;
@@ -662,6 +662,20 @@ test('non admin users cannot access user management endpoints', function () {
 
     $this->withToken($token)
         ->getJson('/api/users')
+        ->assertSuccessful();
+
+    $this->withToken($token)
+        ->getJson("/api/users/{$targetUser->id}")
+        ->assertForbidden();
+
+    $this->withToken($token)
+        ->postJson('/api/users', [
+            'name' => 'New User',
+            'email' => 'new.user@example.com',
+            'password' => 'secretpass123',
+            'status' => 'active',
+            'roles' => ['employee'],
+        ])
         ->assertForbidden();
 
     $this->withToken($token)
@@ -672,6 +686,37 @@ test('non admin users cannot access user management endpoints', function () {
         ->putJson("/api/users/{$targetUser->id}/roles", [
             'roles' => ['employee'],
         ])
+        ->assertForbidden();
+});
+
+test('hr can use the employee linking selector query on the user list', function () {
+    $linkableUser = User::factory()->create([
+        'name' => 'Linkable User',
+        'email' => 'linkable.user@example.com',
+        'status' => 'active',
+    ]);
+    $linkableUser->assignRole('employee');
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users?without_employee=1&exclude_admin=1')
+        ->assertSuccessful()
+        ->assertJsonFragment([
+            'id' => $linkableUser->id,
+            'email' => 'linkable.user@example.com',
+        ]);
+});
+
+test('non admin and non hr users cannot access the user list', function () {
+    $employee = User::factory()->create();
+    $employee->assignRole('employee');
+    $token = $employee->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users')
         ->assertForbidden();
 });
 
@@ -761,10 +806,29 @@ test('admin user dropdown search is limited to 15 results and ordered by name', 
     expect(collect($response->json())->pluck('name'))->not->toContain('Adam 16');
 });
 
-test('non admin users cannot access user dropdown search', function () {
+test('hr can access user dropdown search', function () {
+    $alpha = User::factory()->create([
+        'name' => 'Vy Rith',
+        'email' => 'vy.hr@example.com',
+        'status' => 'active',
+    ]);
+    $alpha->assignRole('employee');
+
     $hr = User::factory()->create();
     $hr->assignRole('hr');
     $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/users/search?q=vy')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.user_id', $alpha->id);
+});
+
+test('non admin and non hr users cannot access user dropdown search', function () {
+    $employee = User::factory()->create();
+    $employee->assignRole('employee');
+    $token = $employee->createToken('employee-device')->plainTextToken;
 
     $this->withToken($token)
         ->getJson('/api/users/search?q=vy')

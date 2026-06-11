@@ -29,12 +29,6 @@ class StoreEmployeeRequest extends FormRequest
             ],
             'employee_id' => ['prohibited'],
             'full_name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('users', 'email')->ignore($this->input('user_id')),
-            ],
             'password' => ['prohibited'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
             'date_of_birth' => ['nullable', 'date'],

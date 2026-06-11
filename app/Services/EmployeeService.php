@@ -100,7 +100,6 @@ class EmployeeService
 
             $user->update([
                 'name' => $data['full_name'],
-                'email' => $data['email'],
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
 
@@ -146,7 +145,6 @@ class EmployeeService
 
             $employee->user->update([
                 'name' => $data['full_name'],
-                'email' => $data['email'],
                 'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
             ]);
 

@@ -59,7 +59,6 @@ function employeePayload(User $linkedUser, array $overrides = []): array
     return array_merge([
         'user_id' => $linkedUser->id,
         'full_name' => 'Employee Profile',
-        'email' => 'employee.profile@example.com',
         'gender' => 'female',
         'join_date' => '2026-05-01',
         'base_salary' => '1200.50',
@@ -79,7 +78,6 @@ test('admin and hr can create employee with a valid existing user id', function 
 
     $response = $this->withToken($token)->post('/api/employees', employeePayload($linkedUser, [
         'full_name' => 'Updated Linked Employee',
-        'email' => 'updated.linked@example.com',
         'department_id' => $department->id,
         'position_id' => $position->id,
         'profile_photo' => UploadedFile::fake()->image('avatar.jpg'),
@@ -93,7 +91,7 @@ test('admin and hr can create employee with a valid existing user id', function 
         ->assertJsonPath('data.employee_id', 'EMP-00001')
         ->assertJsonPath('data.user.id', $linkedUser->id)
         ->assertJsonPath('data.user.name', 'Updated Linked Employee')
-        ->assertJsonPath('data.user.email', 'updated.linked@example.com')
+        ->assertJsonPath('data.user.email', 'original.linked@example.com')
         ->assertJsonPath('data.user.status', 'active')
         ->assertJsonMissingPath('data.user.roles');
 
@@ -101,7 +99,7 @@ test('admin and hr can create employee with a valid existing user id', function 
 
     expect($employee->employee_id)->toBe('EMP-00001')
         ->and($employee->user->name)->toBe('Updated Linked Employee')
-        ->and($employee->user->email)->toBe('updated.linked@example.com')
+        ->and($employee->user->email)->toBe('original.linked@example.com')
         ->and($employee->user->hasRole('employee'))->toBeTrue();
 
     Storage::disk(config('filesystems.cloud'))->assertExists($employee->profile_photo);
@@ -113,7 +111,6 @@ test('employee create fails when user id is missing', function () {
     $this->withToken($token)
         ->postJson('/api/employees', [
             'full_name' => 'Missing User Id',
-            'email' => 'missing.user.id@example.com',
             'join_date' => '2026-05-01',
             'base_salary' => '900.00',
             'employment_status' => 'active',
@@ -191,7 +188,6 @@ test('employee update cannot change user id', function () {
         ->putJson("/api/employees/{$employee->id}", [
             'user_id' => $otherUser->id,
             'full_name' => 'Locked User',
-            'email' => 'locked.user@example.com',
             'join_date' => '2026-05-01',
             'base_salary' => '750.00',
             'employment_status' => 'active',
@@ -437,10 +433,14 @@ test('default employee list excludes soft deleted employees', function () {
         ->assertSuccessful()
         ->assertJsonFragment([
             'employee_id' => 'EMP-00001',
+        ])
+        ->assertJsonFragment([
             'email' => 'visible.employee.user@example.com',
         ])
         ->assertJsonMissing([
             'employee_id' => 'EMP-00002',
+        ])
+        ->assertJsonMissing([
             'email' => 'deleted.employee.user@example.com',
         ]);
 });
@@ -481,7 +481,7 @@ test('deleting an employee soft deletes the employee and linked user without har
     Storage::disk(config('filesystems.cloud'))->assertMissing($employee->profile_photo);
 });
 
-test('employee update syncs linked user fields and audits salary changes', function () {
+test('employee update syncs linked user name and status and audits salary changes', function () {
     [$department, $position] = employeeDepartmentAndPosition();
     $linkedUser = linkableUser([
         'name' => 'Original Name',
@@ -505,7 +505,6 @@ test('employee update syncs linked user fields and audits salary changes', funct
     $this->withToken($token)
         ->putJson("/api/employees/{$employee->id}", [
             'full_name' => 'Updated Name',
-            'email' => 'updated.employee@example.com',
             'department_id' => $department->id,
             'position_id' => $position->id,
             'join_date' => '2026-05-01',
@@ -515,7 +514,7 @@ test('employee update syncs linked user fields and audits salary changes', funct
         ])
         ->assertSuccessful()
         ->assertJsonPath('data.full_name', 'Updated Name')
-        ->assertJsonPath('data.user.email', 'updated.employee@example.com')
+        ->assertJsonPath('data.user.email', 'original.employee@example.com')
         ->assertJsonPath('data.user.status', 'inactive')
         ->assertJsonMissingPath('data.user.roles');
 
@@ -525,7 +524,7 @@ test('employee update syncs linked user fields and audits salary changes', funct
         ->latest('id')
         ->first();
 
-    expect($employee->fresh()->user->email)->toBe('updated.employee@example.com')
+    expect($employee->fresh()->user->email)->toBe('original.employee@example.com')
         ->and($employee->fresh()->user->status)->toBe('inactive')
         ->and($activity->properties->get('old_values')['base_salary'])->toBe('1000.00')
         ->and($activity->properties->get('new_values')['base_salary'])->toBe('1200.50');

@@ -114,7 +114,6 @@ Soft-deleted employees are excluded from the default list.
       "gender": "female",
       "date_of_birth": null,
       "phone_number": null,
-      "email": "admin.employee@example.com",
       "address": null,
       "join_date": "2026-05-01",
       "last_working_date": null,
@@ -167,7 +166,6 @@ Use `multipart/form-data` when sending `profile_photo`.
 {
   "user_id": 5,
   "full_name": "Admin User",
-  "email": "admin.employee@example.com",
   "gender": "female",
   "department_id": 1,
   "position_id": 2,
@@ -180,8 +178,7 @@ Use `multipart/form-data` when sending `profile_photo`.
 ### Request Fields
 
 - `user_id`: required integer, must exist in `users.id`, and must not already exist in `employees.user_id`
-- `full_name`: required string, max `255`
-- `email`: required valid email, unique in `users` except for the selected `user_id`
+- `full_name`: required string, max `255` — also sets the linked user's `users.name`
 - `gender`: optional enum, `male`, `female`, or `other`
 - `date_of_birth`: optional date
 - `phone_number`: optional string, max `50`
@@ -219,7 +216,6 @@ Use `multipart/form-data` when sending `profile_photo`.
     "gender": "female",
     "date_of_birth": null,
     "phone_number": null,
-    "email": "admin.employee@example.com",
     "address": null,
     "join_date": "2026-05-01",
     "last_working_date": null,
@@ -264,7 +260,7 @@ The response uses the same `data` shape as the employee list item.
 
 ## PUT /api/employees/{employee}
 
-Update an employee and sync the linked user name, email, and active/inactive status.
+Update an employee and sync the linked user name and active/inactive status.
 
 ### Request Body
 
@@ -273,7 +269,6 @@ Use `multipart/form-data` when replacing `profile_photo`.
 ```json
 {
   "full_name": "Updated User",
-  "email": "updated.employee@example.com",
   "department_id": 1,
   "position_id": 2,
   "join_date": "2026-05-01",
@@ -285,6 +280,8 @@ Use `multipart/form-data` when replacing `profile_photo`.
 
 ### Validation Notes
 
+- `full_name` updates the linked user account's `users.name`.
+- This endpoint does not accept `email`. The linked user's `users.email` (login email) can only be changed by an `admin` via `PUT /api/users/{user}`.
 - Active employees must not have `last_working_date`.
 - Resigned or terminated employees must have `last_working_date`.
 - `last_working_date` must be on or after `join_date`.
@@ -321,8 +318,9 @@ Soft delete an employee.
 - Do not send the existing `profile_photo` path or `profile_photo_url` back as the `profile_photo` field.
 - `profile_photo_url` should be used for display; `profile_photo` is the stored path.
 - The backend stores only the relative file path and returns a full public file URL in `profile_photo_url`.
-- The backend syncs the user account email and name from the employee payload.
-- The employee resource's `email` field (top-level and inside `user`) is always the linked user's `users.email` — there is no separate employee-level email column.
+- The backend syncs the linked user account's `name` from `full_name` on create and update.
+- The employee resource has no top-level `email` field — read the linked user's email from `user.email`. There is no separate employee-level email column.
+- `POST` and `PUT /api/employees` do not accept an `email` field. The linked user's email is set when the user account is created (`POST /api/users`, admin only) and can only be changed afterwards by an `admin` via `PUT /api/users/{user}`.
 - When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`.
 - The linked `user_id` cannot be changed through employee update endpoints.
 - `DELETE /api/employees/{employee}` soft deletes both the employee and the linked user.

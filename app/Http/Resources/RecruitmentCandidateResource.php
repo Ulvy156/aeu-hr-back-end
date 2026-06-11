@@ -35,7 +35,11 @@ class RecruitmentCandidateResource extends JsonResource
             ],
             'status' => $this->status,
             'interview_date' => $this->interview_date?->toDateString(),
-            'interviewer' => $this->interviewer,
+            'interviewer' => $this->whenLoaded('interviewer', fn () => $this->interviewer ? [
+                'id' => $this->interviewer->id,
+                'employee_id' => $this->interviewer->employee_id,
+                'full_name' => $this->interviewer->full_name,
+            ] : null),
             'notes' => $this->notes,
             'outcome_reason' => $this->outcome_reason,
             'creator' => $this->whenLoaded('creator', fn () => $this->creator ? [

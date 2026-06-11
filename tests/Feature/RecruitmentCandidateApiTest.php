@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Department;
+use App\Models\Employee;
 use App\Models\RecruitmentCandidate;
 use App\Models\RecruitmentVacancy;
 use App\Models\User;
@@ -228,6 +229,16 @@ test('candidate can be updated while not hired', function () {
     $vacancy = recruitmentCandidateVacancy([], $admin);
     $candidate = recruitmentCandidateRecord($vacancy, $admin);
 
+    $interviewerUser = User::factory()->create(['name' => 'John HR']);
+    $interviewer = Employee::query()->create([
+        'user_id' => $interviewerUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'John HR',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'active',
+    ]);
+
     $this->withToken($token)
         ->putJson("/api/recruitment/candidates/{$candidate->id}", [
             'full_name' => 'Jane Smith',
@@ -235,13 +246,14 @@ test('candidate can be updated while not hired', function () {
             'email' => $candidate->email,
             'source' => 'referral',
             'interview_date' => now()->addDays(3)->toDateString(),
-            'interviewer' => 'John HR',
+            'interviewer_id' => $interviewer->id,
             'notes' => 'Strong candidate',
         ])
         ->assertSuccessful()
         ->assertJsonPath('data.full_name', 'Jane Smith')
         ->assertJsonPath('data.source', 'referral')
-        ->assertJsonPath('data.interviewer', 'John HR');
+        ->assertJsonPath('data.interviewer.id', $interviewer->id)
+        ->assertJsonPath('data.interviewer.full_name', 'John HR');
 });
 
 test('changing status to a final outcome requires an outcome reason', function () {

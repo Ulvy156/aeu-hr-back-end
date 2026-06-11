@@ -18,7 +18,8 @@ All user management endpoints require a Sanctum bearer token.
 
 ## Authorization
 
-- Only `admin` users can access this module.
+- `admin` and `hr` users can list (`GET /api/users`) and search (`GET /api/users/search`) users via `users.view_any` and `users.search`.
+- All other endpoints in this module (create, view single user, update, delete, role/permission management) are restricted to `admin` users only.
 - User CRUD uses the existing `users.*` permissions through the backend policy.
 - User dropdown search uses `users.search`.
 - Role lookup uses `roles_permissions.roles_view`.
@@ -64,8 +65,8 @@ This endpoint is not paginated and returns at most `15` results.
 
 ### Authorization
 
-- Only `admin` users can access this endpoint
-- Non-admin users receive `403 Forbidden`
+- `admin` and `hr` users can access this endpoint
+- Other roles receive `403 Forbidden`
 
 ### Response Example
 
@@ -94,6 +95,11 @@ This endpoint is not paginated and returns at most `15` results.
 Return a paginated user list.
 
 Soft-deleted users are excluded from the default list.
+
+### Authorization
+
+- `admin` and `hr` users can access this endpoint
+- Other roles receive `403 Forbidden`
 
 ### Query Parameters
 

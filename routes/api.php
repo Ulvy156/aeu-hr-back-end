@@ -126,9 +126,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/candidates/{candidate}/status', [RecruitmentCandidateController::class, 'updateStatus']);
     });
 
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware('role:admin|hr')->group(function () {
         Route::get('/users/search', [UserController::class, 'search']);
-        Route::apiResource('users', UserController::class);
+        Route::apiResource('users', UserController::class)->only(['index']);
+    });
+
+    Route::middleware('role:admin')->group(function () {
+        Route::apiResource('users', UserController::class)->only(['show', 'store', 'update', 'destroy']);
         Route::post('/users/{user}/reset-password', [UserController::class, 'resetPassword'])
             ->middleware('permission:users.reset_password');
         Route::put('/users/{user}/roles', [RolePermissionController::class, 'syncUserRoles'])

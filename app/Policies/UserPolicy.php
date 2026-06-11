@@ -8,12 +8,12 @@ class UserPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('admin') && $user->hasPermissionTo('users.view_any');
+        return $user->hasAnyRole(['admin', 'hr']) && $user->hasPermissionTo('users.view_any');
     }
 
     public function search(User $user): bool
     {
-        return $user->hasRole('admin') && $user->hasPermissionTo('users.search');
+        return $user->hasAnyRole(['admin', 'hr']) && $user->hasPermissionTo('users.search');
     }
 
     public function view(User $user, User $model): bool

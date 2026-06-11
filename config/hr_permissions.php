@@ -206,6 +206,8 @@ return [
                 'recruitment.candidates.view',
                 'recruitment.candidates.create',
                 'recruitment.candidates.update',
+                'users.view_any',
+                'users.search',
             ],
         ],
         'ceo' => [

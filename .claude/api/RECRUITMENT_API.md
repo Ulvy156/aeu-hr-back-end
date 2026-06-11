@@ -164,7 +164,7 @@ Close an `open` vacancy. Sets `status` to `closed`.
 
 ## GET /api/recruitment/candidates
 
-Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title`, `status`) and `creator`, sorted newest first.
+Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title`, `status`), `creator`, and `interviewer` (`id`, `employee_id`, `full_name`), sorted newest first.
 
 ### Query Parameters
 
@@ -213,6 +213,12 @@ Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title
 }
 ```
 
+### Frontend Notes
+
+- `interviewer` is `null` when no interviewer is assigned, otherwise an object: `{ "id": 5, "employee_id": "EMP-00010", "full_name": "John HR" }`.
+- `interviewer.id` is the `employees.id` value — use it as the value for `interviewer_id` when creating/updating a candidate.
+- Use `GET /api/employees/search` to populate the interviewer dropdown.
+
 ---
 
 ## POST /api/recruitment/candidates
@@ -230,7 +236,7 @@ Use `multipart/form-data` (a `cv` file is always required).
 - `source`: required enum, `facebook`, `telegram`, `linkedin`, `referral`, `walk_in`, `email`, `other`
 - `cv`: required file, PDF only, max `2048 KB`
 - `interview_date`: optional nullable date
-- `interviewer`: optional nullable string, max `255`
+- `interviewer_id`: optional nullable integer, must reference an existing, non-deleted `employees.id`
 - `notes`: optional nullable string
 
 The frontend must not send `status`, `outcome_reason`, or `created_by` — these are backend-controlled.
