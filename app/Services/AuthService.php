@@ -29,6 +29,16 @@ class AuthService
             ]);
         }
 
+        if (! $user->hasRole('admin')) {
+            $employee = $user->employee;
+
+            if (! $employee || ! in_array($employee->employment_status, ['active', 'probation'], true)) {
+                throw ValidationException::withMessages([
+                    'email' => ['Your account is not linked to an active employee profile. Please contact HR.'],
+                ]);
+            }
+        }
+
         $token = $user->createToken($deviceName ?: 'api-token')->plainTextToken;
 
         return [

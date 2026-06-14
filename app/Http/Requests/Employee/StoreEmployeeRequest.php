@@ -39,7 +39,8 @@ class StoreEmployeeRequest extends FormRequest
             'join_date' => ['required', 'date'],
             'last_working_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'base_salary' => ['required', 'numeric', 'min:0'],
-            'employment_status' => ['required', Rule::in(['active', 'resigned', 'terminated'])],
+            'employment_status' => ['required', Rule::in(['active', 'probation', 'resigned', 'terminated'])],
+            'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
@@ -65,7 +66,7 @@ class StoreEmployeeRequest extends FormRequest
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');
 
-                if ($employmentStatus === 'active' && $lastWorkingDate) {
+                if (in_array($employmentStatus, ['active', 'probation'], true) && $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Active employees must not have a last working date.');
                 }
 

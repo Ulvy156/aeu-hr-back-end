@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'last_working_date',
     'base_salary',
     'employment_status',
+    'probation_end_date',
     'emergency_contact',
     'profile_photo',
 ])]
@@ -71,6 +72,7 @@ class Employee extends Model
             'date_of_birth' => 'date',
             'join_date' => 'date',
             'last_working_date' => 'date',
+            'probation_end_date' => 'date',
             'base_salary' => 'decimal:2',
         ];
     }

@@ -509,7 +509,7 @@ class AnnouncementService
     {
         $targets = $announcement->targets()->get();
 
-        $query = Employee::query()->where('employment_status', 'active');
+        $query = Employee::query()->whereIn('employment_status', ['active', 'probation']);
 
         if ($targets->contains(fn (AnnouncementTarget $target) => $target->target_type === 'all')) {
             return $query;

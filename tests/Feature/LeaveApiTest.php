@@ -373,8 +373,8 @@ test('leave balances are calculated dynamically from approved leave requests and
         ->assertJsonPath('data.balances.0.leave_type', 'annual')
         ->assertJsonPath('data.balances.0.remaining', '16.00')
         ->assertJsonPath('data.balances.1.remaining', '6.00')
-        ->assertJsonPath('data.balances.2.remaining', '90.00')
-        ->assertJsonPath('data.balances.3.is_unlimited', true);
+        ->assertJsonPath('data.balances.3.remaining', '90.00')
+        ->assertJsonPath('data.balances.4.is_unlimited', true);
 
     $hr = User::factory()->create();
     $hr->assignRole('hr');
@@ -750,4 +750,110 @@ test('employee cannot cancel another employees leave', function () {
     $this->withToken($token)
         ->postJson("/api/leaves/{$leave->id}/cancel")
         ->assertForbidden();
+});
+
+test('employee can create special leave and it appears in the leave balance with its own entitlement', function () {
+    leaveCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    ]);
+    [$user, $employee] = leaveEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/leaves', [
+            'leave_type' => 'special',
+            'start_date' => '2026-05-04',
+            'end_date' => '2026-05-06',
+            'duration_type' => 'full_day',
+            'reason' => 'Marriage leave',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.leave_type', 'special')
+        ->assertJsonPath('data.total_days', '3.00')
+        ->assertJsonPath('data.status', 'pending');
+
+    makeLeave($employee, [
+        'leave_type' => 'special',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-06',
+        'total_days' => 3,
+        'status' => 'approved',
+        'hr_approval_status' => 'approved',
+        'ceo_approval_status' => 'approved',
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/leave-balances?year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.balances.2.leave_type', 'special')
+        ->assertJsonPath('data.balances.2.entitlement', '7.00')
+        ->assertJsonPath('data.balances.2.used', '3.00')
+        ->assertJsonPath('data.balances.2.remaining', '4.00');
+});
+
+test('special leave cannot exceed the available balance', function () {
+    leaveCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    ]);
+    [$user, $employee] = leaveEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    makeLeave($employee, [
+        'leave_type' => 'special',
+        'start_date' => '2026-04-27',
+        'end_date' => '2026-05-03',
+        'total_days' => 7,
+        'status' => 'approved',
+        'hr_approval_status' => 'approved',
+        'ceo_approval_status' => 'approved',
+    ]);
+
+    $this->withToken($token)
+        ->postJson('/api/leaves', [
+            'leave_type' => 'special',
+            'start_date' => '2026-05-04',
+            'end_date' => '2026-05-04',
+            'duration_type' => 'full_day',
+            'reason' => 'Should exceed special leave balance',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Requested special leave exceeds the available 2026 balance.');
+});
+
+test('maternity leave is rejected when it exceeds the 90 day entitlement for a single case', function () {
+    leaveCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    ]);
+    [$user] = leaveEmployeeUser('employee', [], ['gender' => 'female']);
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/leaves', [
+            'leave_type' => 'maternity',
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-04-01',
+            'duration_type' => 'full_day',
+            'reason' => 'Maternity leave',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Requested maternity leave exceeds the 90-day entitlement for a single case.');
+});
+
+test('maternity leave is rejected for male employees', function () {
+    leaveCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    ]);
+    [$user] = leaveEmployeeUser('employee', [], ['gender' => 'male']);
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/leaves', [
+            'leave_type' => 'maternity',
+            'start_date' => '2026-05-04',
+            'end_date' => '2026-05-06',
+            'duration_type' => 'full_day',
+            'reason' => 'Maternity leave',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Maternity Leave is for female employee only!');
 });

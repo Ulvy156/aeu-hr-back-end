@@ -23,10 +23,14 @@ return [
         'salary_currency' => 'USD',
         'payroll_day_rate' => 26,
     ],
+    'employment' => [
+        'probation_period_months' => 3,
+    ],
     'leave' => [
         'entitlements' => [
             'annual' => 18.0,
             'sick' => 7.0,
+            'special' => 7.0,
             'maternity' => 90.0,
         ],
     ],

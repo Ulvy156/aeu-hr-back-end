@@ -180,6 +180,136 @@ test('duplicate clock in and duplicate clock out are prevented and clock out req
         ->and((float) $attendance->clock_out_longitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['longitude'], 0.00000001);
 });
 
+test('clock in is rejected for an employee on approved leave today', function () {
+    Carbon::setTestNow('2026-05-05 08:00:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You are on approved leave today and cannot clock in.');
+
+    expect(Attendance::query()->count())->toBe(0);
+});
+
+test('clock out is rejected for an employee on approved leave today', function () {
+    Carbon::setTestNow('2026-05-05 07:55:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+        ->assertCreated();
+
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'sick',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    Carbon::setTestNow('2026-05-05 17:10:00');
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You are on approved leave today and cannot clock out.');
+
+    expect($employee->attendances()->sole()->clock_out_time)->toBeNull();
+});
+
+test('proxy clock in is rejected for an employee on approved leave on the selected date', function () {
+    Carbon::setTestNow('2026-05-05 12:00:00');
+    attendanceCompanySettings();
+
+    [, $employee] = attendanceEmployeeUser();
+
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/proxy-clock-in', [
+            'employee_id' => $employee->id,
+            'attendance_date' => '2026-05-05',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'This employee is on approved leave on the selected date and cannot be clocked in.');
+
+    expect(Attendance::query()->count())->toBe(0);
+});
+
+test('proxy clock out is rejected for an employee on approved leave on the selected date', function () {
+    Carbon::setTestNow('2026-05-05 12:00:00');
+    attendanceCompanySettings();
+
+    [, $employee] = attendanceEmployeeUser();
+
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 07:55:00',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'sick',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/proxy-clock-out', [
+            'employee_id' => $employee->id,
+            'attendance_date' => '2026-05-05',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'This employee is on approved leave on the selected date and cannot be clocked out.');
+
+    expect($employee->attendances()->sole()->clock_out_time)->toBeNull();
+});
+
 test('attendance list scopes employees to their own records', function () {
     attendanceCompanySettings();
 

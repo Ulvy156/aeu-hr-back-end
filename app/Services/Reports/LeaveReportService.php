@@ -9,7 +9,6 @@ use App\Models\PublicHoliday;
 use App\Services\CompanySettingService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -155,6 +154,8 @@ class LeaveReportService
                 $row['annual']['remaining'],
                 $row['sick']['used'],
                 $row['sick']['remaining'],
+                $row['special']['used'],
+                $row['special']['remaining'],
                 $row['maternity']['entitlement'],
                 $row['maternity']['remaining'],
                 $row['unpaid']['rule'],
@@ -164,7 +165,7 @@ class LeaveReportService
         return [
             'file_name' => 'leave-balance-report.xlsx',
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Annual Used', 'Annual Remaining', 'Sick Used', 'Sick Remaining', 'Maternity Entitlement', 'Maternity Remaining', 'Unpaid Rule'],
+                headings: ['Employee ID', 'Employee Name', 'Annual Used', 'Annual Remaining', 'Sick Used', 'Sick Remaining', 'Special Used', 'Special Remaining', 'Maternity Entitlement', 'Maternity Remaining', 'Unpaid Rule'],
                 rows: $rows,
             ),
         ];
@@ -223,6 +224,7 @@ class LeaveReportService
             $leaveRows = $approvedLeaves->get($employee->id, collect());
             $annualUsed = $this->usedDaysForLeaveType($leaveRows, 'annual', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
             $sickUsed = $this->usedDaysForLeaveType($leaveRows, 'sick', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
+            $specialUsed = $this->usedDaysForLeaveType($leaveRows, 'special', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
             $maternityEntitlement = (float) config('hr.leave.entitlements.maternity', 90);
 
             return [
@@ -241,6 +243,11 @@ class LeaveReportService
                     'entitlement' => $this->formatDecimal((float) config('hr.leave.entitlements.sick', 0)),
                     'used' => $this->formatDecimal($sickUsed),
                     'remaining' => $this->formatDecimal(max(0, (float) config('hr.leave.entitlements.sick', 0) - $sickUsed)),
+                ],
+                'special' => [
+                    'entitlement' => $this->formatDecimal((float) config('hr.leave.entitlements.special', 0)),
+                    'used' => $this->formatDecimal($specialUsed),
+                    'remaining' => $this->formatDecimal(max(0, (float) config('hr.leave.entitlements.special', 0) - $specialUsed)),
                 ],
                 'maternity' => [
                     'entitlement' => $this->formatDecimal($maternityEntitlement),

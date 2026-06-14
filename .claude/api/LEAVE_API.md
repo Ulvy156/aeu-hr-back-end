@@ -75,6 +75,7 @@ Create a leave request for the authenticated employee profile.
 - Supported `leave_type` values:
   - `annual`
   - `sick`
+  - `special`
   - `maternity`
   - `unpaid`
 - Supported `duration_type` values:
@@ -84,8 +85,9 @@ Create a leave request for the authenticated employee profile.
 - Public holidays are excluded.
 - Non-working days from company settings are excluded.
 - If all selected dates are excluded, the request is rejected.
-- Paid annual and sick leave must fit the available balance for each affected year.
-- Maternity leave is limited to `90` days per request case.
+- Paid annual, sick, and special leave must fit the available balance for each affected year.
+- Maternity leave is limited to `90` days per request case. The request is rejected if `total_days` for the request exceeds the entitlement.
+- Maternity leave is restricted to employees with `gender` of `female`.
 - Unpaid leave has no balance limit.
 - Past-date leave requests are currently allowed. The backend applies the same working-day, holiday, and balance rules to past and future dates.
 
@@ -141,7 +143,7 @@ Return a paginated leave list.
 
 - `employee_id`: optional integer filter, only effective for users who can view all leave
 - `status`: optional enum, `pending`, `approved`, `rejected`, or `cancelled`
-- `leave_type`: optional enum, `annual`, `sick`, `maternity`, or `unpaid`
+- `leave_type`: optional enum, `annual`, `sick`, `special`, `maternity`, or `unpaid`
 - `date_from`: optional start date filter
 - `date_to`: optional end date filter
 - `per_page`: optional integer, `1` to `100`
@@ -185,10 +187,11 @@ Return dynamic leave balances without a `leave_balances` table.
 ### Balance Rules
 
 - Annual entitlement: `18.00` days per year
-- Sick entitlement: `7.00` days per year
+- Sick entitlement: `7.00` days per year, fully paid
+- Special entitlement: `7.00` days per year
 - Maternity entitlement: `90.00` days per case
 - Unpaid leave is unlimited
-- Only approved leave reduces annual and sick balances
+- Only approved leave reduces annual, sick, and special balances
 
 ### Success Example
 
@@ -217,6 +220,14 @@ Return dynamic leave balances without a `leave_balances` table.
         "entitlement": "7.00",
         "used": "1.00",
         "remaining": "6.00",
+        "is_unlimited": false,
+        "rule": "per_year"
+      },
+      {
+        "leave_type": "special",
+        "entitlement": "7.00",
+        "used": "0.00",
+        "remaining": "7.00",
         "is_unlimited": false,
         "rule": "per_year"
       },
@@ -349,3 +360,5 @@ Cancel a leave request.
   - HR approves or rejects through HR permissions
   - CEO approves or rejects through CEO permissions
 - For manager accounts that do not have a linked employee profile, pass `employee_id` when loading leave balances.
+- `special` leave (e.g. marriage, childbirth of spouse, death of immediate family) is treated like `annual`/`sick`: fully paid, `7.00` days/year, no extra fields or validation beyond the standard `reason` text.
+- Approved `maternity` leave reduces pay during payroll: employees with at least 1 year of service receive `50%` of their daily rate for maternity days, employees with less than 1 year receive `0%`. See `.claude/api/PAYROLL_API.md` for the payroll-side calculation.

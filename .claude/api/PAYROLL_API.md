@@ -136,9 +136,11 @@ Only editable fields are accepted per item. Computed fields such as `gross_salar
         "present_days": "28.00",
         "absent_days": "0.00",
         "unpaid_leave_days": "1.00",
+        "maternity_leave_days": "0.00",
         "gross_salary": "3000.00",
         "unpaid_deduction": "100.00",
         "absence_deduction": "0.00",
+        "maternity_deduction": "0.00",
         "taxable_salary": "2900.00",
         "tax_rate": "0.0983",
         "tax_amount": "285.00",
@@ -204,9 +206,11 @@ Only editable fields are accepted per item. Computed fields such as `gross_salar
     "present_days": "28.00",
     "absent_days": "0.00",
     "unpaid_leave_days": "1.00",
+    "maternity_leave_days": "0.00",
     "gross_salary": "3000.00",
     "unpaid_deduction": "100.00",
     "absence_deduction": "0.00",
+    "maternity_deduction": "0.00",
     "taxable_salary": "2900.00",
     "tax_rate": "0.0983",
     "tax_amount": "285.00",
@@ -278,6 +282,9 @@ Only editable fields are accepted per item. Computed fields such as `gross_salar
 - NSSF deduction is backend-calculated and snapshot per payroll item:
   - salary below `300.00` -> `4.00`
   - salary `300.00` or above -> `6.00`
+- Approved `maternity` leave days reduce pay (`maternity_leave_days` / `maternity_deduction` on the payroll item) based on the employee's tenure as of the end of the payroll period:
+  - Employees with **at least 1 year of service** (`join_date` to period end) are paid `50%` of their daily rate for maternity leave days — `maternity_deduction = daily_rate * 0.5 * maternity_leave_days`.
+  - Employees with **less than 1 year of service** are unpaid for maternity leave days — `maternity_deduction = daily_rate * 1.0 * maternity_leave_days` (same effect as unpaid leave).
 - Payslip PDF uses the company logo from company settings when available and falls back safely when no logo exists.
 
 ## Frontend Notes

@@ -11,9 +11,9 @@ use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Activitylog\Models\Activity;
-use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -564,7 +564,7 @@ test('employees can view and download only their own approved payslips while man
         ->assertJsonPath('data.id', $draftOwnPayslip->id);
 });
 
-test('maternity leave deducts 50% of daily rate and employee receives half salary', function () {
+test('maternity leave deducts 50% of daily rate for employees with at least 1 year of service', function () {
     payrollCompanySettings();
 
     $hr = payrollManagerUser('hr', [
@@ -577,6 +577,7 @@ test('maternity leave deducts 50% of daily rate and employee receives half salar
     ], [
         'employee_id' => 'EMP-60001',
         'full_name' => 'Maternity Employee',
+        'join_date' => '2024-01-01',
         'base_salary' => 5000,
     ]);
 
@@ -613,6 +614,55 @@ test('maternity leave deducts 50% of daily rate and employee receives half salar
         ->and($item->tax_rate)->toBe('0.0900')
         ->and($item->nssf_deduction)->toBe('6.00')
         ->and($item->net_salary)->toBe('2269.00');
+});
+
+test('maternity leave is fully deducted for employees with less than 1 year of service', function () {
+    payrollCompanySettings();
+
+    $hr = payrollManagerUser('hr', [
+        'email' => 'hr.maternity-junior@example.com',
+    ]);
+    Sanctum::actingAs($hr);
+
+    [, $employee] = payrollEmployeeUser('employee', [
+        'email' => 'employee.maternity-junior@example.com',
+    ], [
+        'employee_id' => 'EMP-60002',
+        'full_name' => 'Junior Maternity Employee',
+        'join_date' => '2026-01-01',
+        'base_salary' => 5000,
+    ]);
+
+    makeApprovedLeave($employee, [
+        'leave_type' => 'maternity',
+        'start_date' => '2026-04-01',
+        'end_date' => '2026-04-30',
+        'duration_type' => 'full_day',
+        'total_days' => 30,
+    ]);
+
+    $batchId = $this->postJson('/api/payrolls', [
+        'month' => 4,
+        'year' => 2026,
+    ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $item = PayrollItem::query()
+        ->where('payroll_batch_id', $batchId)
+        ->where('employee_id', $employee->id)
+        ->sole();
+
+    expect($item->working_days)->toBe('30.00')
+        ->and($item->present_days)->toBe('0.00')
+        ->and($item->absent_days)->toBe('0.00')
+        ->and($item->maternity_leave_days)->toBe('30.00')
+        ->and($item->gross_salary)->toBe('5000.00')
+        ->and($item->maternity_deduction)->toBe('5000.00')
+        ->and($item->taxable_salary)->toBe('0.00')
+        ->and($item->tax_amount)->toBe('0.00')
+        ->and($item->nssf_deduction)->toBe('0.00')
+        ->and($item->net_salary)->toBe('0.00');
 });
 
 test('nssf deduction uses lower threshold for low salary payroll items', function () {

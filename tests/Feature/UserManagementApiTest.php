@@ -361,7 +361,7 @@ test('admin can create user with roles and password is hashed', function () {
     $response = $this->withToken($token)->postJson('/api/users', [
         'name' => 'CEO User',
         'email' => 'ceo.user@example.com',
-        'password' => 'secretpass123',
+        'password' => 'Secretpass-123',
         'status' => 'active',
         'roles' => ['ceo'],
     ]);
@@ -378,7 +378,7 @@ test('admin can create user with roles and password is hashed', function () {
 
     expect($createdUser->hasRole('ceo'))->toBeTrue()
         ->and($createdUser->getRoleNames())->toHaveCount(1)
-        ->and(Hash::check('secretpass123', $createdUser->password))->toBeTrue()
+        ->and(Hash::check('Secretpass-123', $createdUser->password))->toBeTrue()
         ->and(Activity::query()->where('log_name', 'users')->where('description', 'create')->exists())->toBeTrue();
 });
 
@@ -390,7 +390,7 @@ test('user creation rejects multiple roles', function () {
     $this->withToken($token)->postJson('/api/users', [
         'name' => 'Multi Role User',
         'email' => 'multi.role@example.com',
-        'password' => 'secretpass123',
+        'password' => 'Secretpass-123',
         'status' => 'active',
         'roles' => ['hr', 'employee'],
     ])
@@ -672,7 +672,7 @@ test('hr can list users but cannot access other admin user management endpoints'
         ->postJson('/api/users', [
             'name' => 'New User',
             'email' => 'new.user@example.com',
-            'password' => 'secretpass123',
+            'password' => 'Secretpass-123',
             'status' => 'active',
             'roles' => ['employee'],
         ])

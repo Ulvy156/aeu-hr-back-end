@@ -75,6 +75,7 @@ class ProfileResource extends JsonResource
                     'join_date' => $this->employee->join_date?->toDateString(),
                     'last_working_date' => $this->employee->last_working_date?->toDateString(),
                     'employment_status' => $this->employee->employment_status,
+                    'probation_end_date' => $this->employee->probation_end_date?->toDateString(),
                     'profile_photo_url' => FileStorage::url($this->employee->profile_photo),
                 ];
             }),

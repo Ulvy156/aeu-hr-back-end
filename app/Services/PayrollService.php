@@ -184,7 +184,7 @@ class PayrollService
             $settings = $this->companySettingService->current();
             $payrollBatch = PayrollBatch::query()->whereKey($payrollBatch->id)->lockForUpdate()->firstOrFail();
             $payrollBatch->load([
-                'items' => fn ($query) => $query->orderBy('id'),
+                'items' => fn ($query) => $query->orderBy('id')->with('employee:id,join_date'),
             ]);
 
             if ($payrollBatch->status === 'approved') {
@@ -193,6 +193,7 @@ class PayrollService
 
             $oldValues = $this->auditBatchAttributes($this->loadBatchRelations($payrollBatch));
             $itemsById = $payrollBatch->items->keyBy('id');
+            $periodEnd = Carbon::create($payrollBatch->year, $payrollBatch->month, 1)->endOfMonth()->startOfDay();
 
             foreach ((array) ($data['items'] ?? []) as $itemPayload) {
                 /** @var PayrollItem $item */
@@ -206,6 +207,7 @@ class PayrollService
                     currentItem: $item,
                     overrides: $itemPayload,
                     settings: $settings,
+                    periodEnd: $periodEnd,
                 );
 
                 $item->update(array_merge($recalculated, [
@@ -426,6 +428,7 @@ class PayrollService
                 absentDays: 0,
                 unpaidLeaveDays: 0,
                 maternityLeaveDays: 0,
+                maternityDeductionRate: $this->maternityDeductionRate($employee->join_date, $periodEnd),
                 settings: $settings,
             );
         }
@@ -459,6 +462,7 @@ class PayrollService
             absentDays: $absentDays,
             unpaidLeaveDays: $leaveBreakdown['unpaid_leave_days'],
             maternityLeaveDays: $leaveBreakdown['maternity_leave_days'],
+            maternityDeductionRate: $this->maternityDeductionRate($employee->join_date, $periodEnd),
             settings: $settings,
         );
     }
@@ -471,6 +475,7 @@ class PayrollService
         PayrollItem $currentItem,
         array $overrides,
         CompanySetting $settings,
+        CarbonInterface $periodEnd,
     ): array {
         return $this->calculatedItemPayload(
             baseSalary: (float) ($overrides['base_salary'] ?? $currentItem->base_salary),
@@ -479,6 +484,7 @@ class PayrollService
             absentDays: (float) ($overrides['absent_days'] ?? $currentItem->absent_days),
             unpaidLeaveDays: (float) ($overrides['unpaid_leave_days'] ?? $currentItem->unpaid_leave_days),
             maternityLeaveDays: (float) ($overrides['maternity_leave_days'] ?? $currentItem->maternity_leave_days),
+            maternityDeductionRate: $this->maternityDeductionRate($currentItem->employee?->join_date, $periodEnd),
             settings: $settings,
         );
     }
@@ -493,6 +499,7 @@ class PayrollService
         float $absentDays,
         float $unpaidLeaveDays,
         float $maternityLeaveDays,
+        float $maternityDeductionRate,
         CompanySetting $settings,
     ): array {
         $baseSalarySnapshot = $this->calculateBaseSalary(
@@ -506,6 +513,7 @@ class PayrollService
             unpaidLeaveDays: $unpaidLeaveDays,
             absentDays: $absentDays,
             maternityLeaveDays: $maternityLeaveDays,
+            maternityDeductionRate: $maternityDeductionRate,
         );
         $tax = $this->calculateTax($deductions['taxable_salary']);
         $nssfDeduction = $this->calculateNssfDeduction($deductions['taxable_salary']);
@@ -776,10 +784,11 @@ class PayrollService
         float $unpaidLeaveDays,
         float $absentDays,
         float $maternityLeaveDays,
+        float $maternityDeductionRate,
     ): array {
         $unpaidDeduction = $this->roundMoney($dailyRate * $unpaidLeaveDays);
         $absenceDeduction = $this->roundMoney($dailyRate * $absentDays);
-        $maternityDeduction = $this->roundMoney($dailyRate * 0.5 * $maternityLeaveDays);
+        $maternityDeduction = $this->roundMoney($dailyRate * $maternityDeductionRate * $maternityLeaveDays);
 
         return [
             'unpaid_deduction' => $unpaidDeduction,
@@ -787,6 +796,19 @@ class PayrollService
             'maternity_deduction' => $maternityDeduction,
             'taxable_salary' => $this->roundMoney(max(0, $grossSalary - $unpaidDeduction - $absenceDeduction - $maternityDeduction)),
         ];
+    }
+
+    /**
+     * Employees with at least 1 year of service receive 50% pay during maternity leave.
+     * Employees with less than 1 year of service are unpaid for maternity leave days.
+     */
+    protected function maternityDeductionRate(?CarbonInterface $joinDate, CarbonInterface $referenceDate): float
+    {
+        if (! $joinDate) {
+            return 1.0;
+        }
+
+        return $joinDate->diffInYears($referenceDate) >= 1 ? 0.5 : 1.0;
     }
 
     /**

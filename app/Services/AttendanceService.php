@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
 use App\Models\PublicHoliday;
 use App\Models\User;
 use Carbon\Carbon;
@@ -61,6 +62,10 @@ class AttendanceService
         $clockInAt = now();
         $attendanceDate = $clockInAt->toDateString();
 
+        if ($this->isOnApprovedLeave($employee, $attendanceDate)) {
+            throw ApiException::unprocessable('You are on approved leave today and cannot clock in.');
+        }
+
         if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $attendanceDate)->exists()) {
             throw ApiException::unprocessable('You have already clocked in today.');
         }
@@ -85,6 +90,11 @@ class AttendanceService
         $this->assertWithinAllowedLocation($latitude, $longitude, $settings, 'clock-out');
 
         $attendanceDate = now()->toDateString();
+
+        if ($this->isOnApprovedLeave($employee, $attendanceDate)) {
+            throw ApiException::unprocessable('You are on approved leave today and cannot clock out.');
+        }
+
         $attendance = Attendance::query()
             ->whereBelongsTo($employee)
             ->whereDate('attendance_date', $attendanceDate)
@@ -232,6 +242,10 @@ class AttendanceService
         $date        = Carbon::parse($attendanceDate)->startOfDay();
         $clockInTime = Carbon::parse($date->toDateString().' '.$settings->working_start_time);
 
+        if ($this->isOnApprovedLeave($employee, $date->toDateString())) {
+            throw ApiException::unprocessable('This employee is on approved leave on the selected date and cannot be clocked in.');
+        }
+
         if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date->toDateString())->exists()) {
             throw ApiException::unprocessable('An attendance record already exists for this employee on the selected date.');
         }
@@ -270,6 +284,10 @@ class AttendanceService
         $settings = $this->companySettingService->current();
 
         $date = Carbon::parse($attendanceDate)->startOfDay();
+
+        if ($this->isOnApprovedLeave($employee, $date->toDateString())) {
+            throw ApiException::unprocessable('This employee is on approved leave on the selected date and cannot be clocked out.');
+        }
 
         $attendance = Attendance::query()
             ->whereBelongsTo($employee)
@@ -422,6 +440,16 @@ class AttendanceService
         }
 
         return $count;
+    }
+
+    protected function isOnApprovedLeave(Employee $employee, string $date): bool
+    {
+        return LeaveRequest::query()
+            ->whereBelongsTo($employee)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $date)
+            ->whereDate('end_date', '>=', $date)
+            ->exists();
     }
 
     protected function employeeForUserOrFail(User $user): Employee

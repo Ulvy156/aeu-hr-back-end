@@ -109,6 +109,20 @@ Authenticate a user and issue a Sanctum token.
 }
 ```
 
+- Non-admin users must have a linked `Employee` profile with `employment_status` of `active` or `probation` to log in. Users without an employee profile, or whose employee profile is `resigned`/`terminated`, are rejected:
+
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {
+    "email": ["Your account is not linked to an active employee profile. Please contact HR."]
+  }
+}
+```
+
+- The `admin` role is exempt from the employee-profile check above.
+
 - Login is rate limited. When exceeded, the response is:
 
 ```json
@@ -269,7 +283,7 @@ Authorization: Bearer {token}
 ### Request Fields
 
 - `current_password`: required string, must match the authenticated user's current password
-- `password`: required string, min `8`, max `255`, must be confirmed (`password_confirmation`)
+- `password`: required string, max `255`, must be confirmed (`password_confirmation`), strong password (min `8` chars, must contain letters, mixed case, numbers, and symbols)
 
 ### Response Example
 

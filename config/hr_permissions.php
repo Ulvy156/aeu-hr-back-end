@@ -250,6 +250,7 @@ return [
                 'public_holidays.view',
                 'public_holidays.view_any',
                 'announcements.view',
+                'announcement_categories.view',
             ],
         ],
     ],

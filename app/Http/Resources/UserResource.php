@@ -45,6 +45,7 @@ class UserResource extends JsonResource
                     'employee_id' => $this->employee->employee_id,
                     'full_name' => $this->employee->full_name,
                     'employment_status' => $this->employee->employment_status,
+                    'probation_end_date' => $this->employee->probation_end_date?->toDateString(),
                     'department' => $this->employee->relationLoaded('department')
                         ? ($this->employee->department
                             ? [

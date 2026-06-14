@@ -171,6 +171,7 @@ Clock in on behalf of a remote or system-impaired employee. Restricted to Admin 
 
 - `employee_id` is required and must exist in the employees table.
 - `attendance_date` is required, must be a valid date, and cannot be in the future.
+- If the employee has an approved leave covering `attendance_date`, the request is rejected (`"This employee is on approved leave on the selected date and cannot be clocked in."`).
 - If a record already exists for that employee on that date, the request is rejected.
 - Clock-in time is automatically set to the company `working_start_time` (default `08:00:00`). Frontend must not send a time.
 - Status is set to `present`, `is_late` to `false` — because the time is exactly the working start time.
@@ -244,6 +245,7 @@ Clock out on behalf of a remote or system-impaired employee. Restricted to Admin
 
 - `employee_id` is required and must exist in the employees table.
 - `attendance_date` is required, must be a valid date, and cannot be in the future.
+- If the employee has an approved leave covering `attendance_date`, the request is rejected (`"This employee is on approved leave on the selected date and cannot be clocked out."`).
 - A clock-in record must already exist for the employee on the given date (whether it was a regular or proxy clock-in).
 - If the employee has already clocked out, the request is rejected.
 - Clock-out time is automatically set to the company `working_end_time` (default `17:00:00`). Frontend must not send a time.
@@ -330,6 +332,7 @@ Clock in the authenticated employee using backend GPS validation.
 - Frontend must not send clock-in time.
 - Backend reads office latitude, longitude, and allowed radius from company settings.
 - Clock-in is rejected when office GPS settings are missing.
+- Clock-in is rejected if the employee has an approved leave covering today (`"You are on approved leave today and cannot clock in."`).
 - Duplicate same-day clock-in is rejected.
 - Backend calculates `status` and `is_late`.
 
@@ -399,6 +402,7 @@ Clock out the authenticated employee using backend GPS validation.
 
 - Backend uses server time only.
 - Frontend must not send clock-out time.
+- Clock-out is rejected if the employee has an approved leave covering today (`"You are on approved leave today and cannot clock out."`).
 - Valid same-day clock-in must already exist.
 - Duplicate same-day clock-out is rejected.
 - Clock-out is rejected when office GPS settings are missing.

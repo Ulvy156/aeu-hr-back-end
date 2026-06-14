@@ -22,7 +22,7 @@ class IndexEmployeeRequest extends FormRequest
             'search' => ['nullable', 'string', 'max:255'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'position_id' => ['nullable', 'integer', 'exists:positions,id'],
-            'employment_status' => ['nullable', Rule::in(['active', 'resigned', 'terminated'])],
+            'employment_status' => ['nullable', Rule::in(['active', 'probation', 'resigned', 'terminated'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

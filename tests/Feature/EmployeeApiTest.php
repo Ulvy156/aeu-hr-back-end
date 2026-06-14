@@ -105,6 +105,39 @@ test('admin and hr can create employee with a valid existing user id', function 
     Storage::disk(config('filesystems.cloud'))->assertExists($employee->profile_photo);
 })->with(['admin', 'hr']);
 
+test('creating a probation employee defaults probation_end_date to join_date plus the configured period', function () {
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
+        'employment_status' => 'probation',
+    ]));
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath('data.employment_status', 'probation')
+        ->assertJsonPath('data.probation_end_date', '2026-08-01');
+
+    $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
+
+    expect($employee->probation_end_date->toDateString())->toBe('2026-08-01')
+        ->and($employee->user->status)->toBe('active');
+});
+
+test('creating a probation employee allows hr to override probation_end_date', function () {
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
+        'employment_status' => 'probation',
+        'probation_end_date' => '2026-06-30',
+    ]));
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath('data.probation_end_date', '2026-06-30');
+});
+
 test('employee create fails when user id is missing', function () {
     [, $token] = employeeActor('hr');
 

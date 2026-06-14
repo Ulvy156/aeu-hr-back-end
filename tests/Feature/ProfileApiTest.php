@@ -119,8 +119,8 @@ test('users without an employee profile still receive their own account profile'
 test('unauthenticated users cannot change password', function () {
     $this->postJson('/api/profile/change-password', [
         'current_password' => 'password',
-        'password' => 'new-secret-1',
-        'password_confirmation' => 'new-secret-1',
+        'password' => 'New-secret-1',
+        'password_confirmation' => 'New-secret-1',
     ])
         ->assertUnauthorized()
         ->assertJsonPath('success', false)
@@ -141,14 +141,14 @@ test('authenticated users can change their own password', function () {
     $this->withToken($token)
         ->postJson('/api/profile/change-password', [
             'current_password' => 'old-secret-1',
-            'password' => 'new-secret-1',
-            'password_confirmation' => 'new-secret-1',
+            'password' => 'New-secret-1',
+            'password_confirmation' => 'New-secret-1',
         ])
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Password changed successfully.');
 
-    expect(Hash::check('new-secret-1', $user->fresh()->password))->toBeTrue();
+    expect(Hash::check('New-secret-1', $user->fresh()->password))->toBeTrue();
 
     // The current device's token stays valid, other tokens are revoked.
     $this->withToken($token)
@@ -172,8 +172,8 @@ test('change password fails when the current password is incorrect', function ()
     $this->withToken($token)
         ->postJson('/api/profile/change-password', [
             'current_password' => 'wrong-password',
-            'password' => 'new-secret-1',
-            'password_confirmation' => 'new-secret-1',
+            'password' => 'New-secret-1',
+            'password_confirmation' => 'New-secret-1',
         ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('current_password');

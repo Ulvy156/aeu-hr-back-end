@@ -145,6 +145,7 @@ Return leave report data based on `report_type`.
 - `leave_type`
   - `annual`
   - `sick`
+  - `special`
   - `maternity`
   - `unpaid`
 - `date_from`
@@ -155,7 +156,7 @@ Return leave report data based on `report_type`.
 ### Response Notes
 
 - `request_list`, `pending_approval`, `approved`, and `rejected` return paginated leave request data.
-- `leave_balance` returns paginated employee leave balance rows calculated dynamically on the backend.
+- `leave_balance` returns paginated employee leave balance rows calculated dynamically on the backend. Each row includes `employee`, `year`, `annual`, `sick`, `special`, `maternity`, and `unpaid` balance breakdowns (same shape as `GET /api/leave-balances`, see `.claude/api/LEAVE_API.md`).
 
 ---
 
@@ -174,6 +175,20 @@ Same filters as `GET /api/reports/leave`.
 - `leave-approved-report.xlsx`
 - `leave-rejected-report.xlsx`
 - `leave-balance-report.xlsx`
+
+### `leave-balance-report.xlsx` Columns
+
+- Employee ID
+- Employee Name
+- Annual Used
+- Annual Remaining
+- Sick Used
+- Sick Remaining
+- Special Used
+- Special Remaining
+- Maternity Entitlement
+- Maternity Remaining
+- Unpaid Rule
 
 ---
 

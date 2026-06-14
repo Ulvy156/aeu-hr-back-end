@@ -4,8 +4,9 @@ namespace App\Services;
 
 use App\Exceptions\ApiException;
 use App\Models\Employee;
-use App\Support\FileStorage;
 use App\Models\User;
+use App\Support\FileStorage;
+use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -235,8 +236,27 @@ class EmployeeService
             'last_working_date' => $data['last_working_date'] ?? null,
             'base_salary' => $data['base_salary'],
             'employment_status' => $data['employment_status'],
+            'probation_end_date' => $this->resolveProbationEndDate($data),
             'emergency_contact' => $data['emergency_contact'] ?? null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function resolveProbationEndDate(array $data): ?string
+    {
+        if ($data['employment_status'] !== 'probation') {
+            return null;
+        }
+
+        if (! empty($data['probation_end_date'])) {
+            return $data['probation_end_date'];
+        }
+
+        return Carbon::parse($data['join_date'])
+            ->addMonths((int) config('hr.employment.probation_period_months', 3))
+            ->toDateString();
     }
 
     public function generateEmployeeId(): string
@@ -271,12 +291,13 @@ class EmployeeService
             'last_working_date' => $employee->last_working_date?->toDateString(),
             'base_salary' => (string) $employee->base_salary,
             'employment_status' => $employee->employment_status,
+            'probation_end_date' => $employee->probation_end_date?->toDateString(),
             'user_status' => $employee->user?->status,
         ];
     }
 
     protected function userStatusFromEmploymentStatus(string $employmentStatus): string
     {
-        return $employmentStatus === 'active' ? 'active' : 'inactive';
+        return in_array($employmentStatus, ['active', 'probation'], true) ? 'active' : 'inactive';
     }
 }

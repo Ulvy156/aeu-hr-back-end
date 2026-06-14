@@ -127,6 +127,7 @@ Soft-deleted users are excluded from the default list.
         "employee_id": "EMP300",
         "full_name": "Finance User",
         "employment_status": "active",
+        "probation_end_date": null,
         "department": {
           "id": 1,
           "name": "Finance"
@@ -170,7 +171,7 @@ Create a user and assign exactly one role.
 {
   "name": "CEO User",
   "email": "ceo.user@example.com",
-  "password": "secretpass123",
+  "password": "Secretpass-123",
   "status": "active",
   "roles": ["ceo"]
 }
@@ -180,7 +181,7 @@ Create a user and assign exactly one role.
 
 - `name`: required string, max `255`
 - `email`: required valid email, unique in `users`
-- `password`: required string, min `8`, max `255`
+- `password`: required string, max `255`, strong password (min `8` chars, must contain letters, mixed case, numbers, and symbols)
 - `status`: required enum, `active` or `inactive`
 - `roles`: required array, must contain exactly one role name
 - `roles.*`: required string, must exist in Spatie `roles` table
@@ -238,6 +239,7 @@ Return one user with their single assigned role, effective permissions, and link
       "employee_id": "EMP301",
       "full_name": "HR User",
       "employment_status": "active",
+      "probation_end_date": null,
       "department": {
         "id": 2,
         "name": "Operations"
