@@ -26,6 +26,8 @@ return new class extends Migration
             $table->text('correction_reason')->nullable();
             $table->foreignId('corrected_by')->nullable()->index()->constrained('users')->nullOnDelete();
             $table->timestamp('corrected_at')->nullable();
+            $table->foreignId('proxied_clock_in_by')->nullable()->index()->constrained('users')->nullOnDelete();
+            $table->foreignId('proxied_clock_out_by')->nullable()->index()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
             $table->unique(['employee_id', 'attendance_date']);

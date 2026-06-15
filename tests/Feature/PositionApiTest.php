@@ -101,7 +101,7 @@ test('position deletion is rejected when employees are assigned to it', function
         'position_id' => $position->id,
         'join_date' => now()->toDateString(),
         'base_salary' => 500,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $hr = User::factory()->create();

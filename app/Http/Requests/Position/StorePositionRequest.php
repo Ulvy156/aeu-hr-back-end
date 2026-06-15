@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Position;
 
+use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class StorePositionRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
-            'status' => ['required', Rule::in(['active', 'inactive'])],
+            'status' => ['required', Rule::enum(Status::class)],
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentStatus;
 use App\Exceptions\ApiException;
 use App\Models\Announcement;
 use App\Models\AnnouncementTarget;
@@ -509,7 +510,7 @@ class AnnouncementService
     {
         $targets = $announcement->targets()->get();
 
-        $query = Employee::query()->whereIn('employment_status', ['active', 'probation']);
+        $query = Employee::query()->whereIn('employment_status', [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value]);
 
         if ($targets->contains(fn (AnnouncementTarget $target) => $target->target_type === 'all')) {
             return $query;

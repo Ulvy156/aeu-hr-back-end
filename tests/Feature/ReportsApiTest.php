@@ -56,7 +56,7 @@ function reportEmployeeUser(string $role = 'employee', array $userOverrides = []
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 3000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ], $employeeOverrides));
 
     return [$user, $employee];

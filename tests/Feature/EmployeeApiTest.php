@@ -62,12 +62,36 @@ function employeePayload(User $linkedUser, array $overrides = []): array
         'gender' => 'female',
         'join_date' => '2026-05-01',
         'base_salary' => '1200.50',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ], $overrides);
+}
+
+/**
+ * Create a root employee (no manager of their own) to be referenced as
+ * `manager_id` by other employees in tests.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function createManagerEmployee(array $overrides = []): Employee
+{
+    $managerUser = linkableUser([
+        'name' => 'Default Manager',
+        'email' => 'default.manager@example.com',
+    ]);
+
+    return Employee::query()->create(array_merge([
+        'user_id' => $managerUser->id,
+        'employee_id' => 'MGR-00001',
+        'full_name' => 'Default Manager',
+        'join_date' => '2026-01-01',
+        'base_salary' => '2000.00',
+        'employment_status' => 'full-time',
+    ], $overrides));
 }
 
 test('admin and hr can create employee with a valid existing user id', function (string $role) {
     [$department, $position] = employeeDepartmentAndPosition();
+    $manager = createManagerEmployee();
     $linkedUser = linkableUser([
         'name' => 'Original Linked User',
         'email' => 'original.linked@example.com',
@@ -80,6 +104,7 @@ test('admin and hr can create employee with a valid existing user id', function 
         'full_name' => 'Updated Linked Employee',
         'department_id' => $department->id,
         'position_id' => $position->id,
+        'manager_id' => $manager->id,
         'profile_photo' => UploadedFile::fake()->image('avatar.jpg'),
     ]), [
         'Accept' => 'application/json',
@@ -93,11 +118,13 @@ test('admin and hr can create employee with a valid existing user id', function 
         ->assertJsonPath('data.user.name', 'Updated Linked Employee')
         ->assertJsonPath('data.user.email', 'original.linked@example.com')
         ->assertJsonPath('data.user.status', 'active')
+        ->assertJsonPath('data.manager.id', $manager->id)
         ->assertJsonMissingPath('data.user.roles');
 
     $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
 
     expect($employee->employee_id)->toBe('EMP-00001')
+        ->and($employee->manager_id)->toBe($manager->id)
         ->and($employee->user->name)->toBe('Updated Linked Employee')
         ->and($employee->user->email)->toBe('original.linked@example.com')
         ->and($employee->user->hasRole('employee'))->toBeTrue();
@@ -106,11 +133,13 @@ test('admin and hr can create employee with a valid existing user id', function 
 })->with(['admin', 'hr']);
 
 test('creating a probation employee defaults probation_end_date to join_date plus the configured period', function () {
+    $manager = createManagerEmployee();
     $linkedUser = linkableUser();
     [, $token] = employeeActor('hr');
 
     $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
         'employment_status' => 'probation',
+        'manager_id' => $manager->id,
     ]));
 
     $response
@@ -125,17 +154,64 @@ test('creating a probation employee defaults probation_end_date to join_date plu
 });
 
 test('creating a probation employee allows hr to override probation_end_date', function () {
+    $manager = createManagerEmployee();
     $linkedUser = linkableUser();
     [, $token] = employeeActor('hr');
 
     $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
         'employment_status' => 'probation',
         'probation_end_date' => '2026-06-30',
+        'manager_id' => $manager->id,
     ]));
 
     $response
         ->assertCreated()
         ->assertJsonPath('data.probation_end_date', '2026-06-30');
+});
+
+test('employee create fails when manager_id is missing for a non-ceo user', function () {
+    $linkedUser = linkableUser();
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee create allows missing manager_id when the linked user holds the ceo role', function () {
+    $linkedUser = linkableUser([
+        'name' => 'Chief Executive',
+        'email' => 'ceo.user@example.com',
+    ]);
+    $linkedUser->assignRole('ceo');
+    [, $token] = employeeActor('admin');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'full_name' => 'Chief Executive',
+        ]))
+        ->assertCreated()
+        ->assertJsonPath('data.manager', null);
+
+    $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
+
+    expect($employee->manager_id)->toBeNull();
+});
+
+test('employee create fails when manager_id does not reference an existing employee', function () {
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'manager_id' => 999999,
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('manager_id');
 });
 
 test('employee create fails when user id is missing', function () {
@@ -146,7 +222,7 @@ test('employee create fails when user id is missing', function () {
             'full_name' => 'Missing User Id',
             'join_date' => '2026-05-01',
             'base_salary' => '900.00',
-            'employment_status' => 'active',
+            'employment_status' => 'full-time',
         ])
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Validation failed')
@@ -173,7 +249,7 @@ test('employee create fails when selected user already has an employee profile',
         'full_name' => 'Existing Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     [, $token] = employeeActor('hr');
@@ -212,7 +288,7 @@ test('employee update cannot change user id', function () {
         'full_name' => 'Locked User',
         'join_date' => '2026-05-01',
         'base_salary' => '750.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     [, $token] = employeeActor('hr');
@@ -223,11 +299,122 @@ test('employee update cannot change user id', function () {
             'full_name' => 'Locked User',
             'join_date' => '2026-05-01',
             'base_salary' => '750.00',
-            'employment_status' => 'active',
+            'employment_status' => 'full-time',
         ])
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Validation failed')
         ->assertJsonValidationErrors('user_id');
+});
+
+test('employee update fails when manager_id is missing for a non-ceo employee', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser();
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Employee Without Manager',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'manager_id' => $manager->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => $employee->full_name,
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee update allows missing manager_id for the ceo', function () {
+    $linkedUser = linkableUser([
+        'name' => 'Chief Executive',
+        'email' => 'update.ceo@example.com',
+    ]);
+    $linkedUser->assignRole('ceo');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Chief Executive',
+        'join_date' => '2026-05-01',
+        'base_salary' => '5000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('admin');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => 'Chief Executive',
+            'join_date' => '2026-05-01',
+            'base_salary' => '5000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.manager', null);
+});
+
+test('employee update rejects manager_id that points to itself or creates a circular relationship', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $top = createManagerEmployee();
+
+    $linkedUser = linkableUser([
+        'name' => 'Middle Manager',
+        'email' => 'middle.manager@example.com',
+    ]);
+    $middle = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Middle Manager',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'manager_id' => $top->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1500.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    // Cannot be its own manager.
+    $this->withToken($token)
+        ->putJson("/api/employees/{$middle->id}", [
+            'full_name' => $middle->full_name,
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $middle->id,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1500.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('manager_id');
+
+    // Promoting the top manager to report to its own subordinate creates a cycle.
+    $this->withToken($token)
+        ->putJson("/api/employees/{$top->id}", [
+            'full_name' => $top->full_name,
+            'manager_id' => $middle->id,
+            'join_date' => $top->join_date->toDateString(),
+            'base_salary' => $top->base_salary,
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('manager_id');
 });
 
 test('normal employee cannot create employee profile', function () {
@@ -286,7 +473,7 @@ test('employee list filtering works for hr and employees cannot access employee 
         'position_id' => $position->id,
         'join_date' => '2026-05-01',
         'base_salary' => '700.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $bobUser = linkableUser([
@@ -306,7 +493,7 @@ test('employee list filtering works for hr and employees cannot access employee 
     [, $hrToken] = employeeActor('hr');
 
     $this->withToken($hrToken)
-        ->getJson("/api/employees?department_id={$department->id}&employment_status=active&search=Alice")
+        ->getJson("/api/employees?department_id={$department->id}&employment_status=full-time&search=Alice")
         ->assertSuccessful()
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.employee_id', 'EMP-00001');
@@ -330,7 +517,7 @@ test('employee dropdown search returns lightweight matches for admin hr and ceo 
         'full_name' => 'Vy Rith',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $betaUser = linkableUser([
@@ -343,7 +530,7 @@ test('employee dropdown search returns lightweight matches for admin hr and ceo 
         'full_name' => 'Borey',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     [, $token] = employeeActor($role);
@@ -370,7 +557,7 @@ test('employee dropdown search supports employee id matching case insensitively 
         'full_name' => 'Target Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     [, $token] = employeeActor('hr');
@@ -405,7 +592,7 @@ test('employee dropdown search is limited to 15 results and ordered by full name
             'full_name' => sprintf('Aaron %02d', 17 - $index),
             'join_date' => '2026-05-01',
             'base_salary' => '1000.00',
-            'employment_status' => 'active',
+            'employment_status' => 'full-time',
         ]);
     }
 
@@ -442,7 +629,7 @@ test('default employee list excludes soft deleted employees', function () {
         'full_name' => 'Visible Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $deletedUser = linkableUser([
@@ -455,7 +642,7 @@ test('default employee list excludes soft deleted employees', function () {
         'full_name' => 'Deleted Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
     $deletedEmployee->delete();
 
@@ -492,7 +679,7 @@ test('deleting an employee soft deletes the employee and linked user without har
         'full_name' => 'Delete Target Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
         'profile_photo' => UploadedFile::fake()->image('avatar.jpg')->store('employee-profile-photos', config('filesystems.cloud')),
     ]);
 
@@ -516,6 +703,7 @@ test('deleting an employee soft deletes the employee and linked user without har
 
 test('employee update syncs linked user name and status and audits salary changes', function () {
     [$department, $position] = employeeDepartmentAndPosition();
+    $manager = createManagerEmployee();
     $linkedUser = linkableUser([
         'name' => 'Original Name',
         'email' => 'original.employee@example.com',
@@ -528,9 +716,10 @@ test('employee update syncs linked user name and status and audits salary change
         'full_name' => 'Original Name',
         'department_id' => $department->id,
         'position_id' => $position->id,
+        'manager_id' => $manager->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     [, $token] = employeeActor('hr');
@@ -540,6 +729,7 @@ test('employee update syncs linked user name and status and audits salary change
             'full_name' => 'Updated Name',
             'department_id' => $department->id,
             'position_id' => $position->id,
+            'manager_id' => $manager->id,
             'join_date' => '2026-05-01',
             'last_working_date' => '2026-05-20',
             'base_salary' => '1200.50',
@@ -549,6 +739,7 @@ test('employee update syncs linked user name and status and audits salary change
         ->assertJsonPath('data.full_name', 'Updated Name')
         ->assertJsonPath('data.user.email', 'original.employee@example.com')
         ->assertJsonPath('data.user.status', 'inactive')
+        ->assertJsonPath('data.manager.id', $manager->id)
         ->assertJsonMissingPath('data.user.roles');
 
     $activity = Activity::query()

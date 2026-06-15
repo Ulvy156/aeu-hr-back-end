@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Employee;
 
+use App\Enums\EmploymentStatus;
+use App\Models\Employee;
 use App\Models\Position;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -30,13 +32,29 @@ class UpdateEmployeeRequest extends FormRequest
             'address' => ['nullable', 'string'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'position_id' => ['nullable', 'integer', 'exists:positions,id'],
+            'manager_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('employees', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
+                Rule::requiredIf(fn () => ! $this->isUpdatingCeo()),
+            ],
             'join_date' => ['required', 'date'],
             'last_working_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'base_salary' => ['required', 'numeric', 'min:0'],
-            'employment_status' => ['required', Rule::in(['active', 'probation', 'resigned', 'terminated'])],
+            'employment_status' => ['required', Rule::enum(EmploymentStatus::class)],
             'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'manager_id.required' => 'A manager is required for this employee.',
         ];
     }
 
@@ -50,11 +68,11 @@ class UpdateEmployeeRequest extends FormRequest
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');
 
-                if (in_array($employmentStatus, ['active', 'probation'], true) && $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true) && $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Active employees must not have a last working date.');
                 }
 
-                if (in_array($employmentStatus, ['resigned', 'terminated'], true) && ! $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::Resigned->value, EmploymentStatus::Terminated->value], true) && ! $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Resigned or terminated employees must have a last working date.');
                 }
 
@@ -72,6 +90,68 @@ class UpdateEmployeeRequest extends FormRequest
                     $validator->errors()->add('position_id', 'The selected position does not belong to the selected department.');
                 }
             },
+            function (Validator $validator): void {
+                if (! $this->filled('manager_id')) {
+                    return;
+                }
+
+                $employee = $this->route('employee');
+
+                if (! $employee instanceof Employee) {
+                    return;
+                }
+
+                $managerId = $this->integer('manager_id');
+
+                if ($managerId === $employee->id) {
+                    $validator->errors()->add('manager_id', 'An employee cannot be their own manager.');
+
+                    return;
+                }
+
+                $visited = [];
+                $currentId = $managerId;
+
+                for ($i = 0; $i < 50; $i++) {
+                    if ($currentId === $employee->id) {
+                        $validator->errors()->add('manager_id', 'This change would create a circular reporting relationship.');
+
+                        break;
+                    }
+
+                    if (in_array($currentId, $visited, true)) {
+                        break;
+                    }
+
+                    $visited[] = $currentId;
+
+                    $managerOfCurrent = Employee::query()->whereKey($currentId)->value('manager_id');
+
+                    if ($managerOfCurrent === null) {
+                        break;
+                    }
+
+                    $currentId = (int) $managerOfCurrent;
+                }
+            },
         ];
+    }
+
+    /**
+     * Determine whether the employee being updated holds the `ceo` role
+     * (via their linked user account), which sits at the top of the
+     * reporting hierarchy and therefore does not require a manager.
+     */
+    protected function isUpdatingCeo(): bool
+    {
+        $employee = $this->route('employee');
+
+        if (! $employee instanceof Employee) {
+            return false;
+        }
+
+        $employee->loadMissing('user');
+
+        return (bool) $employee->user?->hasRole('ceo');
     }
 }

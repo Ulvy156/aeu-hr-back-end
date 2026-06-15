@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
@@ -732,7 +733,7 @@ class PayrollService
     {
         return array_fill_keys(
             PublicHoliday::query()
-                ->where('status', 'active')
+                ->where('status', Status::Active->value)
                 ->whereDate('holiday_date', '>=', $periodStart->toDateString())
                 ->whereDate('holiday_date', '<=', $periodEnd->toDateString())
                 ->pluck('holiday_date')

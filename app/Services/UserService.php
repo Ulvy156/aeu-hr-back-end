@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Status;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -207,7 +208,7 @@ class UserService
             }
 
             $user->update([
-                'status' => 'inactive',
+                'status' => Status::Inactive->value,
             ]);
             $user->tokens()->delete();
             $user->delete();
@@ -322,12 +323,12 @@ class UserService
         return [
             'name' => $user->name,
             'email' => $user->email,
-            'status' => $user->status,
+            'status' => $user->status->value,
             'roles' => $user->relationLoaded('roles')
                 ? $user->roles->pluck('name')->sort()->values()->all()
                 : $user->getRoleNames()->sort()->values()->all(),
             'employee_id' => $user->employee?->employee_id,
-            'employee_status' => $user->employee?->employment_status,
+            'employee_status' => $user->employee?->employment_status?->value,
         ];
     }
 

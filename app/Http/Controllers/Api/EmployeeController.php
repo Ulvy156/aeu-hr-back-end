@@ -7,6 +7,7 @@ use App\Http\Requests\Employee\IndexEmployeeRequest;
 use App\Http\Requests\Employee\SearchEmployeeRequest;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
+use App\Http\Resources\EmployeeHierarchyNodeResource;
 use App\Http\Resources\EmployeeResource;
 use App\Models\Employee;
 use App\Services\EmployeeService;
@@ -65,11 +66,19 @@ class EmployeeController extends Controller
     {
         $this->authorize('view', $employee);
 
-        $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
+        $employee->loadMissing(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
 
         return ApiResponse::success(
             data: EmployeeResource::make($employee)->resolve(request()),
             message: 'Employee fetched successfully.',
+        );
+    }
+
+    public function hierarchy(): JsonResponse
+    {
+        return ApiResponse::success(
+            data: EmployeeHierarchyNodeResource::collection($this->employeeService->tree())->resolve(request()),
+            message: 'Employee hierarchy fetched successfully.',
         );
     }
 

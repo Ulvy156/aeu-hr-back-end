@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\PublicHoliday;
 
+use App\Enums\Status;
 use App\Models\PublicHoliday;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -24,7 +25,7 @@ class UpdatePublicHolidayRequest extends FormRequest
             'holiday_date' => ['required', 'date_format:Y-m-d'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', Rule::in(['active', 'inactive'])],
+            'status' => ['required', Rule::enum(Status::class)],
         ];
     }
 

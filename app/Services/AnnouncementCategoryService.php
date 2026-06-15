@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Status;
 use App\Models\AnnouncementCategory;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -90,13 +91,13 @@ class AnnouncementCategoryService
         ?string $userAgent = null,
     ): AnnouncementCategory {
         return DB::transaction(function () use ($category, $actor, $ipAddress, $userAgent): AnnouncementCategory {
-            if ($category->status === 'inactive') {
+            if ($category->status === Status::Inactive) {
                 return $category;
             }
 
             $oldValues = $this->auditAttributes($category);
 
-            $category->update(['status' => 'inactive']);
+            $category->update(['status' => Status::Inactive->value]);
 
             $this->auditLogService->log(
                 action: 'deactivate',
@@ -121,7 +122,7 @@ class AnnouncementCategoryService
         return [
             'name' => $category->name,
             'description' => $category->description,
-            'status' => $category->status,
+            'status' => $category->status->value,
         ];
     }
 }

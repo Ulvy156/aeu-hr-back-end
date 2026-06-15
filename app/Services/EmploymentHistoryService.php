@@ -25,6 +25,7 @@ class EmploymentHistoryService
         array $oldAttributes,
         ?Department $oldDepartment,
         ?Position $oldPosition,
+        ?Employee $oldManager,
         ?User $actor,
         ?string $effectiveDate = null,
     ): void {
@@ -39,8 +40,8 @@ class EmploymentHistoryService
                 continue;
             }
 
-            $oldSnapshot = $this->resolveValue($field, $old, $employee, $oldDepartment, $oldPosition, isOld: true);
-            $newSnapshot = $this->resolveValue($field, $new, $employee, $oldDepartment, $oldPosition, isOld: false);
+            $oldSnapshot = $this->resolveValue($field, $old, $employee, $oldDepartment, $oldPosition, $oldManager, isOld: true);
+            $newSnapshot = $this->resolveValue($field, $new, $employee, $oldDepartment, $oldPosition, $oldManager, isOld: false);
 
             $rows[] = [
                 'employee_id' => $employee->id,
@@ -80,7 +81,7 @@ class EmploymentHistoryService
     protected function hasChanged(string $field, mixed $old, mixed $new): bool
     {
         return match ($field) {
-            EmploymentHistory::FIELD_DEPARTMENT_ID, EmploymentHistory::FIELD_POSITION_ID => $this->normalizeId($old) !== $this->normalizeId($new),
+            EmploymentHistory::FIELD_DEPARTMENT_ID, EmploymentHistory::FIELD_POSITION_ID, EmploymentHistory::FIELD_MANAGER_ID => $this->normalizeId($old) !== $this->normalizeId($new),
             EmploymentHistory::FIELD_BASE_SALARY => number_format((float) $old, 2, '.', '') !== number_format((float) $new, 2, '.', ''),
             EmploymentHistory::FIELD_PROBATION_END_DATE => $this->normalizeDate($old) !== $this->normalizeDate($new),
             default => $old !== $new,
@@ -96,11 +97,13 @@ class EmploymentHistoryService
         Employee $employee,
         ?Department $oldDepartment,
         ?Position $oldPosition,
+        ?Employee $oldManager,
         bool $isOld,
     ): ?array {
         return match ($field) {
             EmploymentHistory::FIELD_DEPARTMENT_ID => $this->resolveDepartmentSnapshot($this->normalizeId($rawValue), $employee, $oldDepartment, $isOld),
             EmploymentHistory::FIELD_POSITION_ID => $this->resolvePositionSnapshot($this->normalizeId($rawValue), $employee, $oldPosition, $isOld),
+            EmploymentHistory::FIELD_MANAGER_ID => $this->resolveManagerSnapshot($this->normalizeId($rawValue), $employee, $oldManager, $isOld),
             EmploymentHistory::FIELD_BASE_SALARY => ['value' => $rawValue === null ? null : (float) $rawValue],
             EmploymentHistory::FIELD_EMPLOYMENT_STATUS => ['value' => $rawValue],
             EmploymentHistory::FIELD_PROBATION_END_DATE => $this->resolveDateSnapshot($rawValue, $isOld),
@@ -156,6 +159,24 @@ class EmploymentHistoryService
         };
 
         return ['id' => $id, 'name' => $position?->name];
+    }
+
+    /**
+     * @return array{id: int, name: ?string}|null
+     */
+    protected function resolveManagerSnapshot(?int $id, Employee $employee, ?Employee $oldManager, bool $isOld): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        $manager = match (true) {
+            $employee->manager?->id === $id => $employee->manager,
+            $isOld && $oldManager?->id === $id => $oldManager,
+            default => Employee::withTrashed()->find($id),
+        };
+
+        return ['id' => $id, 'name' => $manager?->full_name];
     }
 
     protected function normalizeId(mixed $value): ?int

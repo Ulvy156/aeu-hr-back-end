@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Status;
 use App\Models\AnnouncementCategory;
 use Illuminate\Database\Seeder;
 
@@ -21,7 +22,7 @@ class AnnouncementCategorySeeder extends Seeder
         ];
 
         foreach ($categories as $name) {
-            AnnouncementCategory::query()->updateOrCreate(['name' => $name], ['status' => 'active']);
+            AnnouncementCategory::query()->updateOrCreate(['name' => $name], ['status' => Status::Active->value]);
         }
     }
 }

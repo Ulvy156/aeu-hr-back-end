@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\Status;
 use App\Exports\ArrayReportExport;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
@@ -331,7 +332,7 @@ class LeaveReportService
     {
         return array_fill_keys(
             PublicHoliday::query()
-                ->where('status', 'active')
+                ->where('status', Status::Active->value)
                 ->whereDate('holiday_date', '>=', $start->toDateString())
                 ->whereDate('holiday_date', '<=', $end->toDateString())
                 ->pluck('holiday_date')

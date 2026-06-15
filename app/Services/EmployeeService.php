@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentStatus;
+use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\User;
@@ -76,6 +78,49 @@ class EmployeeService
     }
 
     /**
+     * Build the full reporting-line org chart as a tree of root employees
+     * (those with no manager), each with a `children` relation populated
+     * recursively.
+     *
+     * @return array<int, Employee>
+     */
+    public function tree(): array
+    {
+        $employees = Employee::query()
+            ->select(['id', 'employee_id', 'full_name', 'manager_id', 'department_id', 'position_id', 'profile_photo'])
+            ->with(['department:id,name', 'position:id,name'])
+            ->orderBy('full_name')
+            ->get();
+
+        $childrenByManager = [];
+        $roots = [];
+
+        foreach ($employees as $employee) {
+            if ($employee->manager_id === null) {
+                $roots[] = $employee;
+            } else {
+                $childrenByManager[$employee->manager_id][] = $employee;
+            }
+        }
+
+        $attachChildren = function (Employee $employee) use (&$attachChildren, $childrenByManager): void {
+            $children = $childrenByManager[$employee->id] ?? [];
+
+            foreach ($children as $child) {
+                $attachChildren($child);
+            }
+
+            $employee->setRelation('children', collect($children));
+        };
+
+        foreach ($roots as $root) {
+            $attachChildren($root);
+        }
+
+        return $roots;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function create(
@@ -113,7 +158,7 @@ class EmployeeService
                     : null,
             ]);
 
-            $employee->load(['user:id,name,email,status', 'department', 'position']);
+            $employee->load(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
 
             $this->auditLogService->log(
                 action: 'create',
@@ -160,7 +205,7 @@ class EmployeeService
             }
 
             $employee->update($attributes);
-            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position']);
+            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
 
             $this->auditLogService->log(
                 action: 'update',
@@ -189,7 +234,7 @@ class EmployeeService
 
             if ($employee->user && ! $employee->user->trashed()) {
                 $employee->user->update([
-                    'status' => 'inactive',
+                    'status' => Status::Inactive->value,
                 ]);
                 $employee->user->tokens()->delete();
                 $employee->user->delete();
@@ -232,6 +277,7 @@ class EmployeeService
             'address' => $data['address'] ?? null,
             'department_id' => $data['department_id'] ?? null,
             'position_id' => $data['position_id'] ?? null,
+            'manager_id' => $data['manager_id'] ?? null,
             'join_date' => $data['join_date'],
             'last_working_date' => $data['last_working_date'] ?? null,
             'base_salary' => $data['base_salary'],
@@ -246,7 +292,7 @@ class EmployeeService
      */
     protected function resolveProbationEndDate(array $data): ?string
     {
-        if ($data['employment_status'] !== 'probation') {
+        if ($data['employment_status'] !== EmploymentStatus::Probation->value) {
             return null;
         }
 
@@ -319,17 +365,20 @@ class EmployeeService
             'email' => $employee->user?->email,
             'department_id' => $employee->department_id,
             'position_id' => $employee->position_id,
+            'manager_id' => $employee->manager_id,
             'join_date' => $employee->join_date?->toDateString(),
             'last_working_date' => $employee->last_working_date?->toDateString(),
             'base_salary' => (string) $employee->base_salary,
-            'employment_status' => $employee->employment_status,
+            'employment_status' => $employee->employment_status->value,
             'probation_end_date' => $employee->probation_end_date?->toDateString(),
-            'user_status' => $employee->user?->status,
+            'user_status' => $employee->user?->status?->value,
         ];
     }
 
     protected function userStatusFromEmploymentStatus(string $employmentStatus): string
     {
-        return in_array($employmentStatus, ['active', 'probation'], true) ? 'active' : 'inactive';
+        return in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true)
+            ? Status::Active->value
+            : Status::Inactive->value;
     }
 }

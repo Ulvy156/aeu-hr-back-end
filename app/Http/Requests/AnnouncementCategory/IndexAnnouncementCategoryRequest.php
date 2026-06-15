@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\AnnouncementCategory;
 
+use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -20,7 +21,7 @@ class IndexAnnouncementCategoryRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:255'],
-            'status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'status' => ['nullable', Rule::enum(Status::class)],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

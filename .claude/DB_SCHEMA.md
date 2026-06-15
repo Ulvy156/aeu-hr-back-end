@@ -431,7 +431,7 @@ CREATE TABLE employees (
     join_date DATE NOT NULL,
     last_working_date DATE NULL,
     base_salary DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-    employment_status ENUM('active', 'resigned', 'terminated') DEFAULT 'active',
+    employment_status ENUM('full-time', 'resigned', 'terminated') DEFAULT 'full-time',
     emergency_contact TEXT NULL,
     profile_photo VARCHAR(255) NULL,
     created_at TIMESTAMP NULL,
@@ -807,7 +807,7 @@ employees.gender:
 - other
 
 employees.employment_status:
-- active
+- full-time
 - resigned
 - terminated
 

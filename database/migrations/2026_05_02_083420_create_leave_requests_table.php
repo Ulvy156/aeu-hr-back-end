@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('leave_requests', function (Blueprint $table) {
             $table->id();
             $table->foreignId('employee_id')->index()->constrained()->cascadeOnDelete();
-            $table->enum('leave_type', ['annual', 'sick', 'maternity', 'unpaid'])->index();
+            $table->enum('leave_type', ['annual', 'sick', 'maternity', 'unpaid', 'special'])->index();
             $table->date('start_date')->index();
             $table->date('end_date')->index();
             $table->enum('duration_type', ['full_day', 'half_day'])->default('full_day');

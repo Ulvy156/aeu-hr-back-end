@@ -42,7 +42,7 @@ test('admin can list users with search filters and roles without exposing sensit
         'position_id' => $position->id,
         'join_date' => now()->toDateString(),
         'base_salary' => 1200,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     User::factory()->create([
@@ -83,7 +83,7 @@ test('admin can filter users without linked employee profiles', function () {
         'full_name' => 'Linked User',
         'join_date' => now()->toDateString(),
         'base_salary' => 1000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $availableUser = User::factory()->create([
@@ -124,7 +124,7 @@ test('admin can filter users without linked employee profiles while excluding ad
         'full_name' => 'Linked User',
         'join_date' => now()->toDateString(),
         'base_salary' => 1000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $adminCandidate = User::factory()->create([
@@ -329,7 +329,7 @@ test('admin can view user detail with permissions and linked employee profile', 
         'position_id' => $position->id,
         'join_date' => now()->toDateString(),
         'base_salary' => 1000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $admin = User::factory()->create();
@@ -523,7 +523,7 @@ test('deleting a user soft deletes the user and linked employee without hard del
         'full_name' => 'Original User',
         'join_date' => now()->toDateString(),
         'base_salary' => 1000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $admin = User::factory()->create();

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Read-only career timeline for an employee: department transfers, position changes, salary changes, employment status transitions, and probation end date changes.
+Read-only career timeline for an employee: department transfers, position changes, salary changes, employment status transitions, reporting manager changes, and probation end date changes.
 
 `PUT /api/employees/{employee}` (see `.claude/api/EMPLOYEE_API.md`) does not create rows here — routine employee updates (including HR fixing incorrect data) must not pollute this timeline. Rows are created automatically when an Employee Upgrade Request is approved — see `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md`. This is in addition to, not a replacement for, the generic audit log (`.claude/api/AUDIT_LOG_API.md`), which does record every employee update.
 
@@ -13,6 +13,7 @@ Read-only career timeline for an employee: department transfers, position change
 - `base_salary`
 - `employment_status`
 - `probation_end_date`
+- `manager_id`
 
 Changes to other employee fields (name, contact details, photo, etc.) are not recorded here.
 
@@ -43,7 +44,7 @@ Return a paginated, most-recent-first list of employment history rows for one em
 
 ### Query Parameters
 
-- `field`: optional string, one of `department_id`, `position_id`, `base_salary`, `employment_status`, `probation_end_date`
+- `field`: optional string, one of `department_id`, `position_id`, `base_salary`, `employment_status`, `probation_end_date`, `manager_id`
 - `date_from`: optional date, filters `effective_date >= date_from`
 - `date_to`: optional date, filters `effective_date <= date_to`
 - `per_page`: optional integer, min 1, max 100, default 15
@@ -86,8 +87,9 @@ Return a paginated, most-recent-first list of employment history rows for one em
 ### `old_value` / `new_value` Shapes
 
 - `department_id` / `position_id` (FK fields): `{ "id": <int>, "name": "<string|null>" }`, or bare `null` when the employee had no department/position before this change. `name` is a point-in-time snapshot — it remains readable even if the department/position is later renamed or soft-deleted.
+- `manager_id`: `{ "id": <int>, "name": "<string|null>" }`, or bare `null` when the employee had no manager before this change. `name` is the manager's `full_name` at the time of the change, a point-in-time snapshot — it remains readable even if the manager is later renamed or soft-deleted.
 - `base_salary`: `{ "value": <number> }`
-- `employment_status`: `{ "value": "<active|probation|resigned|terminated>" }`
+- `employment_status`: `{ "value": "<full-time|probation|resigned|terminated>" }`
 - `probation_end_date`: `{ "value": "<YYYY-MM-DD>|null" }`, or `old_value` is bare `null` when the employee had no probation end date before this change.
 
 ### Validation Notes

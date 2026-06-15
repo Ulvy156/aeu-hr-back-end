@@ -58,7 +58,7 @@ function announcementEmployee(string $role = 'employee', array $permissions = []
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ], $employeeOverrides));
 
     return [$user, $employee, $user->createToken('test-device')->plainTextToken];

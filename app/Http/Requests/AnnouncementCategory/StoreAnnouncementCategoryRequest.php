@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\AnnouncementCategory;
 
+use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class StoreAnnouncementCategoryRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255', 'unique:announcement_categories,name'],
             'description' => ['nullable', 'string'],
-            'status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'status' => ['nullable', Rule::enum(Status::class)],
         ];
     }
 }

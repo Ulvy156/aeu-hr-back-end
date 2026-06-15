@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Employee;
 
+use App\Enums\EmploymentStatus;
 use App\Models\Position;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,10 +38,16 @@ class StoreEmployeeRequest extends FormRequest
             'address' => ['nullable', 'string'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'position_id' => ['nullable', 'integer', 'exists:positions,id'],
+            'manager_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('employees', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
+                Rule::requiredIf(fn () => ! $this->isCreatingCeo()),
+            ],
             'join_date' => ['required', 'date'],
             'last_working_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'base_salary' => ['required', 'numeric', 'min:0'],
-            'employment_status' => ['required', Rule::in(['active', 'probation', 'resigned', 'terminated'])],
+            'employment_status' => ['required', Rule::enum(EmploymentStatus::class)],
             'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -53,7 +61,24 @@ class StoreEmployeeRequest extends FormRequest
     {
         return [
             'user_id.unique' => 'The selected user already has an employee profile.',
+            'manager_id.required' => 'A manager is required for this employee.',
         ];
+    }
+
+    /**
+     * Determine whether the user account being linked to this employee
+     * holds the `ceo` role, which sits at the top of the reporting
+     * hierarchy and therefore does not require a manager.
+     */
+    protected function isCreatingCeo(): bool
+    {
+        if (! $this->filled('user_id')) {
+            return false;
+        }
+
+        $user = User::query()->find($this->input('user_id'));
+
+        return (bool) $user?->hasRole('ceo');
     }
 
     /**
@@ -66,11 +91,11 @@ class StoreEmployeeRequest extends FormRequest
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');
 
-                if (in_array($employmentStatus, ['active', 'probation'], true) && $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true) && $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Active employees must not have a last working date.');
                 }
 
-                if (in_array($employmentStatus, ['resigned', 'terminated'], true) && ! $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::Resigned->value, EmploymentStatus::Terminated->value], true) && ! $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Resigned or terminated employees must have a last working date.');
                 }
 

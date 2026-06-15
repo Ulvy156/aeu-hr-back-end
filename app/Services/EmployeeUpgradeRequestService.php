@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentStatus;
 use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\EmployeeUpgradeRequest;
@@ -99,7 +100,7 @@ class EmployeeUpgradeRequestService
             }
 
             $employee = Employee::query()
-                ->with(['user:id,name,email,status', 'department', 'position'])
+                ->with(['user:id,name,email,status', 'department', 'position', 'manager'])
                 ->whereKey($upgradeRequest->employee_id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -111,6 +112,7 @@ class EmployeeUpgradeRequestService
 
             $oldDepartment = $employee->department;
             $oldPosition = $employee->position;
+            $oldManager = $employee->manager;
             $oldEmployeeSnapshot = $this->employeeAuditSnapshot($employee);
 
             $changes = collect($upgradeRequest->proposed_values)
@@ -118,13 +120,14 @@ class EmployeeUpgradeRequestService
                 ->all();
 
             $this->employeeService->applyEmploymentFieldChanges($employee, $changes);
-            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position']);
+            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager']);
 
             $this->employmentHistoryService->recordChanges(
                 employee: $employee,
                 oldAttributes: $oldAttributes,
                 oldDepartment: $oldDepartment,
                 oldPosition: $oldPosition,
+                oldManager: $oldManager,
                 actor: $actor,
                 effectiveDate: $upgradeRequest->effective_date?->toDateString(),
             );
@@ -265,8 +268,9 @@ class EmployeeUpgradeRequestService
     protected function normalizeFieldValue(string $field, mixed $value): mixed
     {
         return match ($field) {
-            'department_id', 'position_id' => $value === null ? null : (int) $value,
+            'department_id', 'position_id', 'manager_id' => $value === null ? null : (int) $value,
             'base_salary' => $value === null ? null : number_format((float) $value, 2, '.', ''),
+            'employment_status' => $value instanceof EmploymentStatus ? $value->value : $value,
             default => $value,
         };
     }
@@ -274,7 +278,7 @@ class EmployeeUpgradeRequestService
     protected function valuesDiffer(string $field, mixed $current, mixed $proposed): bool
     {
         return match ($field) {
-            'department_id', 'position_id' => $this->normalizeFieldValue($field, $current) !== $this->normalizeFieldValue($field, $proposed),
+            'department_id', 'position_id', 'manager_id' => $this->normalizeFieldValue($field, $current) !== $this->normalizeFieldValue($field, $proposed),
             'base_salary' => $this->normalizeFieldValue($field, $current) !== $this->normalizeFieldValue($field, $proposed),
             default => $current !== $proposed,
         };
@@ -319,11 +323,12 @@ class EmployeeUpgradeRequestService
         return [
             'department_id' => $employee->department_id,
             'position_id' => $employee->position_id,
+            'manager_id' => $employee->manager_id,
             'base_salary' => (string) $employee->base_salary,
-            'employment_status' => $employee->employment_status,
+            'employment_status' => $employee->employment_status->value,
             'probation_end_date' => $employee->probation_end_date?->toDateString(),
             'last_working_date' => $employee->last_working_date?->toDateString(),
-            'user_status' => $employee->user?->status,
+            'user_status' => $employee->user?->status?->value,
         ];
     }
 }

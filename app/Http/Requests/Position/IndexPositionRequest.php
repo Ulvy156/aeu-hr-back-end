@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Position;
 
+use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class IndexPositionRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:255'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
-            'status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'status' => ['nullable', Rule::enum(Status::class)],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

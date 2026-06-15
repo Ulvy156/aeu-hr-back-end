@@ -21,11 +21,16 @@ return new class extends Migration
             $table->decimal('present_days', 5, 2)->default(0);
             $table->decimal('absent_days', 5, 2)->default(0);
             $table->decimal('unpaid_leave_days', 5, 2)->default(0);
+            $table->decimal('maternity_leave_days', 5, 2)->default(0);
             $table->decimal('gross_salary', 15, 2);
             $table->decimal('unpaid_deduction', 15, 2)->default(0);
             $table->decimal('absence_deduction', 15, 2)->default(0);
+            $table->decimal('maternity_deduction', 15, 2)->default(0);
             $table->decimal('taxable_salary', 15, 2);
+            $table->decimal('tax_rate', 8, 4)->default(0);
             $table->decimal('tax_amount', 15, 2)->default(0);
+            $table->decimal('nssf_deduction', 15, 2)->default(0);
+            $table->json('tax_breakdown')->nullable();
             $table->decimal('net_salary', 15, 2);
             $table->enum('status', ['draft', 'locked'])->default('draft')->index();
             $table->timestamps();

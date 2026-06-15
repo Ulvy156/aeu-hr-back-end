@@ -55,6 +55,13 @@ class EmployeeResource extends JsonResource
                     'status' => $this->position->status,
                 ]
                 : null),
+            'manager' => $this->whenLoaded('manager', fn () => $this->manager
+                ? [
+                    'id' => $this->manager->id,
+                    'employee_id' => $this->manager->employee_id,
+                    'full_name' => $this->manager->full_name,
+                ]
+                : null),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

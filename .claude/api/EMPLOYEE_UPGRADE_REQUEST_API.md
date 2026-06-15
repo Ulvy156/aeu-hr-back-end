@@ -2,10 +2,10 @@
 
 ## Purpose
 
-HR-proposed changes to an employee's department, position, base salary, and/or employment status, subject to approval by a permission-holding reviewer (seeded to `ceo`).
+HR-proposed changes to an employee's department, position, base salary, employment status, and/or reporting manager, subject to approval by a permission-holding reviewer (seeded to `ceo`).
 
 - `PUT /api/employees/{employee}` (see `.claude/api/EMPLOYEE_API.md`) remains unchanged — it is for direct profile edits/corrections, requires no approval, and writes no `employment_histories` rows.
-- This module is for formal transfers/promotions/salary changes/status changes that require sign-off. Approval applies the change to the employee record and writes rows to `employment_histories` (see `.claude/api/EMPLOYMENT_HISTORY_API.md`).
+- This module is for formal transfers/promotions/salary changes/status changes/reporting-line changes that require sign-off. Approval applies the change to the employee record and writes rows to `employment_histories` (see `.claude/api/EMPLOYMENT_HISTORY_API.md`).
 
 ### Upgradable Fields
 
@@ -13,6 +13,7 @@ HR-proposed changes to an employee's department, position, base salary, and/or e
 - `position_id`
 - `base_salary`
 - `employment_status` (when proposed, `last_working_date` must also be supplied in `proposed_values` — see Validation Notes)
+- `manager_id` (who the employee reports to — see Validation Notes; see also `.claude/api/EMPLOYEE_HIERARCHY_API.md`)
 
 `probation_end_date` is never proposed directly — it is derived automatically on approval the same way it is on `POST`/`PUT /api/employees`.
 
@@ -130,21 +131,24 @@ Use `multipart/form-data` when sending `attachments`.
 
 - `employee_id`: required integer, must exist in `employees`
 - `effective_date`: optional date, passed through to the resulting `employment_histories` rows on approval (defaults to today if omitted)
-- `proposed_values`: required object, at least one key, only `department_id`, `position_id`, `base_salary`, `employment_status`, `last_working_date` allowed
+- `proposed_values`: required object, at least one key, only `department_id`, `position_id`, `base_salary`, `employment_status`, `manager_id`, `last_working_date` allowed
   - `department_id`: optional integer, must exist in `departments`
   - `position_id`: optional integer, must exist in `positions`
   - `base_salary`: numeric, minimum `0`
-  - `employment_status`: one of `active`, `probation`, `resigned`, `terminated`
-  - `last_working_date`: optional date — required if `employment_status` is `resigned`/`terminated`, forbidden if `active`/`probation`
+  - `employment_status`: one of `full-time`, `probation`, `resigned`, `terminated`
+  - `manager_id`: optional integer, must exist in `employees` — the employee this employee will report to. Send `null` to clear the manager (remove from the org chart's reporting line).
+  - `last_working_date`: optional date — required if `employment_status` is `resigned`/`terminated`, forbidden if `full-time`/`probation`
 - `attachments`: optional array, max `3` files, each `pdf`, `jpg`, `jpeg`, `png`, `webp`, `doc`, or `docx`, max `5120` KB
 
 ### Validation Notes
 
-- At least one of `department_id`, `position_id`, `base_salary`, `employment_status` must be present in `proposed_values`.
+- At least one of `department_id`, `position_id`, `base_salary`, `employment_status`, `manager_id` must be present in `proposed_values`.
 - Unknown keys in `proposed_values` are rejected.
-- If `employment_status` is `resigned` or `terminated`, `last_working_date` is required; if `active` or `probation`, `last_working_date` must be absent/null.
+- If `employment_status` is `resigned` or `terminated`, `last_working_date` is required; if `full-time` or `probation`, `last_working_date` must be absent/null.
 - At least one proposed value must differ from the employee's current data, otherwise `422` on `proposed_values`.
 - If the resulting `position_id` (proposed or current) belongs to a department, it must match the resulting `department_id` (proposed or current), otherwise `422` on `proposed_values.position_id`.
+- An employee cannot be proposed as their own manager — `422` on `proposed_values.manager_id`.
+- A proposed `manager_id` cannot create a circular reporting relationship (e.g. proposing that an employee report to one of their own subordinates) — `422` on `proposed_values.manager_id`.
 - `current_values`/`proposed_values` in the response only include the fields that actually changed (plus `last_working_date` whenever `employment_status` changes).
 - Attachments are immutable — there is no endpoint to add/remove files on an existing request.
 

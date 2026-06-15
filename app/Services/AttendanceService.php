@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
@@ -417,7 +418,7 @@ class AttendanceService
 
         $holidays = array_flip(
             PublicHoliday::query()
-                ->where('status', 'active')
+                ->where('status', Status::Active->value)
                 ->whereDate('holiday_date', '>=', $from->toDateString())
                 ->whereDate('holiday_date', '<=', $to->toDateString())
                 ->pluck('holiday_date')
@@ -528,7 +529,7 @@ class AttendanceService
     protected function isPublicHoliday(CarbonInterface $date): bool
     {
         return PublicHoliday::query()
-            ->where('status', 'active')
+            ->where('status', Status::Active->value)
             ->whereDate('holiday_date', $date->toDateString())
             ->exists();
     }

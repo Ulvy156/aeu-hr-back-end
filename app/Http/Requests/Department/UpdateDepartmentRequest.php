@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Department;
 
+use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,7 @@ class UpdateDepartmentRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:255', Rule::unique('departments', 'name')->ignore($department?->id)],
-            'status' => ['required', Rule::in(['active', 'inactive'])],
+            'status' => ['required', Rule::enum(Status::class)],
         ];
     }
 }

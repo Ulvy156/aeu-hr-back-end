@@ -53,7 +53,7 @@ test('authenticated users can view their own profile with a linked employee reco
         'position_id' => $position->id,
         'join_date' => '2024-01-01',
         'base_salary' => 1200,
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $otherUser = User::factory()->create([
@@ -81,7 +81,7 @@ test('authenticated users can view their own profile with a linked employee reco
         ->assertJsonPath('data.employee.position.name', 'Developer')
         ->assertJsonPath('data.employee.join_date', '2024-01-01')
         ->assertJsonPath('data.employee.last_working_date', null)
-        ->assertJsonPath('data.employee.employment_status', 'active')
+        ->assertJsonPath('data.employee.employment_status', 'full-time')
         ->assertJsonPath('data.employee.profile_photo_url', null)
         ->assertJsonMissingPath('data.password')
         ->assertJsonMissingPath('data.remember_token')

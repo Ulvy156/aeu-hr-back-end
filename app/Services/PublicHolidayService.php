@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Status;
 use App\Models\PublicHoliday;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -102,7 +103,7 @@ class PublicHolidayService
             $oldValues = $this->auditAttributes($publicHoliday);
 
             $publicHoliday->update([
-                'status' => 'inactive',
+                'status' => Status::Inactive->value,
             ]);
             $publicHoliday = $publicHoliday->fresh();
 
@@ -130,7 +131,7 @@ class PublicHolidayService
             'holiday_date' => $publicHoliday->holiday_date?->toDateString(),
             'name' => $publicHoliday->name,
             'description' => $publicHoliday->description,
-            'status' => $publicHoliday->status,
+            'status' => $publicHoliday->status->value,
         ];
     }
 }

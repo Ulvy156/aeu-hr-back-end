@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Status;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -24,7 +25,7 @@ class DatabaseSeeder extends Seeder
         // Admin user (no employee record — system account)
         $admin = User::firstOrCreate(
             ['email' => 'admin@example.com'],
-            ['name' => 'System Admin', 'password' => 'password', 'status' => 'active']
+            ['name' => 'System Admin', 'password' => 'password', 'status' => Status::Active->value]
         );
 
         if ($admin->roles->isEmpty()) {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Announcement;
 
+use App\Enums\Status;
 use App\Models\Department;
 use App\Models\Employee;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -23,7 +24,7 @@ class StoreAnnouncementRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'category_id' => ['required', 'integer', Rule::exists('announcement_categories', 'id')->where('status', 'active')],
+            'category_id' => ['required', 'integer', Rule::exists('announcement_categories', 'id')->where('status', Status::Active->value)],
             'title' => ['required', 'string', 'max:255'],
             'content' => ['required', 'string'],
             'priority' => ['nullable', Rule::in(['normal', 'important', 'urgent'])],

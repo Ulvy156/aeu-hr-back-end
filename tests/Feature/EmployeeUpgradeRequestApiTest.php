@@ -49,7 +49,7 @@ function upgradeEmployee(array $overrides = []): Employee
         'full_name' => "Upgrade Employee {$counter}",
         'join_date' => '2026-01-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ], $overrides));
 }
 
@@ -141,7 +141,7 @@ test('upgrade request creation fails when no proposed value differs from current
 });
 
 test('upgrade request validates employment_status and last_working_date combination', function () {
-    $employee = upgradeEmployee(['employment_status' => 'active']);
+    $employee = upgradeEmployee(['employment_status' => 'full-time']);
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
@@ -156,7 +156,7 @@ test('upgrade request validates employment_status and last_working_date combinat
     $this->postJson('/api/employee-upgrade-requests', [
         'employee_id' => $employee->id,
         'proposed_values' => [
-            'employment_status' => 'active',
+            'employment_status' => 'full-time',
             'last_working_date' => '2026-06-01',
         ],
     ])
@@ -203,7 +203,7 @@ test('employee role cannot create upgrade requests and ceo lacks create permissi
 
 test('ceo can approve a pending upgrade request and it updates the employee and employment history', function () {
     $employee = upgradeEmployee([
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
         'base_salary' => '1000.00',
         'join_date' => '2026-01-01',
     ]);
@@ -407,9 +407,11 @@ test('effective_date on the upgrade request propagates to the employment history
 
 test('employee update endpoint still works and does not create employment history rows', function () {
     [$department, $position] = upgradeDepartmentAndPosition('Operations', 'Operations Lead');
+    $manager = upgradeEmployee();
     $employee = upgradeEmployee([
         'department_id' => $department->id,
         'position_id' => $position->id,
+        'manager_id' => $manager->id,
         'base_salary' => '1000.00',
     ]);
 
@@ -419,9 +421,10 @@ test('employee update endpoint still works and does not create employment histor
         'full_name' => $employee->full_name,
         'department_id' => $department->id,
         'position_id' => $position->id,
+        'manager_id' => $manager->id,
         'join_date' => $employee->join_date->toDateString(),
         'base_salary' => '1200.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ])
         ->assertSuccessful()
         ->assertJsonPath('data.base_salary', '1200.00');
@@ -501,4 +504,89 @@ test('upgrade request without attachments returns an empty attachments array', f
     ])
         ->assertCreated()
         ->assertJsonPath('data.attachments', []);
+});
+
+test('hr can create an upgrade request proposing a new manager', function () {
+    $manager = upgradeEmployee(['full_name' => 'Manager One']);
+    $employee = upgradeEmployee(['manager_id' => null]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'manager_id' => $manager->id,
+        ],
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('data.current_values', ['manager_id' => null])
+        ->assertJsonPath('data.proposed_values', ['manager_id' => $manager->id]);
+
+    expect($employee->fresh()->manager_id)->toBeNull()
+        ->and(EmploymentHistory::query()->count())->toBe(0);
+});
+
+test('upgrade request rejects an employee being proposed as their own manager', function () {
+    $employee = upgradeEmployee();
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'manager_id' => $employee->id,
+        ],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proposed_values.manager_id');
+});
+
+test('upgrade request rejects a manager change that would create a circular reporting relationship', function () {
+    $employeeA = upgradeEmployee(['full_name' => 'Employee A']);
+    $employeeB = upgradeEmployee(['full_name' => 'Employee B', 'manager_id' => $employeeA->id]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    // Proposing that A (B's manager) reports to B would create a cycle.
+    $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employeeA->id,
+        'proposed_values' => [
+            'manager_id' => $employeeB->id,
+        ],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proposed_values.manager_id');
+});
+
+test('ceo can approve a manager_id upgrade request and it updates the employee and employment history', function () {
+    $manager = upgradeEmployee(['full_name' => 'Manager Two']);
+    $employee = upgradeEmployee(['manager_id' => null]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'manager_id' => $manager->id,
+        ],
+    ])->assertCreated();
+
+    $id = $createResponse->json('data.id');
+
+    Sanctum::actingAs(upgradeActor('ceo'));
+
+    $this->postJson("/api/employee-upgrade-requests/{$id}/approve")
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'approved');
+
+    expect($employee->fresh()->manager_id)->toBe($manager->id);
+
+    $history = EmploymentHistory::query()
+        ->where('employee_id', $employee->id)
+        ->where('field', 'manager_id')
+        ->firstOrFail();
+
+    expect($history->old_value)->toBeNull()
+        ->and($history->new_value)->toBe(['id' => $manager->id, 'name' => 'Manager Two']);
 });

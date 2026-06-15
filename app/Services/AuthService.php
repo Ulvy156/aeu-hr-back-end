@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\EmploymentStatus;
+use App\Enums\Status;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -23,7 +25,7 @@ class AuthService
             ]);
         }
 
-        if ($user->status !== 'active') {
+        if ($user->status !== Status::Active) {
             throw ValidationException::withMessages([
                 'email' => ['This account is inactive.'],
             ]);
@@ -32,7 +34,7 @@ class AuthService
         if (! $user->hasRole('admin')) {
             $employee = $user->employee;
 
-            if (! $employee || ! in_array($employee->employment_status, ['active', 'probation'], true)) {
+            if (! $employee || ! in_array($employee->employment_status, [EmploymentStatus::FullTime, EmploymentStatus::Probation], true)) {
                 throw ValidationException::withMessages([
                     'email' => ['Your account is not linked to an active employee profile. Please contact HR.'],
                 ]);

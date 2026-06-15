@@ -22,7 +22,7 @@ test('a user can login and receive a sanctum token', function () {
         'employee_id' => 'EMP001',
         'full_name' => 'Employee User',
         'join_date' => now()->toDateString(),
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $response = $this->postJson('/api/login', [

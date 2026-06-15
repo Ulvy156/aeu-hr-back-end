@@ -126,7 +126,7 @@ Soft-deleted users are excluded from the default list.
         "id": 3,
         "employee_id": "EMP300",
         "full_name": "Finance User",
-        "employment_status": "active",
+        "employment_status": "full-time",
         "probation_end_date": null,
         "department": {
           "id": 1,
@@ -238,7 +238,7 @@ Return one user with their single assigned role, effective permissions, and link
       "id": 4,
       "employee_id": "EMP301",
       "full_name": "HR User",
-      "employment_status": "active",
+      "employment_status": "full-time",
       "probation_end_date": null,
       "department": {
         "id": 2,

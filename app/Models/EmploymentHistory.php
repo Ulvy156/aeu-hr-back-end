@@ -29,12 +29,15 @@ class EmploymentHistory extends Model
 
     public const FIELD_PROBATION_END_DATE = 'probation_end_date';
 
+    public const FIELD_MANAGER_ID = 'manager_id';
+
     public const TRACKED_FIELDS = [
         self::FIELD_DEPARTMENT_ID,
         self::FIELD_POSITION_ID,
         self::FIELD_BASE_SALARY,
         self::FIELD_EMPLOYMENT_STATUS,
         self::FIELD_PROBATION_END_DATE,
+        self::FIELD_MANAGER_ID,
     ];
 
     public function employee(): BelongsTo

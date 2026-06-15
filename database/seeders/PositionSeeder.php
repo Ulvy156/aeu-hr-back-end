@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Status;
 use App\Models\Department;
 use App\Models\Position;
 use Illuminate\Database\Seeder;
@@ -45,7 +46,7 @@ class PositionSeeder extends Seeder
             foreach ($positions as $positionName) {
                 Position::updateOrCreate(
                     ['name' => $positionName, 'department_id' => $department->id],
-                    ['status' => 'active']
+                    ['status' => Status::Active->value]
                 );
             }
         }

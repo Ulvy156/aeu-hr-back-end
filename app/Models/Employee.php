@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EmploymentStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'address',
     'department_id',
     'position_id',
+    'manager_id',
     'join_date',
     'last_working_date',
     'base_salary',
@@ -44,6 +46,16 @@ class Employee extends Model
     public function position(): BelongsTo
     {
         return $this->belongsTo(Position::class);
+    }
+
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'manager_id');
+    }
+
+    public function subordinates(): HasMany
+    {
+        return $this->hasMany(Employee::class, 'manager_id');
     }
 
     public function attendances(): HasMany
@@ -79,6 +91,7 @@ class Employee extends Model
             'last_working_date' => 'date',
             'probation_end_date' => 'date',
             'base_salary' => 'decimal:2',
+            'employment_status' => EmploymentStatus::class,
         ];
     }
 }

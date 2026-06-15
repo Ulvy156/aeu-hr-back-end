@@ -38,7 +38,7 @@ function historyEmployee(array $overrides = []): Employee
         'full_name' => 'History Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1200.50',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ], $overrides));
 }
 

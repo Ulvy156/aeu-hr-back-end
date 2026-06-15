@@ -236,7 +236,7 @@ test('candidate can be updated while not hired', function () {
         'full_name' => 'John HR',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
-        'employment_status' => 'active',
+        'employment_status' => 'full-time',
     ]);
 
     $this->withToken($token)

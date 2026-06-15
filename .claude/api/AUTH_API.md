@@ -109,7 +109,7 @@ Authenticate a user and issue a Sanctum token.
 }
 ```
 
-- Non-admin users must have a linked `Employee` profile with `employment_status` of `active` or `probation` to log in. Users without an employee profile, or whose employee profile is `resigned`/`terminated`, are rejected:
+- Non-admin users must have a linked `Employee` profile with `employment_status` of `full-time` or `probation` to log in. Users without an employee profile, or whose employee profile is `resigned`/`terminated`, are rejected:
 
 ```json
 {
@@ -249,7 +249,7 @@ Authorization: Bearer {token}
       "position": { "id": 1, "name": "Developer" },
       "join_date": "2024-01-01",
       "last_working_date": null,
-      "employment_status": "active",
+      "employment_status": "full-time",
       "profile_photo_url": null
     }
   }

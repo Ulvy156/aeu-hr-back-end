@@ -25,7 +25,10 @@
       "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"CREATE DATABASE aeu_hr_test\")",
       "Bash(vendor/bin/pint)",
       "Bash(git checkout *)",
-      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"DROP DATABASE IF EXISTS aeu_hr_test;\")"
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"DROP DATABASE IF EXISTS aeu_hr_test;\")",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"DROP DATABASE IF EXISTS aeu_hr_test;\" -c \"CREATE DATABASE aeu_hr_test;\")",
+      "Bash(find /home/romyulvy/Documents/Personal/AEU -maxdepth 2 -iname \"*front*\" -type d 2>/dev/null)",
+      "Read(//home/romyulvy/Documents/Personal/AEU/**)"
     ],
     "additionalDirectories": [
       "/tmp/docx_extract/word/media"

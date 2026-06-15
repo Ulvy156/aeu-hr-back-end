@@ -28,6 +28,7 @@ class EmployeeUpgradeRequest extends Model
         'position_id',
         'base_salary',
         'employment_status',
+        'manager_id',
     ];
 
     public function employee(): BelongsTo
