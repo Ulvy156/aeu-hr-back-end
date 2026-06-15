@@ -11,7 +11,24 @@
       "Bash(pg_isready -h 127.0.0.1 -p 5432)",
       "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -lqt)",
       "Bash(php -i)",
-      "Bash(dpkg -l)"
+      "Bash(dpkg -l)",
+      "Bash(cp /tmp/docx_extract/word/media/image1. /tmp/docx_extract/word/media/image1.png)",
+      "Bash(vendor/bin/pint app/Services/EmployeeService.php app/Http/Requests/Employee/UpdateEmployeeRequest.php tests/Feature/EmploymentHistoryApiTest.php)",
+      "Bash(psql -U postgres -c \"CREATE DATABASE aeu_hr_test;\")",
+      "Bash(psql -c \"CREATE DATABASE aeu_hr_test;\")",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"CREATE DATABASE aeu_hr_test;\")",
+      "Bash(git stash *)",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"DROP DATABASE aeu_hr_test;\")",
+      "Bash(vendor/bin/pint app/Models/EmployeeUpgradeRequest.php app/Models/EmploymentHistory.php app/Models/Employee.php app/Services/EmployeeUpgradeRequestService.php app/Services/EmploymentHistoryService.php app/Services/EmployeeService.php app/Http/Requests/EmployeeUpgradeRequest app/Http/Resources/EmployeeUpgradeRequestResource.php app/Http/Resources/EmploymentHistoryResource.php app/Http/Controllers/Api/EmployeeUpgradeRequestController.php app/Http/Controllers/Api/EmploymentHistoryController.php app/Policies/EmployeeUpgradeRequestPolicy.php config/hr_permissions.php routes/api.php database/migrations/2026_06_14_000000_create_employment_histories_table.php database/migrations/2026_06_14_000001_create_employee_upgrade_requests_table.php tests/Feature/EmployeeUpgradeRequestApiTest.php tests/Feature/EmploymentHistoryApiTest.php)",
+      "Bash(psql -V)",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -tc \"SELECT 1 FROM pg_database WHERE datname = 'aeu_hr_test'\")",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"CREATE DATABASE aeu_hr_test\")",
+      "Bash(vendor/bin/pint)",
+      "Bash(git checkout *)",
+      "Bash(PGPASSWORD=123456 psql -h 127.0.0.1 -U postgres -c \"DROP DATABASE IF EXISTS aeu_hr_test;\")"
+    ],
+    "additionalDirectories": [
+      "/tmp/docx_extract/word/media"
     ]
   }
 }

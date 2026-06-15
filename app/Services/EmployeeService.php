@@ -259,6 +259,38 @@ class EmployeeService
             ->toDateString();
     }
 
+    /**
+     * Apply a partial set of employment-field changes (subset of department_id,
+     * position_id, base_salary, employment_status, last_working_date), deriving
+     * probation_end_date and syncing the linked user's status the same way a
+     * full profile update would.
+     *
+     * @param  array<string, mixed>  $changes
+     * @return array<string, mixed> the attributes actually applied
+     */
+    public function applyEmploymentFieldChanges(Employee $employee, array $changes): array
+    {
+        $attributes = $changes;
+
+        if (array_key_exists('employment_status', $changes)) {
+            $attributes['probation_end_date'] = $this->resolveProbationEndDate([
+                'employment_status' => $changes['employment_status'],
+                'join_date' => $employee->join_date?->toDateString(),
+                'probation_end_date' => $changes['probation_end_date'] ?? null,
+            ]);
+        }
+
+        $employee->update($attributes);
+
+        if (array_key_exists('employment_status', $changes)) {
+            $employee->user?->update([
+                'status' => $this->userStatusFromEmploymentStatus($changes['employment_status']),
+            ]);
+        }
+
+        return $attributes;
+    }
+
     public function generateEmployeeId(): string
     {
         $latestEmployeeId = Employee::withTrashed()

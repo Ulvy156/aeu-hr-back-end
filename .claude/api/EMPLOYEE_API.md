@@ -333,3 +333,4 @@ Soft delete an employee.
 - `DELETE /api/employees/{employee}` soft deletes both the employee and the linked user.
 - Default employee list responses exclude soft-deleted employee records.
 - Salary updates are audited in the backend through Spatie Activitylog.
+- `PUT /api/employees/{employee}` does not create `employment_histories` rows. See `.claude/api/EMPLOYMENT_HISTORY_API.md`. For changes that require approval and an audit trail (transfers, promotions, salary changes, status changes), use `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md` instead.

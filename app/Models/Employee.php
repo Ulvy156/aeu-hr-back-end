@@ -61,6 +61,11 @@ class Employee extends Model
         return $this->hasMany(PayrollItem::class);
     }
 
+    public function employmentHistories(): HasMany
+    {
+        return $this->hasMany(EmploymentHistory::class)->orderByDesc('effective_date')->orderByDesc('id');
+    }
+
     /**
      * Get the attributes that should be cast.
      *

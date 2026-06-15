@@ -19,6 +19,8 @@ All module API contract files are stored in: D:\AEU\Thesis\HR\aeu-hr-back-end\.c
 - Auth: `.claude/api/AUTH_API.md`
 - Users: `.claude/api/USER_API.md`
 - Employees: `.claude/api/EMPLOYEE_API.md`
+- Employment History: `.claude/api/EMPLOYMENT_HISTORY_API.md`
+- Employee Upgrade Requests: `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md`
 - Attendance: `.claude/api/ATTENDANCE_API.md`
 - Leave: `.claude/api/LEAVE_API.md`
 - Payroll: `.claude/api/PAYROLL_API.md`

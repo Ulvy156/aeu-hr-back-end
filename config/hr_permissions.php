@@ -145,6 +145,14 @@ return [
             'recruitment.candidates.update',
             'recruitment.candidates.hire',
         ],
+        'employee_upgrade_requests' => [
+            'employee_upgrade_requests.view_any',
+            'employee_upgrade_requests.view',
+            'employee_upgrade_requests.create',
+            'employee_upgrade_requests.cancel',
+            'employee_upgrade_requests.approve',
+            'employee_upgrade_requests.reject',
+        ],
     ],
 
     'roles' => [
@@ -208,6 +216,9 @@ return [
                 'recruitment.candidates.update',
                 'users.view_any',
                 'users.search',
+                'employee_upgrade_requests.view',
+                'employee_upgrade_requests.create',
+                'employee_upgrade_requests.cancel',
             ],
         ],
         'ceo' => [
@@ -233,6 +244,10 @@ return [
                 'announcements.view',
                 'announcements.approve',
                 'announcement_categories.view',
+                'employee_upgrade_requests.view_any',
+                'employee_upgrade_requests.view',
+                'employee_upgrade_requests.approve',
+                'employee_upgrade_requests.reject',
             ],
         ],
         'employee' => [
