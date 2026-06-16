@@ -13,5 +13,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/proxy-clock-out', [AttendanceController::class, 'proxyClockOut']);
         Route::put('/{attendance}/correction', [AttendanceController::class, 'correct']);
         Route::post('/mark-absent', [AttendanceController::class, 'markAbsent']);
+
+        Route::prefix('qr')->group(function () {
+            Route::post('/generate', [AttendanceController::class, 'generateQr']);
+            Route::get('/current', [AttendanceController::class, 'currentQr']);
+            Route::get('/{qrToken}/download', [AttendanceController::class, 'downloadQr']);
+            Route::delete('/{qrToken}', [AttendanceController::class, 'destroyQr']);
+            Route::post('/scan', [AttendanceController::class, 'scanQr']);
+        });
     });
 });

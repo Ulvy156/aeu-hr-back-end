@@ -41,4 +41,9 @@ class AttendancePolicy
     {
         return $user->hasPermissionTo('attendance.proxy_clock');
     }
+
+    public function generateQr(User $user): bool
+    {
+        return $user->hasPermissionTo('attendance.generate_qr');
+    }
 }

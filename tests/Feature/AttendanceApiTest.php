@@ -705,3 +705,356 @@ test('mark absent respects employee join date and last working date', function (
         ->and(Attendance::query()->where('employee_id', $endedEmployee->id)->exists())->toBeFalse()
         ->and(Attendance::query()->where('employee_id', $lastDayEmployee->id)->exists())->toBeTrue();
 });
+
+// ─── QR Code Attendance ───────────────────────────────────────────────────────
+
+use App\Models\AttendanceQrToken;
+
+test('hr can generate a qr token and response includes token and scan_url', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->assertCreated()
+        ->assertJsonPath('message', 'QR token ready.')
+        ->assertJsonStructure(['data' => ['id', 'token', 'scan_url', 'generated_by', 'created_at']]);
+
+    expect(AttendanceQrToken::query()->count())->toBe(1);
+});
+
+test('generate qr is idempotent and returns the existing token on repeated calls', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $first = $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->assertCreated()
+        ->json('data.token');
+
+    $second = $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->assertCreated()
+        ->json('data.token');
+
+    expect($first)->toBe($second)
+        ->and(AttendanceQrToken::query()->count())->toBe(1);
+});
+
+test('admin can generate a qr token', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->assertCreated();
+});
+
+test('employee cannot generate a qr token', function () {
+    [$user] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->assertForbidden();
+});
+
+test('current qr returns active token when one exists', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $generated = $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->json('data.token');
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/qr/current')
+        ->assertSuccessful()
+        ->assertJsonPath('data.token', $generated);
+});
+
+test('current qr returns null when no token exists', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/qr/current')
+        ->assertSuccessful()
+        ->assertJsonPath('data', null);
+});
+
+test('hr can delete a qr token and it is removed from the database', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $id = $this->withToken($token)
+        ->postJson('/api/attendance/qr/generate')
+        ->json('data.id');
+
+    $this->withToken($token)
+        ->deleteJson("/api/attendance/qr/{$id}")
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'QR token deleted successfully.');
+
+    expect(AttendanceQrToken::query()->count())->toBe(0);
+});
+
+test('after deleting a qr token generate creates a fresh one', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $first = $this->withToken($token)->postJson('/api/attendance/qr/generate')->json('data');
+    $this->withToken($token)->deleteJson("/api/attendance/qr/{$first['id']}")->assertSuccessful();
+
+    $second = $this->withToken($token)->postJson('/api/attendance/qr/generate')->json('data');
+
+    expect($second['token'])->not->toBe($first['token'])
+        ->and(AttendanceQrToken::query()->count())->toBe(1);
+});
+
+test('employee cannot delete a qr token', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+
+    $id = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.id');
+
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->deleteJson("/api/attendance/qr/{$id}")
+        ->assertForbidden();
+});
+
+test('hr can download the qr code as a png file', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $id = $this->withToken($token)->postJson('/api/attendance/qr/generate')->json('data.id');
+
+    $response = $this->withToken($token)->get("/api/attendance/qr/{$id}/download");
+
+    $response->assertSuccessful();
+    expect($response->headers->get('Content-Type'))->toContain('image/png');
+});
+
+test('employee cannot download the qr code', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+
+    $id = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.id');
+
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->get("/api/attendance/qr/{$id}/download")
+        ->assertForbidden();
+});
+
+test('employee can scan qr token and auto clock in with late detection and no gps stored', function () {
+    Carbon::setTestNow('2026-05-05 08:30:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertCreated()
+        ->assertJsonPath('message', 'QR clock-in successful.')
+        ->assertJsonPath('data.action', 'qr_clock_in')
+        ->assertJsonPath('data.attendance.status', 'late')
+        ->assertJsonPath('data.attendance.is_late', true)
+        ->assertJsonPath('data.attendance.qr_clock_in', true);
+
+    $attendance = $employee->attendances()->sole();
+    expect($attendance->clock_in_latitude)->toBeNull()
+        ->and($attendance->clock_in_longitude)->toBeNull()
+        ->and($attendance->qr_clock_in)->toBeTrue();
+});
+
+test('employee can scan qr token again after clock in to auto clock out', function () {
+    Carbon::setTestNow('2026-05-05 07:55:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertCreated()
+        ->assertJsonPath('data.action', 'qr_clock_in');
+
+    Carbon::setTestNow('2026-05-05 17:10:00');
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'QR clock-out successful.')
+        ->assertJsonPath('data.action', 'qr_clock_out')
+        ->assertJsonPath('data.attendance.qr_clock_out', true);
+
+    $attendance = $employee->attendances()->sole();
+    expect($attendance->clock_out_time)->not->toBeNull()
+        ->and($attendance->clock_out_latitude)->toBeNull()
+        ->and($attendance->qr_clock_out)->toBeTrue();
+});
+
+test('qr scan is rejected when employee has already completed attendance for today', function () {
+    Carbon::setTestNow('2026-05-05 07:55:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    Attendance::query()->create([
+        'employee_id'     => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time'   => '2026-05-05 07:55:00',
+        'clock_out_time'  => '2026-05-05 17:00:00',
+        'status'          => 'present',
+        'is_late'         => false,
+    ]);
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You have already completed your attendance for today.');
+});
+
+test('qr scan is rejected for a non-existent token', function () {
+    attendanceCompanySettings();
+
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $fakeToken = str_repeat('x', 64);
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $fakeToken])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Invalid QR code.');
+});
+
+test('qr scan rejects token shorter than 64 characters with validation error', function () {
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => 'tooshort'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('token');
+});
+
+test('qr scan is rejected for an employee on approved leave today', function () {
+    Carbon::setTestNow('2026-05-05 08:00:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    LeaveRequest::query()->create([
+        'employee_id'   => $employee->id,
+        'leave_type'    => 'annual',
+        'start_date'    => '2026-05-05',
+        'end_date'      => '2026-05-05',
+        'duration_type' => 'full_day',
+        'total_days'    => 1,
+        'reason'        => 'Annual leave',
+        'status'        => 'approved',
+    ]);
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You are on approved leave today and cannot use QR attendance.');
+
+    expect(Attendance::query()->count())->toBe(0);
+});
+
+test('qr scan returns 403 when user has no employee profile', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    $user = User::factory()->create();
+    $user->assignRole('employee');
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'No employee profile is linked to this user account.');
+});
+
+test('qr scan audit log is written for clock in and clock out', function () {
+    Carbon::setTestNow('2026-05-05 07:55:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue]);
+
+    expect(Activity::query()->where('log_name', 'attendance')->where('description', 'qr_clock_in')->exists())->toBeTrue();
+
+    Carbon::setTestNow('2026-05-05 17:05:00');
+    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue]);
+
+    expect(Activity::query()->where('log_name', 'attendance')->where('description', 'qr_clock_out')->exists())->toBeTrue();
+});
+
+test('two rapid qr scans from same employee only create one attendance record', function () {
+    Carbon::setTestNow('2026-05-05 07:55:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])->assertCreated();
+    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue])->assertSuccessful();
+
+    expect(Attendance::query()->count())->toBe(1);
+});

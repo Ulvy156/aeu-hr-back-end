@@ -41,18 +41,20 @@ class AttendanceResource extends JsonResource
                 : null),
             'proxied_clock_in_by_user' => $this->whenLoaded('proxiedClockInBy', fn () => $this->proxiedClockInBy
                 ? [
-                    'id'    => $this->proxiedClockInBy->id,
-                    'name'  => $this->proxiedClockInBy->name,
+                    'id' => $this->proxiedClockInBy->id,
+                    'name' => $this->proxiedClockInBy->name,
                     'email' => $this->proxiedClockInBy->email,
                 ]
                 : null),
             'proxied_clock_out_by_user' => $this->whenLoaded('proxiedClockOutBy', fn () => $this->proxiedClockOutBy
                 ? [
-                    'id'    => $this->proxiedClockOutBy->id,
-                    'name'  => $this->proxiedClockOutBy->name,
+                    'id' => $this->proxiedClockOutBy->id,
+                    'name' => $this->proxiedClockOutBy->name,
                     'email' => $this->proxiedClockOutBy->email,
                 ]
                 : null),
+            'qr_clock_in' => $this->qr_clock_in,
+            'qr_clock_out' => $this->qr_clock_out,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];

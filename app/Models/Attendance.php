@@ -23,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'corrected_at',
     'proxied_clock_in_by',
     'proxied_clock_out_by',
+    'qr_clock_in',
+    'qr_clock_out',
 ])]
 class Attendance extends Model
 {
@@ -65,6 +67,8 @@ class Attendance extends Model
             'clock_out_longitude' => 'decimal:8',
             'is_late' => 'boolean',
             'corrected_at' => 'datetime',
+            'qr_clock_in' => 'boolean',
+            'qr_clock_out' => 'boolean',
         ];
     }
 }

@@ -47,6 +47,7 @@ return [
             'attendance.correct',
             'attendance.mark_absent',
             'attendance.proxy_clock',
+            'attendance.generate_qr',
         ],
         'leaves' => [
             'leaves.view_any',
@@ -199,6 +200,7 @@ return [
                 'company_settings.view',
                 'dashboards.hr_view',
                 'attendance.proxy_clock',
+                'attendance.generate_qr',
                 'announcements.view',
                 'announcements.create',
                 'announcements.update',

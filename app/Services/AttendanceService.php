@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Attendance;
+use App\Models\AttendanceQrToken;
 use App\Models\CompanySetting;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
@@ -14,7 +15,10 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class AttendanceService
 {
@@ -240,7 +244,7 @@ class AttendanceService
         $employee = Employee::query()->findOrFail($employeeId);
         $settings = $this->companySettingService->current();
 
-        $date        = Carbon::parse($attendanceDate)->startOfDay();
+        $date = Carbon::parse($attendanceDate)->startOfDay();
         $clockInTime = Carbon::parse($date->toDateString().' '.$settings->working_start_time);
 
         if ($this->isOnApprovedLeave($employee, $date->toDateString())) {
@@ -252,11 +256,11 @@ class AttendanceService
         }
 
         $attendance = Attendance::query()->create([
-            'employee_id'        => $employee->id,
-            'attendance_date'    => $date->toDateString(),
-            'clock_in_time'      => $clockInTime,
-            'status'             => 'present',
-            'is_late'            => false,
+            'employee_id' => $employee->id,
+            'attendance_date' => $date->toDateString(),
+            'clock_in_time' => $clockInTime,
+            'status' => 'present',
+            'is_late' => false,
             'proxied_clock_in_by' => $actor->id,
         ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
 
@@ -304,10 +308,10 @@ class AttendanceService
         }
 
         $clockOutTime = Carbon::parse($date->toDateString().' '.$settings->working_end_time);
-        $oldValues    = $this->auditAttributes($attendance);
+        $oldValues = $this->auditAttributes($attendance);
 
         $attendance->update([
-            'clock_out_time'       => $clockOutTime,
+            'clock_out_time' => $clockOutTime,
             'proxied_clock_out_by' => $actor->id,
             // Fix missing_clock_out status now that clock-out is provided
             'status' => $attendance->status === 'missing_clock_out'
@@ -340,10 +344,10 @@ class AttendanceService
         $employee = $this->employeeForUserOrFail($viewer);
 
         $month = (int) ($filters['month'] ?? now()->month);
-        $year  = (int) ($filters['year'] ?? now()->year);
+        $year = (int) ($filters['year'] ?? now()->year);
 
         $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
-        $periodEnd   = $periodStart->copy()->endOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
         $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
 
         $records = Attendance::query()
@@ -352,10 +356,10 @@ class AttendanceService
             ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
             ->get(['attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
 
-        $present         = $records->where('status', 'present')->count();
-        $late            = $records->where('status', 'late')->count();
+        $present = $records->where('status', 'present')->count();
+        $late = $records->where('status', 'late')->count();
         $missingClockOut = $records->where('status', 'missing_clock_out')->count();
-        $attendedDays    = $present + $late + $missingClockOut;
+        $attendedDays = $present + $late + $missingClockOut;
 
         $workingDaysCount = $this->countWorkingDays($periodStart, $effectiveTo);
 
@@ -376,41 +380,175 @@ class AttendanceService
             );
 
             $todayData = $todayRecord ? [
-                'status'         => $todayRecord->status,
-                'clock_in_time'  => $todayRecord->clock_in_time?->toISOString(),
+                'status' => $todayRecord->status,
+                'clock_in_time' => $todayRecord->clock_in_time?->toISOString(),
                 'clock_out_time' => $todayRecord->clock_out_time?->toISOString(),
-                'is_late'        => $todayRecord->is_late,
+                'is_late' => $todayRecord->is_late,
             ] : null;
         }
 
         return [
             'employee' => [
-                'id'          => $employee->id,
+                'id' => $employee->id,
                 'employee_id' => $employee->employee_id,
-                'full_name'   => $employee->full_name,
+                'full_name' => $employee->full_name,
             ],
             'period' => [
                 'month' => $month,
-                'year'  => $year,
-                'from'  => $periodStart->toDateString(),
-                'to'    => $periodEnd->toDateString(),
+                'year' => $year,
+                'from' => $periodStart->toDateString(),
+                'to' => $periodEnd->toDateString(),
             ],
             'summary' => [
-                'present'                => $present,
-                'late'                   => $late,
-                'absent'                 => $absent,
-                'missing_clock_out'      => $missingClockOut,
-                'attended_days'          => $attendedDays,
+                'present' => $present,
+                'late' => $late,
+                'absent' => $absent,
+                'missing_clock_out' => $missingClockOut,
+                'attended_days' => $attendedDays,
                 'working_days_in_period' => $workingDaysCount,
-                'attendance_rate'        => $attendanceRate,
+                'attendance_rate' => $attendanceRate,
             ],
             'today' => $todayData,
         ];
     }
 
+    public function generateQrToken(User $actor): AttendanceQrToken
+    {
+        $existing = AttendanceQrToken::query()->latest('id')->first();
+
+        if ($existing) {
+            return $existing->load('generatedBy');
+        }
+
+        return AttendanceQrToken::query()->create([
+            'token' => Str::random(64),
+            'generated_by' => $actor->id,
+        ])->load('generatedBy');
+    }
+
+    public function currentQrToken(): ?AttendanceQrToken
+    {
+        return AttendanceQrToken::query()
+            ->latest('id')
+            ->first()
+            ?->load('generatedBy');
+    }
+
+    public function downloadQrImage(AttendanceQrToken $qrToken): Response
+    {
+        $png = QrCode::format('png')
+            ->size(400)
+            ->margin(2)
+            ->generate($qrToken->scan_url);
+
+        return response((string) $png, 200, [
+            'Content-Type' => 'image/png',
+            'Content-Disposition' => 'attachment; filename="attendance-qr.png"',
+        ]);
+    }
+
+    public function deleteQrToken(
+        AttendanceQrToken $qrToken,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): void {
+        $tokenValue = $qrToken->token;
+
+        $qrToken->delete();
+
+        $this->auditLogService->log(
+            action: 'qr_token_deleted',
+            module: 'attendance',
+            user: $actor,
+            subject: null,
+            oldValues: ['token' => $tokenValue],
+            newValues: [],
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
+        );
+    }
+
+    /**
+     * @return array{action: string, attendance: Attendance}
+     */
+    public function scanQr(
+        User $user,
+        string $token,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): array {
+        return DB::transaction(function () use ($user, $token, $ipAddress, $userAgent): array {
+            $qrToken = AttendanceQrToken::query()
+                ->where('token', $token)
+                ->first();
+
+            if (! $qrToken) {
+                throw ApiException::unprocessable('Invalid QR code.');
+            }
+
+            $employee = $this->employeeForUserOrFail($user);
+            $today = now()->toDateString();
+
+            if ($this->isOnApprovedLeave($employee, $today)) {
+                throw ApiException::unprocessable('You are on approved leave today and cannot use QR attendance.');
+            }
+
+            $attendance = Attendance::query()
+                ->whereBelongsTo($employee)
+                ->whereDate('attendance_date', $today)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $attendance) {
+                $settings = $this->companySettingService->current();
+                $clockInAt = now();
+
+                $isLate = $this->isLateForTime($clockInAt, 'present', $settings);
+
+                $attendance = Attendance::query()->create([
+                    'employee_id' => $employee->id,
+                    'attendance_date' => $today,
+                    'clock_in_time' => $clockInAt,
+                    'status' => $isLate ? 'late' : 'present',
+                    'is_late' => $isLate,
+                    'qr_clock_in' => true,
+                ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+
+                $action = 'qr_clock_in';
+            } elseif (! $attendance->clock_out_time) {
+                $attendance->update([
+                    'clock_out_time' => now(),
+                    'qr_clock_out' => true,
+                    'status' => $attendance->status === 'missing_clock_out'
+                        ? ($attendance->is_late ? 'late' : 'present')
+                        : $attendance->status,
+                ]);
+
+                $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+                $action = 'qr_clock_out';
+            } else {
+                throw ApiException::unprocessable('You have already completed your attendance for today.');
+            }
+
+            $this->auditLogService->log(
+                action: $action,
+                module: 'attendance',
+                user: $user,
+                subject: $attendance,
+                oldValues: [],
+                newValues: $this->auditAttributes($attendance),
+                ipAddress: $ipAddress,
+                userAgent: $userAgent,
+            );
+
+            return ['action' => $action, 'attendance' => $attendance];
+        });
+    }
+
     protected function countWorkingDays(CarbonInterface $from, CarbonInterface $to): int
     {
-        $settings    = $this->companySettingService->current();
+        $settings = $this->companySettingService->current();
         $workingDays = collect($settings->working_days ?? [])
             ->map(fn (mixed $day) => strtolower((string) $day))
             ->values()
@@ -426,8 +564,8 @@ class AttendanceService
                 ->all()
         );
 
-        $count    = 0;
-        $cursor   = $from->copy()->startOfDay();
+        $count = 0;
+        $cursor = $from->copy()->startOfDay();
         $rangeEnd = $to->copy()->startOfDay();
 
         while ($cursor->lte($rangeEnd)) {
@@ -540,16 +678,16 @@ class AttendanceService
     protected function auditAttributes(Attendance $attendance): array
     {
         return [
-            'employee_id'          => $attendance->employee_id,
-            'attendance_date'      => $attendance->attendance_date?->toDateString(),
-            'clock_in_time'        => $attendance->clock_in_time?->toISOString(),
-            'clock_out_time'       => $attendance->clock_out_time?->toISOString(),
-            'status'               => $attendance->status,
-            'is_late'              => $attendance->is_late,
-            'correction_reason'    => $attendance->correction_reason,
-            'corrected_by'         => $attendance->corrected_by,
-            'corrected_at'         => $attendance->corrected_at?->toISOString(),
-            'proxied_clock_in_by'  => $attendance->proxied_clock_in_by,
+            'employee_id' => $attendance->employee_id,
+            'attendance_date' => $attendance->attendance_date?->toDateString(),
+            'clock_in_time' => $attendance->clock_in_time?->toISOString(),
+            'clock_out_time' => $attendance->clock_out_time?->toISOString(),
+            'status' => $attendance->status,
+            'is_late' => $attendance->is_late,
+            'correction_reason' => $attendance->correction_reason,
+            'corrected_by' => $attendance->corrected_by,
+            'corrected_at' => $attendance->corrected_at?->toISOString(),
+            'proxied_clock_in_by' => $attendance->proxied_clock_in_by,
             'proxied_clock_out_by' => $attendance->proxied_clock_out_by,
         ];
     }

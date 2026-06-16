@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Handle employee clock-in, clock-out, attendance listing, attendance correction, and absent marking.
+Handle employee clock-in, clock-out, attendance listing, attendance correction, absent marking, and QR code-based attendance.
 
 ## Base Endpoint
 
@@ -24,6 +24,7 @@ All attendance endpoints require a Sanctum bearer token.
 - Correct attendance: `attendance.correct`
 - Mark absent: `attendance.mark_absent`
 - Proxy clock in/out for employees: `attendance.proxy_clock`
+- Generate / manage QR tokens: `attendance.generate_qr`
 
 ## Endpoint List
 
@@ -35,6 +36,11 @@ All attendance endpoints require a Sanctum bearer token.
 - `GET /api/attendance`
 - `PUT /api/attendance/{attendance}/correction`
 - `POST /api/attendance/mark-absent`
+- `POST /api/attendance/qr/generate`
+- `GET /api/attendance/qr/current`
+- `GET /api/attendance/qr/{qrToken}/download`
+- `DELETE /api/attendance/qr/{qrToken}`
+- `POST /api/attendance/qr/scan`
 
 ---
 
@@ -594,3 +600,165 @@ All attendance responses include these fields:
 - `mark-absent` should display the returned `created_count` as the backend source of truth.
 - Proxy clock-in/out UI must not send time fields — times are controlled by company settings on the backend.
 - Show `proxied_clock_in_by_user` and `proxied_clock_out_by_user` as a badge or tooltip (e.g. "Clocked in by Admin Alice") so HR managers can identify proxy records at a glance.
+
+---
+
+## QR Code Attendance
+
+The company prints a QR code and posts it outside the office. Employees scan it with their phone camera. The browser opens the HR web app at the `scan_url`, and the app auto-calls the scan endpoint. The backend determines clock-in or clock-out automatically based on the employee's attendance state for today.
+
+QR tokens are **permanent** — they do not expire. They are valid until explicitly deleted by HR/admin.
+
+### New fields on Attendance resource
+
+| Field | Type | Description |
+|---|---|---|
+| `qr_clock_in` | boolean | True when this clock-in was performed via QR scan |
+| `qr_clock_out` | boolean | True when this clock-out was performed via QR scan |
+
+---
+
+### POST /api/attendance/qr/generate
+
+Generate a new QR token. **Idempotent** — if a token already exists, the same token is returned. HR calls this once, downloads the PNG, prints it, and posts it outside.
+
+**Permission:** `attendance.generate_qr`
+
+**Request body:** none
+
+**Response 201:**
+```json
+{
+  "success": true,
+  "message": "QR token ready.",
+  "data": {
+    "id": 1,
+    "token": "64-char-random-string",
+    "scan_url": "https://hrapp.example.com/attendance/scan?token=64-char-random-string",
+    "generated_by": { "id": 2, "name": "HR User", "email": "hr@example.com" },
+    "created_at": "2026-06-16T08:00:00.000000Z"
+  }
+}
+```
+
+---
+
+### GET /api/attendance/qr/current
+
+Return the current active QR token for re-printing. Returns `data: null` if no token exists.
+
+**Permission:** `attendance.generate_qr`
+
+**Request body:** none
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "Active QR token fetched.",
+  "data": {
+    "id": 1,
+    "token": "64-char-random-string",
+    "scan_url": "https://hrapp.example.com/attendance/scan?token=64-char-random-string",
+    "generated_by": { "id": 2, "name": "HR User", "email": "hr@example.com" },
+    "created_at": "2026-06-16T08:00:00.000000Z"
+  }
+}
+```
+
+---
+
+### GET /api/attendance/qr/{qrToken}/download
+
+Stream the QR code as a PNG file. The browser downloads `attendance-qr.png` which HR prints and posts outside.
+
+**Permission:** `attendance.generate_qr`
+
+**Response:** `image/png` binary (Content-Disposition: attachment; filename="attendance-qr.png")
+
+---
+
+### DELETE /api/attendance/qr/{qrToken}
+
+Hard-delete a QR token. Use this when the printed QR is lost, stolen, or needs to be replaced. After deletion, call generate to create a new token and reprint.
+
+**Permission:** `attendance.generate_qr`
+
+**Request body:** none
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "message": "QR token deleted successfully.",
+  "data": null
+}
+```
+
+---
+
+### POST /api/attendance/qr/scan
+
+Employee submits the scanned QR token. The backend automatically determines whether to clock in or clock out based on the employee's attendance state today. **No GPS is required** — scanning the office QR proves physical presence.
+
+**Permission:** `attendance.clock_in`
+
+**Request body:**
+```json
+{ "token": "64-char-random-string" }
+```
+
+**Validation:**
+- `token`: required, string, exactly 64 characters
+
+**Clock-in response 201:**
+```json
+{
+  "success": true,
+  "message": "QR clock-in successful.",
+  "data": {
+    "action": "qr_clock_in",
+    "attendance": { ...AttendanceResource... }
+  }
+}
+```
+
+**Clock-out response 200:**
+```json
+{
+  "success": true,
+  "message": "QR clock-out successful.",
+  "data": {
+    "action": "qr_clock_out",
+    "attendance": { ...AttendanceResource... }
+  }
+}
+```
+
+**Error responses:**
+| Status | Message |
+|---|---|
+| 422 | `Invalid QR code.` — token does not exist in DB |
+| 422 | `You are on approved leave today and cannot use QR attendance.` |
+| 422 | `You have already completed your attendance for today.` |
+| 403 | `No employee profile is linked to this user account.` |
+
+**Frontend integration notes:**
+
+**`/attendance/scan` page — standalone page (no sidebar, mobile-optimised):**
+
+The full entry flow when the phone camera opens `scan_url`:
+
+1. **Check auth state** (read stored token / session).
+2. **Not authenticated** → save the full current URL (`/attendance/scan?token=...`) into `sessionStorage` (e.g. key `redirectAfterLogin`), then redirect to `/login`.
+3. **Login page** — after a successful login, check `sessionStorage.redirectAfterLogin`. If it exists, clear the key and navigate to that URL instead of the default home.
+4. **Authenticated** (either directly or after the login redirect) → the `/attendance/scan` page reads `token` from the URL query params and automatically calls `POST /api/attendance/qr/scan` without any user interaction.
+5. Display a full-screen result:
+   - **Clock-in success** — "Clock-in recorded at HH:MM"
+   - **Clock-out success** — "Clock-out recorded at HH:MM"
+   - **Error** — show the `message` from the response (e.g. "Already completed", "Invalid QR code")
+
+No submit button is needed — the API call fires automatically on page load once the user is authenticated.
+
+- The QR code encodes `scan_url` from the generate response. Use `useQRCode()` from `@vueuse/core` to render it in the HR dashboard, or use the `/download` endpoint to get a printable PNG.
+- `qr_clock_in` / `qr_clock_out` booleans on the attendance record can be shown as a badge (e.g. "Via QR") in the attendance list.

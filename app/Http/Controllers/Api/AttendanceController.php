@@ -6,16 +6,21 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Attendance\ClockInRequest;
 use App\Http\Requests\Attendance\ClockOutRequest;
 use App\Http\Requests\Attendance\CorrectAttendanceRequest;
+use App\Http\Requests\Attendance\GenerateQrRequest;
 use App\Http\Requests\Attendance\IndexAttendanceRequest;
 use App\Http\Requests\Attendance\IndexAttendanceSummaryRequest;
 use App\Http\Requests\Attendance\MarkAbsentRequest;
 use App\Http\Requests\Attendance\ProxyClockInRequest;
 use App\Http\Requests\Attendance\ProxyClockOutRequest;
+use App\Http\Requests\Attendance\ScanQrRequest;
+use App\Http\Resources\AttendanceQrTokenResource;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
+use App\Models\AttendanceQrToken;
 use App\Services\AttendanceService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 
 class AttendanceController extends Controller
 {
@@ -153,6 +158,78 @@ class AttendanceController extends Controller
         return ApiResponse::success(
             data: $result,
             message: 'Absent marking completed successfully.',
+        );
+    }
+
+    public function generateQr(GenerateQrRequest $request): JsonResponse
+    {
+        $this->authorize('generateQr', Attendance::class);
+
+        $qrToken = $this->attendanceService->generateQrToken(
+            actor: $request->user(),
+        );
+
+        return ApiResponse::success(
+            data: AttendanceQrTokenResource::make($qrToken)->resolve($request),
+            message: 'QR token ready.',
+            status: 201,
+        );
+    }
+
+    public function currentQr(): JsonResponse
+    {
+        $this->authorize('generateQr', Attendance::class);
+
+        $qrToken = $this->attendanceService->currentQrToken();
+
+        return ApiResponse::success(
+            data: $qrToken ? AttendanceQrTokenResource::make($qrToken)->resolve() : null,
+            message: $qrToken ? 'Active QR token fetched.' : 'No active QR token.',
+        );
+    }
+
+    public function downloadQr(AttendanceQrToken $qrToken): Response
+    {
+        $this->authorize('generateQr', Attendance::class);
+
+        return $this->attendanceService->downloadQrImage($qrToken);
+    }
+
+    public function destroyQr(AttendanceQrToken $qrToken): JsonResponse
+    {
+        $this->authorize('generateQr', Attendance::class);
+
+        $this->attendanceService->deleteQrToken(
+            qrToken: $qrToken,
+            actor: request()->user(),
+            ipAddress: request()->ip(),
+            userAgent: request()->userAgent(),
+        );
+
+        return ApiResponse::success(
+            data: null,
+            message: 'QR token deleted successfully.',
+        );
+    }
+
+    public function scanQr(ScanQrRequest $request): JsonResponse
+    {
+        $this->authorize('clockIn', Attendance::class);
+
+        $result = $this->attendanceService->scanQr(
+            user: $request->user(),
+            token: (string) $request->validated('token'),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return ApiResponse::success(
+            data: [
+                'action' => $result['action'],
+                'attendance' => AttendanceResource::make($result['attendance'])->resolve($request),
+            ],
+            message: $result['action'] === 'qr_clock_in' ? 'QR clock-in successful.' : 'QR clock-out successful.',
+            status: $result['action'] === 'qr_clock_in' ? 201 : 200,
         );
     }
 }
