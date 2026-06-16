@@ -164,7 +164,7 @@ Close an `open` vacancy. Sets `status` to `closed`.
 
 ## GET /api/recruitment/candidates
 
-Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title`, `status`), `creator`, and `interviewer` (`id`, `employee_id`, `full_name`), sorted newest first.
+Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title`, `status`), `creator`, and `interviewers` (`id`, `employee_id`, `full_name`), sorted newest first.
 
 ### Query Parameters
 
@@ -196,7 +196,7 @@ Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title
       },
       "status": "new",
       "interview_date": null,
-      "interviewer": null,
+      "interviewers": [],
       "notes": null,
       "outcome_reason": null,
       "creator": { "id": 1, "name": "Admin User" },
@@ -215,9 +215,9 @@ Return a paginated list of candidates, eager loaded with `vacancy` (`id`, `title
 
 ### Frontend Notes
 
-- `interviewer` is `null` when no interviewer is assigned, otherwise an object: `{ "id": 5, "employee_id": "EMP-00010", "full_name": "John HR" }`.
-- `interviewer.id` is the `employees.id` value — use it as the value for `interviewer_id` when creating/updating a candidate.
-- Use `GET /api/employees/search` to populate the interviewer dropdown.
+- `interviewers` is an array (empty when no interviewer is assigned), each entry an object: `{ "id": 5, "employee_id": "EMP-00010", "full_name": "John HR" }`.
+- Each `interviewers[].id` is an `employees.id` value — use these as the values for `interviewer_ids` when creating/updating a candidate.
+- Use `GET /api/employees/search` to populate the interviewer multi-select.
 
 ---
 
@@ -236,7 +236,7 @@ Use `multipart/form-data` (a `cv` file is always required).
 - `source`: required enum, `facebook`, `telegram`, `linkedin`, `referral`, `walk_in`, `email`, `other`
 - `cv`: required file, PDF only, max `2048 KB`
 - `interview_date`: optional nullable date
-- `interviewer_id`: optional nullable integer, must reference an existing, non-deleted `employees.id`
+- `interviewer_ids`: optional nullable array of integers, each must reference an existing, non-deleted `employees.id`
 - `notes`: optional nullable string
 
 The frontend must not send `status`, `outcome_reason`, or `created_by` — these are backend-controlled.

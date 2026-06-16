@@ -34,7 +34,6 @@ return new class extends Migration
                 'no_show',
             ])->default('new')->index();
             $table->date('interview_date')->nullable();
-            $table->foreignId('interviewer_id')->nullable()->index()->constrained('employees')->nullOnDelete();
             $table->text('notes')->nullable();
             $table->longText('outcome_reason')->nullable();
             $table->foreignId('created_by')->index()->constrained('users')->cascadeOnDelete();

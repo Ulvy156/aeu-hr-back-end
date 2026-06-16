@@ -229,11 +229,21 @@ test('candidate can be updated while not hired', function () {
     $vacancy = recruitmentCandidateVacancy([], $admin);
     $candidate = recruitmentCandidateRecord($vacancy, $admin);
 
-    $interviewerUser = User::factory()->create(['name' => 'John HR']);
-    $interviewer = Employee::query()->create([
-        'user_id' => $interviewerUser->id,
+    $interviewerUserA = User::factory()->create(['name' => 'John HR']);
+    $interviewerA = Employee::query()->create([
+        'user_id' => $interviewerUserA->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'John HR',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    $interviewerUserB = User::factory()->create(['name' => 'Mary CEO']);
+    $interviewerB = Employee::query()->create([
+        'user_id' => $interviewerUserB->id,
+        'employee_id' => 'EMP-00002',
+        'full_name' => 'Mary CEO',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -246,14 +256,17 @@ test('candidate can be updated while not hired', function () {
             'email' => $candidate->email,
             'source' => 'referral',
             'interview_date' => now()->addDays(3)->toDateString(),
-            'interviewer_id' => $interviewer->id,
+            'interviewer_ids' => [$interviewerA->id, $interviewerB->id],
             'notes' => 'Strong candidate',
         ])
         ->assertSuccessful()
         ->assertJsonPath('data.full_name', 'Jane Smith')
         ->assertJsonPath('data.source', 'referral')
-        ->assertJsonPath('data.interviewer.id', $interviewer->id)
-        ->assertJsonPath('data.interviewer.full_name', 'John HR');
+        ->assertJsonCount(2, 'data.interviewers')
+        ->assertJsonPath('data.interviewers.0.id', $interviewerA->id)
+        ->assertJsonPath('data.interviewers.0.full_name', 'John HR')
+        ->assertJsonPath('data.interviewers.1.id', $interviewerB->id)
+        ->assertJsonPath('data.interviewers.1.full_name', 'Mary CEO');
 });
 
 test('changing status to a final outcome requires an outcome reason', function () {

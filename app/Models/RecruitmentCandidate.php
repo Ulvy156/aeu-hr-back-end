@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 #[Fillable([
     'vacancy_id',
@@ -18,7 +19,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'cv_size',
     'status',
     'interview_date',
-    'interviewer_id',
     'notes',
     'outcome_reason',
     'created_by',
@@ -37,9 +37,9 @@ class RecruitmentCandidate extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function interviewer(): BelongsTo
+    public function interviewers(): BelongsToMany
     {
-        return $this->belongsTo(Employee::class, 'interviewer_id');
+        return $this->belongsToMany(Employee::class, 'recruitment_candidate_interviewers', 'candidate_id', 'employee_id');
     }
 
     /**

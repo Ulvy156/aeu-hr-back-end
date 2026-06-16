@@ -34,8 +34,8 @@ class StoreCandidateRequest extends FormRequest
             'source' => ['required', Rule::in(['facebook', 'telegram', 'linkedin', 'referral', 'walk_in', 'email', 'other'])],
             'cv' => ['required', 'file', 'mimes:pdf', 'max:2048'],
             'interview_date' => ['nullable', 'date'],
-            'interviewer_id' => [
-                'nullable',
+            'interviewer_ids' => ['nullable', 'array'],
+            'interviewer_ids.*' => [
                 'integer',
                 Rule::exists('employees', 'id')->where(fn ($query) => $query->whereNull('deleted_at')),
             ],
