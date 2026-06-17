@@ -71,6 +71,10 @@ class AttendanceService
             throw ApiException::unprocessable('You are on approved leave today and cannot clock in.');
         }
 
+        if ($this->isPublicHoliday($clockInAt)) {
+            throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
+        }
+
         if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $attendanceDate)->exists()) {
             throw ApiException::unprocessable('You have already clocked in today.');
         }
@@ -98,6 +102,10 @@ class AttendanceService
 
         if ($this->isOnApprovedLeave($employee, $attendanceDate)) {
             throw ApiException::unprocessable('You are on approved leave today and cannot clock out.');
+        }
+
+        if ($this->isPublicHoliday(now())) {
+            throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
         }
 
         $attendance = Attendance::query()
@@ -492,6 +500,10 @@ class AttendanceService
 
             if ($this->isOnApprovedLeave($employee, $today)) {
                 throw ApiException::unprocessable('You are on approved leave today and cannot use QR attendance.');
+            }
+
+            if ($this->isPublicHoliday(now())) {
+                throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
             }
 
             $attendance = Attendance::query()

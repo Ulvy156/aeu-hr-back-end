@@ -339,6 +339,7 @@ Clock in the authenticated employee using backend GPS validation.
 - Backend reads office latitude, longitude, and allowed radius from company settings.
 - Clock-in is rejected when office GPS settings are missing.
 - Clock-in is rejected if the employee has an approved leave covering today (`"You are on approved leave today and cannot clock in."`).
+- Clock-in is rejected if today is an active public holiday (`"Today is a public holiday and attendance is not required."`).
 - Duplicate same-day clock-in is rejected.
 - Backend calculates `status` and `is_late`.
 
@@ -409,6 +410,7 @@ Clock out the authenticated employee using backend GPS validation.
 - Backend uses server time only.
 - Frontend must not send clock-out time.
 - Clock-out is rejected if the employee has an approved leave covering today (`"You are on approved leave today and cannot clock out."`).
+- Clock-out is rejected if today is an active public holiday (`"Today is a public holiday and attendance is not required."`).
 - Valid same-day clock-in must already exist.
 - Duplicate same-day clock-out is rejected.
 - Clock-out is rejected when office GPS settings are missing.
@@ -740,6 +742,7 @@ Employee submits the scanned QR token. The backend automatically determines whet
 |---|---|
 | 422 | `Invalid QR code.` — token does not exist in DB |
 | 422 | `You are on approved leave today and cannot use QR attendance.` |
+| 422 | `Today is a public holiday and attendance is not required.` |
 | 422 | `You have already completed your attendance for today.` |
 | 403 | `No employee profile is linked to this user account.` |
 
