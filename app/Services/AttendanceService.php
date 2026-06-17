@@ -75,6 +75,10 @@ class AttendanceService
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
         }
 
+        if (! $this->isWorkingDay($clockInAt, $settings)) {
+            throw ApiException::unprocessable('Today is not a working day.');
+        }
+
         if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $attendanceDate)->exists()) {
             throw ApiException::unprocessable('You have already clocked in today.');
         }
@@ -106,6 +110,10 @@ class AttendanceService
 
         if ($this->isPublicHoliday(now())) {
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
+        }
+
+        if (! $this->isWorkingDay(now(), $settings)) {
+            throw ApiException::unprocessable('Today is not a working day.');
         }
 
         $attendance = Attendance::query()
@@ -506,6 +514,12 @@ class AttendanceService
                 throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
             }
 
+            $settings = $this->companySettingService->current();
+
+            if (! $this->isWorkingDay(now(), $settings)) {
+                throw ApiException::unprocessable('Today is not a working day.');
+            }
+
             $attendance = Attendance::query()
                 ->whereBelongsTo($employee)
                 ->whereDate('attendance_date', $today)
@@ -513,7 +527,6 @@ class AttendanceService
                 ->first();
 
             if (! $attendance) {
-                $settings = $this->companySettingService->current();
                 $clockInAt = now();
 
                 $isLate = $this->isLateForTime($clockInAt, 'present', $settings);
