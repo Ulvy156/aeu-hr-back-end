@@ -33,6 +33,11 @@ class EmployeeResource extends JsonResource
             'emergency_contact' => $this->emergency_contact,
             'profile_photo' => $this->profile_photo,
             'profile_photo_url' => FileStorage::url($this->profile_photo),
+            'documents' => collect($this->documents ?? [])->map(fn (array $doc): array => [
+                'name' => $doc['name'],
+                'size' => $doc['size'],
+                'url' => FileStorage::url($doc['path']),
+            ])->all(),
             'user' => $this->whenLoaded('user', fn () => $this->user
                 ? [
                     'id' => $this->user->id,

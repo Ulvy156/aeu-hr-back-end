@@ -769,3 +769,341 @@ test('employee creation rejects invalid profile photo files', function () {
         ->assertJsonPath('message', 'Validation failed')
         ->assertJsonValidationErrors('profile_photo');
 });
+
+// ──────────────────────────────────────────────────────────────────
+// Employee Documents
+// ──────────────────────────────────────────────────────────────────
+
+test('admin and hr can create employee with up to 5 documents', function (string $role) {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'docs@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor($role);
+
+    $documents = [
+        UploadedFile::fake()->create('id_card.pdf', 500, 'application/pdf'),
+        UploadedFile::fake()->create('contract.pdf', 1000, 'application/pdf'),
+        UploadedFile::fake()->image('cert.jpg', 100, 100),
+        UploadedFile::fake()->create('letter.doc', 200, 'application/msword'),
+        UploadedFile::fake()->create('appendix.docx', 300, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+    ];
+
+    $response = $this->withToken($token)->post('/api/employees', array_merge(
+        employeePayload($linkedUser, ['manager_id' => $manager->id]),
+        ['documents' => $documents],
+    ), ['Accept' => 'application/json']);
+
+    $response
+        ->assertCreated()
+        ->assertJsonCount(5, 'data.documents');
+
+    $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
+
+    expect($employee->documents)->toHaveCount(5);
+
+    $disk = Storage::disk(config('filesystems.cloud'));
+    foreach ($employee->documents as $doc) {
+        $disk->assertExists($doc['path']);
+        expect($doc)->toHaveKeys(['path', 'name', 'size']);
+    }
+})->with(['admin', 'hr']);
+
+test('employee creation succeeds without documents', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'nodocs@example.com']);
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
+        'manager_id' => $manager->id,
+    ]));
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath('data.documents', []);
+});
+
+test('employee creation fails with more than 5 documents', function () {
+    $linkedUser = linkableUser(['email' => 'toomany@example.com']);
+    [, $token] = employeeActor('hr');
+
+    $documents = [];
+    for ($i = 0; $i < 6; $i++) {
+        $documents[] = UploadedFile::fake()->create("doc{$i}.pdf", 100, 'application/pdf');
+    }
+
+    $response = $this->withToken($token)->post('/api/employees', array_merge(
+        employeePayload($linkedUser),
+        ['documents' => $documents],
+    ), ['Accept' => 'application/json']);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('documents');
+});
+
+test('employee creation fails when total document size exceeds 20MB', function () {
+    $linkedUser = linkableUser(['email' => 'bigdocs@example.com']);
+    [, $token] = employeeActor('hr');
+
+    $documents = [
+        UploadedFile::fake()->create('big1.pdf', 11000, 'application/pdf'),
+        UploadedFile::fake()->create('big2.pdf', 11000, 'application/pdf'),
+    ];
+
+    $response = $this->withToken($token)->post('/api/employees', array_merge(
+        employeePayload($linkedUser),
+        ['documents' => $documents],
+    ), ['Accept' => 'application/json']);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('documents');
+});
+
+test('employee creation fails with invalid document file type', function () {
+    $linkedUser = linkableUser(['email' => 'badtype@example.com']);
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->post('/api/employees', array_merge(
+        employeePayload($linkedUser),
+        ['documents' => [UploadedFile::fake()->create('virus.exe', 100, 'application/x-msdownload')]],
+    ), ['Accept' => 'application/json']);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('documents.0');
+});
+
+test('employee update can add documents to an existing employee', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'updatedocs@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+    ]);
+
+    $response = $this->withToken($token)->post("/api/employees/{$employee->id}", [
+        '_method' => 'PUT',
+        'full_name' => 'Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            UploadedFile::fake()->create('contract.pdf', 500, 'application/pdf'),
+            UploadedFile::fake()->create('id.pdf', 300, 'application/pdf'),
+        ],
+    ], ['Accept' => 'application/json']);
+
+    $response
+        ->assertOk()
+        ->assertJsonCount(2, 'data.documents');
+
+    $employee->refresh();
+    expect($employee->documents)->toHaveCount(2);
+});
+
+test('employee update can remove specific documents by index', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'removedocs@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $disk = Storage::disk(config('filesystems.cloud'));
+    $path0 = $disk->putFile('employee-documents', UploadedFile::fake()->create('doc0.pdf', 100, 'application/pdf'));
+    $path1 = $disk->putFile('employee-documents', UploadedFile::fake()->create('doc1.pdf', 100, 'application/pdf'));
+    $path2 = $disk->putFile('employee-documents', UploadedFile::fake()->create('doc2.pdf', 100, 'application/pdf'));
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Remove Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            ['path' => $path0, 'name' => 'doc0.pdf', 'size' => 102400],
+            ['path' => $path1, 'name' => 'doc1.pdf', 'size' => 102400],
+            ['path' => $path2, 'name' => 'doc2.pdf', 'size' => 102400],
+        ],
+    ]);
+
+    $response = $this->withToken($token)->putJson("/api/employees/{$employee->id}", [
+        'full_name' => 'Remove Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'remove_documents' => [1],
+    ]);
+
+    $response->assertOk()->assertJsonCount(2, 'data.documents');
+
+    $employee->refresh();
+    expect($employee->documents)->toHaveCount(2)
+        ->and($employee->documents[0]['name'])->toBe('doc0.pdf')
+        ->and($employee->documents[1]['name'])->toBe('doc2.pdf');
+
+    $disk->assertMissing($path1);
+    $disk->assertExists($path0);
+    $disk->assertExists($path2);
+});
+
+test('employee update can simultaneously remove and add documents', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'swapDocs@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $disk = Storage::disk(config('filesystems.cloud'));
+    $oldPath = $disk->putFile('employee-documents', UploadedFile::fake()->create('old.pdf', 100, 'application/pdf'));
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Swap Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            ['path' => $oldPath, 'name' => 'old.pdf', 'size' => 102400],
+        ],
+    ]);
+
+    $response = $this->withToken($token)->post("/api/employees/{$employee->id}", [
+        '_method' => 'PUT',
+        'full_name' => 'Swap Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'remove_documents' => [0],
+        'documents' => [
+            UploadedFile::fake()->create('new1.pdf', 200, 'application/pdf'),
+            UploadedFile::fake()->create('new2.pdf', 200, 'application/pdf'),
+        ],
+    ], ['Accept' => 'application/json']);
+
+    $response->assertOk()->assertJsonCount(2, 'data.documents');
+
+    $employee->refresh();
+    expect($employee->documents)->toHaveCount(2)
+        ->and($employee->documents[0]['name'])->toBe('new1.pdf')
+        ->and($employee->documents[1]['name'])->toBe('new2.pdf');
+
+    $disk->assertMissing($oldPath);
+});
+
+test('employee update rejects out-of-bounds remove_documents index', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'oob@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'OOB Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            ['path' => 'employee-documents/test.pdf', 'name' => 'test.pdf', 'size' => 1024],
+        ],
+    ]);
+
+    $response = $this->withToken($token)->putJson("/api/employees/{$employee->id}", [
+        'full_name' => 'OOB Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'remove_documents' => [5],
+    ]);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('remove_documents');
+});
+
+test('employee update rejects total documents exceeding 5 after removal and addition', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'maxdocs@example.com']);
+    $linkedUser->assignRole('employee');
+    [, $token] = employeeActor('hr');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Max Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            ['path' => 'a.pdf', 'name' => 'a.pdf', 'size' => 1024],
+            ['path' => 'b.pdf', 'name' => 'b.pdf', 'size' => 1024],
+            ['path' => 'c.pdf', 'name' => 'c.pdf', 'size' => 1024],
+            ['path' => 'd.pdf', 'name' => 'd.pdf', 'size' => 1024],
+            ['path' => 'e.pdf', 'name' => 'e.pdf', 'size' => 1024],
+        ],
+    ]);
+
+    $response = $this->withToken($token)->post("/api/employees/{$employee->id}", [
+        '_method' => 'PUT',
+        'full_name' => 'Max Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'remove_documents' => [0],
+        'documents' => [
+            UploadedFile::fake()->create('new1.pdf', 100, 'application/pdf'),
+            UploadedFile::fake()->create('new2.pdf', 100, 'application/pdf'),
+        ],
+    ], ['Accept' => 'application/json']);
+
+    $response
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('documents');
+});
+
+test('deleting an employee removes documents from storage', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'deldocs@example.com']);
+    $linkedUser->assignRole('employee');
+    [$actor, $token] = employeeActor('admin');
+
+    $disk = Storage::disk(config('filesystems.cloud'));
+    $path = $disk->putFile('employee-documents', UploadedFile::fake()->create('contract.pdf', 100, 'application/pdf'));
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Del Doc Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+        'documents' => [
+            ['path' => $path, 'name' => 'contract.pdf', 'size' => 102400],
+        ],
+    ]);
+
+    $disk->assertExists($path);
+
+    $this->withToken($token)->deleteJson("/api/employees/{$employee->id}")->assertOk();
+
+    $disk->assertMissing($path);
+});

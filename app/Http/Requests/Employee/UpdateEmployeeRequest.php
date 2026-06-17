@@ -45,6 +45,10 @@ class UpdateEmployeeRequest extends FormRequest
             'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'documents' => ['nullable', 'array', 'max:5'],
+            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx', 'max:20480'],
+            'remove_documents' => ['nullable', 'array'],
+            'remove_documents.*' => ['integer', 'min:0'],
         ];
     }
 
@@ -64,6 +68,43 @@ class UpdateEmployeeRequest extends FormRequest
     public function after(): array
     {
         return [
+            function (Validator $validator): void {
+                $employee = $this->route('employee');
+                if (! $employee instanceof Employee) {
+                    return;
+                }
+
+                $removeIndices = array_unique(array_map('intval', $this->input('remove_documents', [])));
+                $currentDocuments = $employee->documents ?? [];
+                $currentCount = count($currentDocuments);
+
+                foreach ($removeIndices as $index) {
+                    if ($index >= $currentCount) {
+                        $validator->errors()->add('remove_documents', "Document index [{$index}] does not exist.");
+                    }
+                }
+
+                $remaining = $currentCount - count(array_filter($removeIndices, fn (int $i) => $i < $currentCount));
+                $newUploads = count($this->file('documents', []));
+
+                if ($remaining + $newUploads > 5) {
+                    $validator->errors()->add('documents', 'An employee may have at most 5 documents.');
+                }
+
+                $remainingSize = 0;
+                foreach ($currentDocuments as $i => $doc) {
+                    if (! in_array($i, $removeIndices, true)) {
+                        $remainingSize += $doc['size'] ?? 0;
+                    }
+                }
+
+                $newFiles = $this->file('documents', []);
+                $newSize = array_sum(array_map(fn ($f) => $f->getSize(), $newFiles));
+
+                if ($remainingSize + $newSize > 20 * 1024 * 1024) {
+                    $validator->errors()->add('documents', 'The total size of all documents must not exceed 20MB.');
+                }
+            },
             function (Validator $validator): void {
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');

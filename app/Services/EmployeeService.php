@@ -30,7 +30,7 @@ class EmployeeService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return Employee::query()
-            ->with(['user:id,name,email,status', 'department', 'position'])
+            ->with(['user:id,name,email,status', 'department', 'position', 'manager'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $query->where(function (Builder $query) use ($search): void {
                     $query
@@ -126,11 +126,12 @@ class EmployeeService
     public function create(
         array $data,
         ?UploadedFile $profilePhoto,
+        ?array $documentFiles,
         User $actor,
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): Employee {
-        return DB::transaction(function () use ($data, $profilePhoto, $actor, $ipAddress, $userAgent): Employee {
+        return DB::transaction(function () use ($data, $profilePhoto, $documentFiles, $actor, $ipAddress, $userAgent): Employee {
             $employeeId = $this->generateEmployeeId();
             $user = User::query()
                 ->with('employeeWithTrashed')
@@ -156,6 +157,7 @@ class EmployeeService
                 'profile_photo' => $profilePhoto
                     ? FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto)
                     : null,
+                'documents' => ! empty($documentFiles) ? $this->storeDocuments($documentFiles) : null,
             ]);
 
             $employee->load(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
@@ -181,11 +183,13 @@ class EmployeeService
         Employee $employee,
         array $data,
         ?UploadedFile $profilePhoto,
+        ?array $documentFiles,
+        ?array $removeDocuments,
         User $actor,
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): Employee {
-        return DB::transaction(function () use ($employee, $data, $profilePhoto, $actor, $ipAddress, $userAgent): Employee {
+        return DB::transaction(function () use ($employee, $data, $profilePhoto, $documentFiles, $removeDocuments, $actor, $ipAddress, $userAgent): Employee {
             $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
             $oldValues = $this->auditAttributes($employee);
 
@@ -202,6 +206,31 @@ class EmployeeService
                 }
 
                 $attributes['profile_photo'] = FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto);
+            }
+
+            $currentDocuments = $employee->documents ?? [];
+
+            if (! empty($removeDocuments)) {
+                $indicesToRemove = array_unique(array_map('intval', $removeDocuments));
+                $documentsToDelete = [];
+
+                foreach ($indicesToRemove as $index) {
+                    if (isset($currentDocuments[$index])) {
+                        $documentsToDelete[] = $currentDocuments[$index];
+                        unset($currentDocuments[$index]);
+                    }
+                }
+
+                $this->deleteDocumentFiles($documentsToDelete);
+                $currentDocuments = array_values($currentDocuments);
+            }
+
+            if (! empty($documentFiles)) {
+                $currentDocuments = array_merge($currentDocuments, $this->storeDocuments($documentFiles));
+            }
+
+            if (! empty($removeDocuments) || ! empty($documentFiles)) {
+                $attributes['documents'] = ! empty($currentDocuments) ? $currentDocuments : null;
             }
 
             $employee->update($attributes);
@@ -242,6 +271,10 @@ class EmployeeService
 
             if ($employee->profile_photo) {
                 FileStorage::disk()->delete($employee->profile_photo);
+            }
+
+            if (! empty($employee->documents)) {
+                $this->deleteDocumentFiles($employee->documents);
             }
 
             $employee->delete();
@@ -372,7 +405,33 @@ class EmployeeService
             'employment_status' => $employee->employment_status->value,
             'probation_end_date' => $employee->probation_end_date?->toDateString(),
             'user_status' => $employee->user?->status?->value,
+            'document_names' => collect($employee->documents ?? [])->pluck('name')->all(),
         ];
+    }
+
+    /**
+     * @param  array<int, UploadedFile>  $files
+     * @return array<int, array{path: string, name: string, size: int}>
+     */
+    protected function storeDocuments(array $files): array
+    {
+        return collect($files)
+            ->map(fn (UploadedFile $file): array => [
+                'path' => FileStorage::disk()->putFile('employee-documents', $file),
+                'name' => $file->getClientOriginalName(),
+                'size' => $file->getSize(),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array{path: string, name: string, size: int}>  $documents
+     */
+    protected function deleteDocumentFiles(array $documents): void
+    {
+        foreach ($documents as $document) {
+            FileStorage::disk()->delete($document['path']);
+        }
     }
 
     protected function userStatusFromEmploymentStatus(string $employmentStatus): string

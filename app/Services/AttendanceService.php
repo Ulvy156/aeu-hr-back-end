@@ -436,14 +436,14 @@ class AttendanceService
 
     public function downloadQrImage(AttendanceQrToken $qrToken): Response
     {
-        $png = QrCode::format('png')
+        $svg = QrCode::format('svg')
             ->size(400)
             ->margin(2)
             ->generate($qrToken->scan_url);
 
-        return response((string) $png, 200, [
-            'Content-Type' => 'image/png',
-            'Content-Disposition' => 'attachment; filename="attendance-qr.png"',
+        return response((string) $svg, 200, [
+            'Content-Type' => 'image/svg+xml',
+            'Content-Disposition' => 'attachment; filename="attendance-qr.svg"',
         ]);
     }
 

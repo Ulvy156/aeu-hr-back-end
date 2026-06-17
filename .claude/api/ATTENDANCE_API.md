@@ -620,7 +620,7 @@ QR tokens are **permanent** — they do not expire. They are valid until explici
 
 ### POST /api/attendance/qr/generate
 
-Generate a new QR token. **Idempotent** — if a token already exists, the same token is returned. HR calls this once, downloads the PNG, prints it, and posts it outside.
+Generate a new QR token. **Idempotent** — if a token already exists, the same token is returned. HR calls this once, downloads the SVG, prints it, and posts it outside.
 
 **Permission:** `attendance.generate_qr`
 
@@ -670,11 +670,11 @@ Return the current active QR token for re-printing. Returns `data: null` if no t
 
 ### GET /api/attendance/qr/{qrToken}/download
 
-Stream the QR code as a PNG file. The browser downloads `attendance-qr.png` which HR prints and posts outside.
+Stream the QR code as an SVG file. The browser downloads `attendance-qr.svg` which HR prints and posts outside.
 
 **Permission:** `attendance.generate_qr`
 
-**Response:** `image/png` binary (Content-Disposition: attachment; filename="attendance-qr.png")
+**Response:** `image/svg+xml` (Content-Disposition: attachment; filename="attendance-qr.svg")
 
 ---
 
@@ -760,5 +760,5 @@ The full entry flow when the phone camera opens `scan_url`:
 
 No submit button is needed — the API call fires automatically on page load once the user is authenticated.
 
-- The QR code encodes `scan_url` from the generate response. Use `useQRCode()` from `@vueuse/core` to render it in the HR dashboard, or use the `/download` endpoint to get a printable PNG.
+- The QR code encodes `scan_url` from the generate response. Use `useQRCode()` from `@vueuse/core` to render it in the HR dashboard, or use the `/download` endpoint to get a printable SVG (vector — prints at any size without pixelation).
 - `qr_clock_in` / `qr_clock_out` booleans on the attendance record can be shown as a badge (e.g. "Via QR") in the attendance list.

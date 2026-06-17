@@ -51,6 +51,8 @@ class StoreEmployeeRequest extends FormRequest
             'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'documents' => ['nullable', 'array', 'max:5'],
+            'documents.*' => ['file', 'mimes:pdf,jpg,jpeg,png,webp,doc,docx', 'max:20480'],
         ];
     }
 
@@ -87,6 +89,15 @@ class StoreEmployeeRequest extends FormRequest
     public function after(): array
     {
         return [
+            function (Validator $validator): void {
+                $files = $this->file('documents', []);
+                if (! empty($files)) {
+                    $totalSize = array_sum(array_map(fn ($f) => $f->getSize(), $files));
+                    if ($totalSize > 20 * 1024 * 1024) {
+                        $validator->errors()->add('documents', 'The total size of all documents must not exceed 20MB.');
+                    }
+                }
+            },
             function (Validator $validator): void {
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');

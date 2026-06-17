@@ -123,6 +123,13 @@ Soft-deleted employees are excluded from the default list.
       "emergency_contact": null,
       "profile_photo": "employee-profile-photos/avatar.jpg",
       "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
+      "documents": [
+        {
+          "name": "id_card.pdf",
+          "size": 512000,
+          "url": "https://files.example.com/employee-documents/abc123.pdf"
+        }
+      ],
       "user": {
         "id": 5,
         "name": "Admin User",
@@ -139,6 +146,11 @@ Soft-deleted employees are excluded from the default list.
         "id": 2,
         "name": "Accountant",
         "status": "active"
+      },
+      "manager": {
+        "id": 3,
+        "employee_id": "EMP-00003",
+        "full_name": "Deputy Director"
       },
       "created_at": "2026-05-02T10:00:00.000000Z",
       "updated_at": "2026-05-02T10:00:00.000000Z"
@@ -161,7 +173,7 @@ Create an employee profile linked to an existing user account.
 
 ### Request Body
 
-Use `multipart/form-data` when sending `profile_photo`.
+Use `multipart/form-data` when sending `profile_photo` or `documents`.
 
 ```json
 {
@@ -195,6 +207,8 @@ Use `multipart/form-data` when sending `profile_photo`.
 - `probation_end_date`: optional date, must be on or after `join_date`. Only meaningful when `employment_status` is `probation` — see notes below.
 - `emergency_contact`: optional string
 - `profile_photo`: optional image, `jpg`, `jpeg`, `png`, or `webp`, max `2048 KB`
+- `documents`: optional array of files, max `5` items. Total size of all documents must not exceed `20 MB`.
+- `documents.*`: file, allowed types `pdf`, `jpg`, `jpeg`, `png`, `webp`, `doc`, `docx`, max `20480 KB` per file
 
 ### Validation Notes
 
@@ -232,6 +246,18 @@ Use `multipart/form-data` when sending `profile_photo`.
     "emergency_contact": null,
     "profile_photo": "employee-profile-photos/avatar.jpg",
     "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
+    "documents": [
+      {
+        "name": "id_card.pdf",
+        "size": 512000,
+        "url": "https://files.example.com/employee-documents/abc123.pdf"
+      },
+      {
+        "name": "contract.pdf",
+        "size": 1024000,
+        "url": "https://files.example.com/employee-documents/def456.pdf"
+      }
+    ],
     "user": {
       "id": 5,
       "name": "Admin User",
@@ -279,7 +305,7 @@ The response uses the same `data` shape as the employee list item, plus a `manag
 }
 ```
 
-`manager` is `null` when the employee has no manager (e.g. the top of the org chart). This field is only populated on the detail endpoint, not the list endpoint.
+`manager` is `null` when the employee has no manager (e.g. the top of the org chart). This field is included on both the list and detail endpoints.
 
 `manager_id` can be changed directly via `PUT /api/employees/{employee}` (like `department_id`/`position_id`, this is not recorded in employment history), or proposed via `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md` for a change that requires CEO approval and is recorded in `.claude/api/EMPLOYMENT_HISTORY_API.md`. For the full reporting-line org chart, see `.claude/api/EMPLOYEE_HIERARCHY_API.md`.
 
@@ -291,7 +317,7 @@ Update an employee and sync the linked user name and active/inactive status.
 
 ### Request Body
 
-Use `multipart/form-data` when replacing `profile_photo`.
+Use `multipart/form-data` when replacing `profile_photo` or uploading/replacing `documents`.
 
 ```json
 {
@@ -305,6 +331,12 @@ Use `multipart/form-data` when replacing `profile_photo`.
   "employment_status": "resigned"
 }
 ```
+
+### Request Fields (documents on update)
+
+- `documents`: optional array of new files to add, max `5` items total (after removals). Total size of all documents (existing + new) must not exceed `20 MB`.
+- `documents.*`: file, allowed types `pdf`, `jpg`, `jpeg`, `png`, `webp`, `doc`, `docx`, max `20480 KB` per file
+- `remove_documents`: optional array of zero-based integer indices identifying existing documents to remove before adding new ones
 
 ### Validation Notes
 
@@ -324,6 +356,10 @@ Use `multipart/form-data` when replacing `profile_photo`.
 - Update without a new `profile_photo` keeps the current stored photo.
 - When replacing the photo, send only a new multipart uploaded image file.
 - Do not send the existing `profile_photo` path string back in the update payload.
+- `documents` is optional on update. New documents are appended to existing ones.
+- `remove_documents` indices must reference existing document positions (zero-based). Out-of-bounds indices are rejected.
+- Total documents (existing minus removed plus new) must not exceed `5`.
+- Total size of all remaining and new documents must not exceed `20 MB`.
 
 ---
 
@@ -337,6 +373,7 @@ Soft delete an employee.
 - Employee deletion also soft deletes the linked `users` row in the same transaction.
 - The linked user status is set to `inactive` before it is soft deleted.
 - Profile photo is removed from Laravel Storage when present.
+- Documents are removed from Laravel Storage when present.
 - No hard delete is used in the normal delete flow.
 
 ## Frontend Notes
@@ -344,7 +381,7 @@ Soft delete an employee.
 - `POST /api/employees` requires `user_id` for an existing user account.
 - `POST /api/employees` does not create a new user account.
 - `POST /api/employees` does not require `employee_id`; the backend generates it as `EMP-XXXXX`.
-- Use `multipart/form-data` for create or update when a profile photo is included.
+- Use `multipart/form-data` for create or update when a profile photo or documents are included.
 - Send `profile_photo` only when uploading a new file.
 - Do not send the existing `profile_photo` path or `profile_photo_url` back as the `profile_photo` field.
 - `profile_photo_url` should be used for display; `profile_photo` is the stored path.
@@ -358,4 +395,9 @@ Soft delete an employee.
 - `DELETE /api/employees/{employee}` soft deletes both the employee and the linked user.
 - Default employee list responses exclude soft-deleted employee records.
 - Salary updates are audited in the backend through Spatie Activitylog.
+- `documents` should be sent as `multipart/form-data` array fields (e.g. `documents[0]`, `documents[1]`).
+- `documents` in the response contains `{ name, size, url }` objects — use `url` for display/download. The internal `path` is intentionally hidden.
+- To remove existing documents on update, send `remove_documents` with zero-based indices of the documents to remove.
+- Do not send existing document paths or URLs back as `documents` entries.
+- An employee may have at most `5` documents, with a total combined size of `20 MB`.
 - `PUT /api/employees/{employee}` does not create `employment_histories` rows. See `.claude/api/EMPLOYMENT_HISTORY_API.md`. For changes that require approval and an audit trail (transfers, promotions, salary changes, status changes), use `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md` instead.

@@ -48,8 +48,9 @@ class EmployeeController extends Controller
         $this->authorize('create', Employee::class);
 
         $employee = $this->employeeService->create(
-            data: $request->safe()->except('profile_photo'),
+            data: $request->safe()->except(['profile_photo', 'documents']),
             profilePhoto: $request->file('profile_photo'),
+            documentFiles: $request->file('documents'),
             actor: $request->user(),
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
@@ -92,8 +93,10 @@ class EmployeeController extends Controller
 
         $employee = $this->employeeService->update(
             employee: $employee,
-            data: $request->safe()->except('profile_photo'),
+            data: $request->safe()->except(['profile_photo', 'documents', 'remove_documents']),
             profilePhoto: $request->file('profile_photo'),
+            documentFiles: $request->file('documents'),
+            removeDocuments: $request->validated('remove_documents'),
             actor: $request->user(),
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
