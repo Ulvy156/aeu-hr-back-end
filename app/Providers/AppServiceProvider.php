@@ -59,6 +59,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(PublicHoliday::class, PublicHolidayPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
 
+        Gate::define('downloadBackup', fn (User $user) => $user->can('backups.download'));
+
         RateLimiter::for('login', function (Request $request) {
             return Limit::perMinute(5)
                 ->by(Str::lower((string) $request->input('email')).'|'.$request->ip())

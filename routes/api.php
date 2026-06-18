@@ -24,3 +24,4 @@ require __DIR__.'/api/settings.php';
 require __DIR__.'/api/dashboard.php';
 require __DIR__.'/api/reports.php';
 require __DIR__.'/api/audit-logs.php';
+require __DIR__.'/api/backups.php';
