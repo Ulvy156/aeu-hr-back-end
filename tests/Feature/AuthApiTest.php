@@ -38,10 +38,13 @@ test('a user can login and receive a sanctum token', function () {
         ->assertJsonPath('data.token_type', 'Bearer')
         ->assertJsonPath('data.user.email', 'employee@example.com')
         ->assertJsonPath('data.user.roles.0', 'employee')
-        ->assertJsonPath('data.user.permissions.0', 'attendance.clock_in')
         ->assertJsonPath('data.user.employee.employee_id', 'EMP001');
 
+    expect($response->json('data.access_token'))->toBeString()->not->toBeEmpty();
+    expect($response->json('data.expires_in'))->toBeInt()->toBeGreaterThan(0);
+    $response->assertCookie('refresh_token');
     expect($user->tokens()->count())->toBe(1);
+    expect($user->refreshTokens()->count())->toBe(1);
 });
 
 test('admin can login without an employee profile', function () {

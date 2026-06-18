@@ -15,15 +15,14 @@ use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
+    protected const REFRESH_TOKEN_COOKIE = 'refresh_token';
+
     public function __construct(
         protected AuthService $authService,
         protected AuditLogService $auditLogService,
         protected UserPermissionService $userPermissionService,
     ) {}
 
-    /**
-     * Handle a login request and issue a Sanctum token.
-     */
     public function login(LoginRequest $request): JsonResponse
     {
         $deviceName = $request->validated('device_name') ?: 'api-token';
@@ -47,19 +46,41 @@ class AuthController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        return ApiResponse::success(
+        $response = ApiResponse::success(
             data: [
-                'token' => $payload['token'],
+                'access_token' => $payload['access_token'],
                 'token_type' => $payload['token_type'],
+                'expires_in' => $payload['expires_in'],
                 'user' => $this->authUserPayload($payload['user'], $request),
             ],
             message: 'Login successful.',
         );
+
+        return $this->attachRefreshTokenCookie($response, $payload['refresh_token']);
     }
 
-    /**
-     * Revoke the current Sanctum token.
-     */
+    public function refresh(Request $request): JsonResponse
+    {
+        $refreshToken = $request->cookie(self::REFRESH_TOKEN_COOKIE);
+
+        if (! $refreshToken) {
+            return ApiResponse::error('Refresh token not found.', status: 401);
+        }
+
+        $payload = $this->authService->refresh($refreshToken);
+
+        $response = ApiResponse::success(
+            data: [
+                'access_token' => $payload['access_token'],
+                'token_type' => $payload['token_type'],
+                'expires_in' => $payload['expires_in'],
+            ],
+            message: 'Token refreshed successfully.',
+        );
+
+        return $this->attachRefreshTokenCookie($response, $payload['refresh_token']);
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $this->auditLogService->log(
@@ -74,17 +95,19 @@ class AuthController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        $this->authService->logout($request->user());
+        $this->authService->logout(
+            $request->user(),
+            $request->cookie(self::REFRESH_TOKEN_COOKIE),
+        );
 
-        return ApiResponse::success(
+        $response = ApiResponse::success(
             data: null,
             message: 'Logout successful.',
         );
+
+        return $response->withCookie(cookie()->forget(self::REFRESH_TOKEN_COOKIE));
     }
 
-    /**
-     * Return the authenticated user.
-     */
     public function me(Request $request): JsonResponse
     {
         $user = $this->authService->me($request->user());
@@ -96,8 +119,6 @@ class AuthController extends Controller
     }
 
     /**
-     * Build the authenticated user response shape for auth endpoints.
-     *
      * @return array<string, mixed>
      */
     protected function authUserPayload(User $user, Request $request): array
@@ -109,5 +130,22 @@ class AuthController extends Controller
             $summary['roles'],
             $summary['permissions'],
         ))->resolve($request);
+    }
+
+    protected function attachRefreshTokenCookie(JsonResponse $response, string $refreshToken): JsonResponse
+    {
+        $expirationMinutes = (int) config('hr.auth.refresh_token_expiration_days', 7) * 24 * 60;
+
+        $cookie = cookie(
+            name: self::REFRESH_TOKEN_COOKIE,
+            value: $refreshToken,
+            minutes: $expirationMinutes,
+            path: '/',
+            secure: app()->isProduction(),
+            httpOnly: true,
+            sameSite: 'Lax',
+        );
+
+        return $response->withCookie($cookie);
     }
 }

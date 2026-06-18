@@ -12,6 +12,7 @@ class ProfileService
     public function __construct(
         protected UserPermissionService $userPermissionService,
         protected AuditLogService $auditLogService,
+        protected AuthService $authService,
     ) {}
 
     /**
@@ -62,6 +63,8 @@ class ProfileService
             $user->tokens()
                 ->when($currentTokenId, fn ($query) => $query->where('id', '!=', $currentTokenId))
                 ->delete();
+
+            $this->authService->revokeAllRefreshTokens($user);
 
             $this->auditLogService->log(
                 action: 'change_password',

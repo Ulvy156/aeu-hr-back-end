@@ -20,6 +20,7 @@ class EmployeeService
 {
     public function __construct(
         protected AuditLogService $auditLogService,
+        protected AuthService $authService,
     ) {}
 
     /**
@@ -266,6 +267,7 @@ class EmployeeService
                     'status' => Status::Inactive->value,
                 ]);
                 $employee->user->tokens()->delete();
+                $this->authService->revokeAllRefreshTokens($employee->user);
                 $employee->user->delete();
             }
 

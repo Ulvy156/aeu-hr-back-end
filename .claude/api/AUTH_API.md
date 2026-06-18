@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Authentication for API clients using Laravel Sanctum bearer tokens.
+Authentication for API clients using Laravel Sanctum bearer tokens with refresh token rotation via httpOnly cookie.
 
 ## Base Endpoint
 
@@ -12,11 +12,18 @@ Authentication for API clients using Laravel Sanctum bearer tokens.
 
 ## Auth Requirement
 
-- `POST /api/login`: public
+- `POST /api/login`: public (rate-limited)
+- `POST /api/refresh`: public (rate-limited), reads refresh token from httpOnly cookie
 - `POST /api/logout`: authenticated with Sanctum bearer token
 - `GET /api/me`: authenticated with Sanctum bearer token
 - `GET /api/profile`: authenticated with Sanctum bearer token
 - `POST /api/profile/change-password`: authenticated with Sanctum bearer token
+
+## Token Strategy
+
+- **Access token**: Short-lived (15 minutes default). Sent in `Authorization: Bearer {token}` header.
+- **Refresh token**: Long-lived (7 days default). Stored as an httpOnly cookie set by the backend. Frontend never accesses it directly.
+- **Token rotation**: Every refresh issues a new access token AND a new refresh token. The old refresh token is revoked immediately.
 
 ## Permissions
 
@@ -28,6 +35,7 @@ Authentication for API clients using Laravel Sanctum bearer tokens.
 ## Endpoint List
 
 - `POST /api/login`
+- `POST /api/refresh`
 - `POST /api/logout`
 - `GET /api/me`
 - `GET /api/profile`
@@ -37,7 +45,7 @@ Authentication for API clients using Laravel Sanctum bearer tokens.
 
 ## POST /api/login
 
-Authenticate a user and issue a Sanctum token.
+Authenticate a user and issue an access token + refresh token.
 
 ### Request Body
 
@@ -62,8 +70,9 @@ Authenticate a user and issue a Sanctum token.
   "success": true,
   "message": "Login successful.",
   "data": {
-    "token": "1|plain-text-token",
+    "access_token": "1|plain-text-token",
     "token_type": "Bearer",
+    "expires_in": 900,
     "user": {
       "id": 1,
       "name": "System Admin",
@@ -82,6 +91,21 @@ Authenticate a user and issue a Sanctum token.
   }
 }
 ```
+
+### Response Headers (Cookie)
+
+```
+Set-Cookie: refresh_token={token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800
+```
+
+The refresh token is NOT included in the JSON response body. It is only set as an httpOnly cookie.
+
+### Response Fields
+
+- `access_token`: Bearer token for API requests. Expires after `expires_in` seconds.
+- `token_type`: Always `"Bearer"`.
+- `expires_in`: Access token lifetime in seconds (default: 900 = 15 minutes).
+- `user`: Authenticated user with roles, permissions, and employee data.
 
 ### Validation Notes
 
@@ -137,19 +161,94 @@ Authenticate a user and issue a Sanctum token.
 
 ---
 
+## POST /api/refresh
+
+Issue a new access token using the refresh token cookie. No authentication header required.
+
+### Auth
+
+None. The refresh token is read from the httpOnly cookie sent by the browser.
+
+### Request Body
+
+None.
+
+### Prerequisites
+
+- `withCredentials: true` must be set on the HTTP client so the browser sends the cookie.
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "Token refreshed successfully.",
+  "data": {
+    "access_token": "2|new-plain-text-token",
+    "token_type": "Bearer",
+    "expires_in": 900
+  }
+}
+```
+
+### Response Headers (Cookie)
+
+A new `refresh_token` cookie replaces the previous one (token rotation).
+
+### Error Responses
+
+- Missing cookie:
+
+```json
+{
+  "success": false,
+  "message": "Refresh token not found.",
+  "errors": []
+}
+```
+Status: 401
+
+- Expired or revoked refresh token:
+
+```json
+{
+  "success": false,
+  "message": "Invalid or expired refresh token.",
+  "errors": []
+}
+```
+Status: 403
+
+- Account deactivated:
+
+```json
+{
+  "success": false,
+  "message": "Account is inactive.",
+  "errors": []
+}
+```
+Status: 403
+
+### Rate Limiting
+
+This endpoint shares the `login` rate limiter (5 attempts per minute per email/IP).
+
+---
+
 ## POST /api/logout
 
-Revoke the current Sanctum token.
+Revoke the current access token and the refresh token.
 
 ### Auth
 
 ```txt
-Authorization: Bearer {token}
+Authorization: Bearer {access_token}
 ```
 
 ### Request Body
 
-No body fields.
+None. The refresh token is read from the httpOnly cookie.
 
 ### Response Example
 
@@ -160,6 +259,14 @@ No body fields.
   "data": null
 }
 ```
+
+### Response Headers (Cookie)
+
+```
+Set-Cookie: refresh_token=; Max-Age=0
+```
+
+The refresh token cookie is cleared.
 
 ### Validation Notes
 
@@ -174,7 +281,7 @@ Return the authenticated user for the active bearer token.
 ### Auth
 
 ```txt
-Authorization: Bearer {token}
+Authorization: Bearer {access_token}
 ```
 
 ### Query Parameters
@@ -209,6 +316,8 @@ None.
 }
 ```
 
+---
+
 ## GET /api/profile
 
 Return the authenticated user's own profile, including their role, effective permissions, and linked employee record (if any).
@@ -216,7 +325,7 @@ Return the authenticated user's own profile, including their role, effective per
 ### Auth
 
 ```txt
-Authorization: Bearer {token}
+Authorization: Bearer {access_token}
 ```
 
 ### Response Example
@@ -267,7 +376,7 @@ Allow the authenticated user to change their own password.
 ### Auth
 
 ```txt
-Authorization: Bearer {token}
+Authorization: Bearer {access_token}
 ```
 
 ### Request Body
@@ -297,7 +406,8 @@ Authorization: Bearer {token}
 
 ### Behavior
 
-- On success, the user's password is updated and **all other Sanctum tokens for this user are revoked** — only the token used to make this request remains valid. The frontend does not need to log the user out, but should be aware that any other active sessions/devices will be signed out.
+- On success, the user's password is updated and **all other Sanctum tokens and refresh tokens for this user are revoked** — only the token used to make this request remains valid.
+- All other active sessions/devices will be signed out immediately.
 - The action is recorded in the audit log (`module: profile`, `action: change_password`).
 
 ### Validation Notes
@@ -316,12 +426,36 @@ Authorization: Bearer {token}
 
 - `password` too short, missing, or not matching `password_confirmation` returns standard `422` validation errors on the `password` field.
 
-## Frontend Notes
+---
 
-- Store the returned `token` securely and send it in the `Authorization` header for protected requests.
-- Call `GET /api/me` on app boot or refresh to restore the authenticated user.
-- `roles` and `permissions` come from Spatie Laravel Permission. Do not infer them from a `role_id` field because none exists on `users`.
-- `employee` is nullable. Frontend must handle users that do not have a linked employee record yet.
-- Treat `roles` and `permissions` as backend-provided authorization context for UI decisions only. The backend remains the authorization source of truth.
-- Use the global API response envelope: `{ success, message, data }` or `{ success, message, errors }`.
-- Use `GET /api/profile` (not `/api/me`) for a "My Profile" / "Account Settings" page, and pair it with `POST /api/profile/change-password` for a self-service "Change Password" form. Do not reuse the admin `users.reset_password` endpoint for this.
+## Token Lifetimes
+
+| Token | Default Lifetime | Env Variable |
+|---|---|---|
+| Access token | 15 minutes | `ACCESS_TOKEN_EXPIRATION_MINUTES` |
+| Refresh token | 7 days | `REFRESH_TOKEN_EXPIRATION_DAYS` |
+
+---
+
+## What Invalidates Tokens
+
+| Event | Access Token | Refresh Token |
+|---|---|---|
+| Logout | Current session deleted | Current session revoked |
+| Password change (self) | Other sessions deleted | All revoked |
+| Password reset (admin) | All deleted | All revoked |
+| Account deactivated | All deleted | All revoked |
+| Account deleted | All deleted | All revoked (cascade) |
+
+---
+
+## Frontend Integration Rules
+
+1. **Storage**: Access token in memory only. Refresh token in httpOnly cookie (browser-managed, invisible to JS).
+2. **Credentials**: All requests must use `withCredentials: true` for the cookie to be sent.
+3. **CORS**: Backend must allow credentials. `Access-Control-Allow-Origin` must be the exact frontend domain (not `*`).
+4. **401 handling**: On 401 → call `POST /api/refresh` → retry original request. If refresh fails → redirect to login.
+5. **Page refresh**: Access token is lost. Call `POST /api/refresh` on app initialization to restore session silently.
+6. **Concurrent 401s**: Only one refresh call should be in-flight. Queue other failed requests and retry after refresh succeeds.
+7. **Roles & permissions**: Provided by the backend for UI decisions only. Backend remains the authorization source of truth.
+8. **Employee field**: Nullable. Handle users without a linked employee record.
