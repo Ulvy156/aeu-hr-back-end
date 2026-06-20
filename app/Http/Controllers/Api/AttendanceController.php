@@ -219,6 +219,8 @@ class AttendanceController extends Controller
         $result = $this->attendanceService->scanQr(
             user: $request->user(),
             token: (string) $request->validated('token'),
+            latitude: (float) $request->validated('latitude'),
+            longitude: (float) $request->validated('longitude'),
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
         );

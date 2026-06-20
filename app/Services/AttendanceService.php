@@ -491,10 +491,12 @@ class AttendanceService
     public function scanQr(
         User $user,
         string $token,
+        float $latitude,
+        float $longitude,
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): array {
-        return DB::transaction(function () use ($user, $token, $ipAddress, $userAgent): array {
+        return DB::transaction(function () use ($user, $token, $latitude, $longitude, $ipAddress, $userAgent): array {
             $qrToken = AttendanceQrToken::query()
                 ->where('token', $token)
                 ->first();
@@ -520,6 +522,8 @@ class AttendanceService
                 throw ApiException::unprocessable('Today is not a working day.');
             }
 
+            $this->assertWithinAllowedLocation($latitude, $longitude, $settings, 'QR scan');
+
             $attendance = Attendance::query()
                 ->whereBelongsTo($employee)
                 ->whereDate('attendance_date', $today)
@@ -535,6 +539,8 @@ class AttendanceService
                     'employee_id' => $employee->id,
                     'attendance_date' => $today,
                     'clock_in_time' => $clockInAt,
+                    'clock_in_latitude' => $latitude,
+                    'clock_in_longitude' => $longitude,
                     'status' => $isLate ? 'late' : 'present',
                     'is_late' => $isLate,
                     'qr_clock_in' => true,
@@ -544,6 +550,8 @@ class AttendanceService
             } elseif (! $attendance->clock_out_time) {
                 $attendance->update([
                     'clock_out_time' => now(),
+                    'clock_out_latitude' => $latitude,
+                    'clock_out_longitude' => $longitude,
                     'qr_clock_out' => true,
                     'status' => $attendance->status === 'missing_clock_out'
                         ? ($attendance->is_late ? 'late' : 'present')

@@ -141,9 +141,9 @@ class AuthController extends Controller
             value: $refreshToken,
             minutes: $expirationMinutes,
             path: '/',
-            secure: true,
+            secure: app()->isProduction(),
             httpOnly: true,
-            sameSite: 'None',
+            sameSite: 'Lax',
         );
 
         return $response->withCookie($cookie);

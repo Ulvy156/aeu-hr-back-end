@@ -15,6 +15,8 @@ class ScanQrRequest extends FormRequest
     {
         return [
             'token' => ['required', 'string', 'size:64'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
         ];
     }
 }
