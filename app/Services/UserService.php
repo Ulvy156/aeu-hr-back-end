@@ -18,7 +18,6 @@ class UserService
 {
     public function __construct(
         protected AuditLogService $auditLogService,
-        protected AuthService $authService,
     ) {}
 
     /**
@@ -165,7 +164,7 @@ class UserService
 
             if ($data['status'] === 'inactive') {
                 $user->tokens()->delete();
-                $this->authService->revokeAllRefreshTokens($user);
+
             }
 
             $user = $user->fresh(['roles:id,name', 'employee.department', 'employee.position']);

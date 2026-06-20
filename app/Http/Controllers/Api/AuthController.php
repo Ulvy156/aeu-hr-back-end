@@ -10,13 +10,12 @@ use App\Services\AuditLogService;
 use App\Services\AuthService;
 use App\Services\UserPermissionService;
 use App\Support\ApiResponse;
+use App\Support\DeviceFingerprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
-    protected const REFRESH_TOKEN_COOKIE = 'refresh_token';
-
     public function __construct(
         protected AuthService $authService,
         protected AuditLogService $auditLogService,
@@ -26,10 +25,12 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $deviceName = $request->validated('device_name') ?: 'api-token';
+        $fingerprint = DeviceFingerprint::generate($request);
 
         $payload = $this->authService->login(
             email: $request->validated('email'),
             password: $request->validated('password'),
+            fingerprint: $fingerprint,
             deviceName: $deviceName,
         );
 
@@ -46,7 +47,7 @@ class AuthController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        $response = ApiResponse::success(
+        return ApiResponse::success(
             data: [
                 'access_token' => $payload['access_token'],
                 'token_type' => $payload['token_type'],
@@ -55,30 +56,6 @@ class AuthController extends Controller
             ],
             message: 'Login successful.',
         );
-
-        return $this->attachRefreshTokenCookie($response, $payload['refresh_token']);
-    }
-
-    public function refresh(Request $request): JsonResponse
-    {
-        $refreshToken = $request->cookie(self::REFRESH_TOKEN_COOKIE);
-
-        if (! $refreshToken) {
-            return ApiResponse::error('Refresh token not found.', status: 401);
-        }
-
-        $payload = $this->authService->refresh($refreshToken);
-
-        $response = ApiResponse::success(
-            data: [
-                'access_token' => $payload['access_token'],
-                'token_type' => $payload['token_type'],
-                'expires_in' => $payload['expires_in'],
-            ],
-            message: 'Token refreshed successfully.',
-        );
-
-        return $this->attachRefreshTokenCookie($response, $payload['refresh_token']);
     }
 
     public function logout(Request $request): JsonResponse
@@ -95,17 +72,12 @@ class AuthController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        $this->authService->logout(
-            $request->user(),
-            $request->cookie(self::REFRESH_TOKEN_COOKIE),
-        );
+        $this->authService->logout($request->user());
 
-        $response = ApiResponse::success(
+        return ApiResponse::success(
             data: null,
             message: 'Logout successful.',
         );
-
-        return $response->withCookie(cookie()->forget(self::REFRESH_TOKEN_COOKIE));
     }
 
     public function me(Request $request): JsonResponse
@@ -130,22 +102,5 @@ class AuthController extends Controller
             $summary['roles'],
             $summary['permissions'],
         ))->resolve($request);
-    }
-
-    protected function attachRefreshTokenCookie(JsonResponse $response, string $refreshToken): JsonResponse
-    {
-        $expirationMinutes = (int) config('hr.auth.refresh_token_expiration_days', 7) * 24 * 60;
-
-        $cookie = cookie(
-            name: self::REFRESH_TOKEN_COOKIE,
-            value: $refreshToken,
-            minutes: $expirationMinutes,
-            path: '/',
-            secure: true,
-            httpOnly: true,
-            sameSite: 'None',
-        );
-
-        return $response->withCookie($cookie);
     }
 }

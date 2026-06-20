@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => env('ACCESS_TOKEN_EXPIRATION_MINUTES', 15),
+    'expiration' => null,
 
     /*
     |--------------------------------------------------------------------------

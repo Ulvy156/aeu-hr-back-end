@@ -7,6 +7,49 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
+function deviceHeaders(array $overrides = []): array
+{
+    return array_merge([
+        'User-Agent' => 'TestBrowser/1.0',
+        'Accept-Language' => 'en-US',
+        'X-Screen-Resolution' => '1920x1080',
+        'X-Timezone' => 'Asia/Phnom_Penh',
+        'X-Platform' => 'Windows',
+    ], $overrides);
+}
+
+function loginWithDevice(mixed $testCase, array $payload = [], array $headers = [])
+{
+    $defaultPayload = [
+        'email' => 'employee@example.com',
+        'password' => 'secret-password',
+        'device_name' => 'web-client',
+    ];
+
+    $mergedHeaders = deviceHeaders($headers);
+
+    return $testCase->withHeaders($mergedHeaders)
+        ->postJson('/api/login', array_merge($defaultPayload, $payload));
+}
+
+function createTokenWithFingerprint(User $user, array $headers = []): string
+{
+    $mergedHeaders = deviceHeaders($headers);
+
+    $fingerprint = hash('sha256', implode('|', [
+        $mergedHeaders['User-Agent'] ?? '',
+        $mergedHeaders['Accept-Language'] ?? '',
+        $mergedHeaders['X-Screen-Resolution'] ?? '',
+        $mergedHeaders['X-Timezone'] ?? '',
+        $mergedHeaders['X-Platform'] ?? '',
+    ]));
+
+    $newToken = $user->createToken('test-device');
+    $newToken->accessToken->forceFill(['device_id' => $fingerprint])->save();
+
+    return $newToken->plainTextToken;
+}
+
 test('a user can login and receive a sanctum token', function () {
     $this->seed(RoleSeeder::class);
 
@@ -25,11 +68,7 @@ test('a user can login and receive a sanctum token', function () {
         'employment_status' => 'full-time',
     ]);
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'employee@example.com',
-        'password' => 'secret-password',
-        'device_name' => 'web-client',
-    ]);
+    $response = loginWithDevice($this);
 
     $response
         ->assertSuccessful()
@@ -42,9 +81,8 @@ test('a user can login and receive a sanctum token', function () {
 
     expect($response->json('data.access_token'))->toBeString()->not->toBeEmpty();
     expect($response->json('data.expires_in'))->toBeInt()->toBeGreaterThan(0);
-    $response->assertCookie('refresh_token');
     expect($user->tokens()->count())->toBe(1);
-    expect($user->refreshTokens()->count())->toBe(1);
+    expect($user->tokens()->first()->device_id)->not->toBeNull();
 });
 
 test('admin can login without an employee profile', function () {
@@ -57,10 +95,7 @@ test('admin can login without an employee profile', function () {
 
     $user->assignRole('admin');
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'admin@example.com',
-        'password' => 'secret-password',
-    ]);
+    $response = loginWithDevice($this, ['email' => 'admin@example.com']);
 
     $response
         ->assertSuccessful()
@@ -78,10 +113,7 @@ test('non-admin user without an employee profile cannot login', function () {
 
     $user->assignRole('employee');
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'employee@example.com',
-        'password' => 'secret-password',
-    ]);
+    $response = loginWithDevice($this);
 
     $response
         ->assertUnprocessable()
@@ -108,10 +140,7 @@ test('non-admin user with a probation employee profile can login', function () {
         'employment_status' => 'probation',
     ]);
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'probation@example.com',
-        'password' => 'secret-password',
-    ]);
+    $response = loginWithDevice($this, ['email' => 'probation@example.com']);
 
     $response
         ->assertSuccessful()
@@ -137,10 +166,7 @@ test('non-admin user with an inactive employee profile cannot login', function (
         'employment_status' => 'resigned',
     ]);
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'employee@example.com',
-        'password' => 'secret-password',
-    ]);
+    $response = loginWithDevice($this);
 
     $response
         ->assertUnprocessable()
@@ -155,10 +181,7 @@ test('invalid login is rejected', function () {
         'password' => 'secret-password',
     ]);
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'employee@example.com',
-        'password' => 'wrong-password',
-    ]);
+    $response = loginWithDevice($this, ['password' => 'wrong-password']);
 
     $response
         ->assertUnprocessable()
@@ -174,10 +197,7 @@ test('inactive users cannot login', function () {
         'status' => 'inactive',
     ]);
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'inactive@example.com',
-        'password' => 'secret-password',
-    ]);
+    $response = loginWithDevice($this, ['email' => 'inactive@example.com']);
 
     $response
         ->assertUnprocessable()
@@ -203,9 +223,12 @@ test('the authenticated user can be fetched from the me endpoint', function () {
         'join_date' => now()->toDateString(),
     ]);
 
-    $token = $user->createToken('test-device')->plainTextToken;
+    $headers = deviceHeaders();
+    $token = createTokenWithFingerprint($user, $headers);
 
-    $response = $this->withToken($token)->getJson('/api/me');
+    $response = $this->withToken($token)
+        ->withHeaders($headers)
+        ->getJson('/api/me');
 
     $response
         ->assertSuccessful()
@@ -223,9 +246,12 @@ test('the authenticated user can be fetched from the me endpoint', function () {
 
 test('the authenticated user can logout and revoke the current token', function () {
     $user = User::factory()->create();
-    $token = $user->createToken('test-device')->plainTextToken;
+    $headers = deviceHeaders();
+    $token = createTokenWithFingerprint($user, $headers);
 
-    $response = $this->withToken($token)->postJson('/api/logout');
+    $response = $this->withToken($token)
+        ->withHeaders($headers)
+        ->postJson('/api/logout');
 
     $response
         ->assertSuccessful()
@@ -235,6 +261,39 @@ test('the authenticated user can logout and revoke the current token', function 
     expect($user->fresh()->tokens()->count())->toBe(0);
 });
 
+test('request from a different device is rejected', function () {
+    $user = User::factory()->create();
+    $token = createTokenWithFingerprint($user, ['User-Agent' => 'OriginalBrowser/1.0']);
+
+    $response = $this->withToken($token)
+        ->withHeaders(deviceHeaders(['User-Agent' => 'DifferentBrowser/2.0']))
+        ->getJson('/api/me');
+
+    $response->assertStatus(401)
+        ->assertJsonPath('message', 'Device mismatch. Please log in again.');
+
+    expect($user->fresh()->tokens()->count())->toBe(0);
+});
+
+test('login on same device replaces the old token', function () {
+    $this->seed(RoleSeeder::class);
+
+    $user = User::factory()->create([
+        'email' => 'employee@example.com',
+        'password' => 'secret-password',
+    ]);
+
+    $user->assignRole('admin');
+
+    $headers = deviceHeaders();
+
+    loginWithDevice($this, [], $headers)->assertSuccessful();
+    expect($user->tokens()->count())->toBe(1);
+
+    loginWithDevice($this, [], $headers)->assertSuccessful();
+    expect($user->tokens()->count())->toBe(1);
+});
+
 test('login requests are rate limited after five attempts per minute', function () {
     User::factory()->create([
         'email' => 'employee@example.com',
@@ -242,18 +301,11 @@ test('login requests are rate limited after five attempts per minute', function 
     ]);
 
     foreach (range(1, 5) as $attempt) {
-        $response = $this->postJson('/api/login', [
-            'email' => 'employee@example.com',
-            'password' => 'wrong-password',
-        ]);
-
+        $response = loginWithDevice($this, ['password' => 'wrong-password']);
         $response->assertUnprocessable();
     }
 
-    $response = $this->postJson('/api/login', [
-        'email' => 'employee@example.com',
-        'password' => 'wrong-password',
-    ]);
+    $response = loginWithDevice($this, ['password' => 'wrong-password']);
 
     $response
         ->assertStatus(429)
