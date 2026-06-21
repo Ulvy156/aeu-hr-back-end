@@ -129,22 +129,27 @@ class AuthController extends Controller
     {
         $days = (int) config('hr.auth.refresh_token_expiration_days', 7);
 
-        return cookie(
+        return Cookie::create(
             name: self::REFRESH_TOKEN_COOKIE,
             value: $token,
-            minutes: $days * 24 * 60,
+            expire: time() + ($days * 86400),
             path: '/',
             secure: (bool) config('hr.auth.refresh_cookie_secure', true),
             httpOnly: true,
-            sameSite: config('hr.auth.refresh_cookie_same_site', 'none'),
+            sameSite: Cookie::SAMESITE_NONE,
         );
     }
 
     protected function forgetRefreshCookie(): Cookie
     {
-        return cookie()->forget(
+        return Cookie::create(
             name: self::REFRESH_TOKEN_COOKIE,
+            value: '',
+            expire: 1,
             path: '/',
+            secure: (bool) config('hr.auth.refresh_cookie_secure', true),
+            httpOnly: true,
+            sameSite: Cookie::SAMESITE_NONE,
         );
     }
 }
