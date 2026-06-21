@@ -8,6 +8,7 @@ use App\Http\Resources\AttendanceResource;
 use App\Services\Reports\AttendanceReportService;
 use App\Support\ApiResponse;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Support\Arrayable;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -40,7 +41,7 @@ class AttendanceReportController extends Controller
             $items = AttendanceResource::collection(collect($items))->resolve($request);
         } else {
             $items = collect($items)
-                ->map(fn (mixed $item): mixed => $item instanceof \Illuminate\Contracts\Support\Arrayable ? $item->toArray() : $item)
+                ->map(fn (mixed $item): mixed => $item instanceof Arrayable ? $item->toArray() : $item)
                 ->values()
                 ->all();
         }

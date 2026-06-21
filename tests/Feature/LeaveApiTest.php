@@ -309,7 +309,7 @@ test('hr ceo and admin can view leave requests based on their permissions', func
         $token = $manager->createToken("{$role}-device")->plainTextToken;
 
         $this->withToken($token)
-            ->getJson("/api/leaves?employee_id={$otherEmployee->id}&leave_type=sick")
+            ->getJson("/api/leaves?employee_id={$otherEmployee->employee_id}&leave_type=sick")
             ->assertSuccessful()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonFragment([
@@ -374,14 +374,16 @@ test('leave balances are calculated dynamically from approved leave requests and
         ->assertJsonPath('data.balances.0.remaining', '16.00')
         ->assertJsonPath('data.balances.1.remaining', '6.00')
         ->assertJsonPath('data.balances.3.remaining', '90.00')
-        ->assertJsonPath('data.balances.4.is_unlimited', true);
+        ->assertJsonPath('data.balances.4.leave_type', 'special_sick')
+        ->assertJsonPath('data.balances.4.entitlement', '180.00')
+        ->assertJsonPath('data.balances.5.is_unlimited', true);
 
     $hr = User::factory()->create();
     $hr->assignRole('hr');
     $hrToken = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($hrToken)
-        ->getJson("/api/leave-balances?employee_id={$employee->id}&year=2026")
+        ->getJson("/api/leave-balances?employee_id={$employee->employee_id}&year=2026")
         ->assertSuccessful()
         ->assertJsonPath('data.employee.id', $employee->id)
         ->assertJsonPath('data.balances.0.remaining', '16.00');
@@ -427,7 +429,7 @@ test('admin must provide employee id to view leave balances and does not need an
         ->assertJsonPath('message', 'The employee_id field is required for this account.');
 
     $this->withToken($token)
-        ->getJson("/api/leave-balances?employee_id={$employee->id}&year=2026")
+        ->getJson("/api/leave-balances?employee_id={$employee->employee_id}&year=2026")
         ->assertSuccessful()
         ->assertJsonPath('data.employee.id', $employee->id);
 });
@@ -445,11 +447,11 @@ test('employee cannot request another employees leave balance', function () {
     $token = $user->createToken('employee-device')->plainTextToken;
 
     $this->withToken($token)
-        ->getJson("/api/leave-balances?employee_id={$otherEmployee->id}&year=2026")
+        ->getJson("/api/leave-balances?employee_id={$otherEmployee->employee_id}&year=2026")
         ->assertForbidden();
 
     $this->withToken($token)
-        ->getJson("/api/leave-balances?employee_id={$employee->id}&year=2026")
+        ->getJson("/api/leave-balances?employee_id={$employee->employee_id}&year=2026")
         ->assertSuccessful()
         ->assertJsonPath('data.employee.id', $employee->id);
 });

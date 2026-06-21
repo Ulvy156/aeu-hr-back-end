@@ -20,7 +20,7 @@ class IndexLeaveReportRequest extends FormRequest
     {
         return [
             'report_type' => ['nullable', Rule::in(['request_list', 'pending_approval', 'approved', 'rejected', 'leave_balance'])],
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'status' => ['nullable', Rule::in(['pending', 'approved', 'rejected', 'cancelled'])],
             'leave_type' => ['nullable', Rule::in(['annual', 'sick', 'special', 'maternity', 'unpaid'])],
             'date_from' => ['nullable', 'date'],

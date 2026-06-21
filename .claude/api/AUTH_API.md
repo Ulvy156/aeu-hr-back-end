@@ -21,9 +21,10 @@ Authentication for API clients using Laravel Sanctum bearer tokens with refresh 
 
 ## Token Strategy
 
-- **Access token**: Short-lived (15 minutes default). Sent in `Authorization: Bearer {token}` header.
-- **Refresh token**: Long-lived (7 days default). Stored as an httpOnly cookie set by the backend. Frontend never accesses it directly.
+- **Access token**: Short-lived (15 minutes default). Sent in `Authorization: Bearer {token}` header. Stored in JS memory only (not localStorage).
+- **Refresh token**: Long-lived (7 days default). Stored as an httpOnly cookie set by the backend (`SameSite=None; Secure; HttpOnly`). Frontend never accesses it directly — the browser sends it automatically with `credentials: 'include'`.
 - **Token rotation**: Every refresh issues a new access token AND a new refresh token. The old refresh token is revoked immediately.
+- **Cross-domain**: Cookie uses `SameSite=None` and `Secure` to support frontend and backend on different domains. Frontend must set `withCredentials: true` on all requests.
 
 ## Permissions
 
@@ -95,7 +96,7 @@ Authenticate a user and issue an access token + refresh token.
 ### Response Headers (Cookie)
 
 ```
-Set-Cookie: refresh_token={token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800
+Set-Cookie: refresh_token={token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=604800
 ```
 
 The refresh token is NOT included in the JSON response body. It is only set as an httpOnly cookie.
@@ -451,11 +452,12 @@ Authorization: Bearer {access_token}
 
 ## Frontend Integration Rules
 
-1. **Storage**: Access token in memory only. Refresh token in httpOnly cookie (browser-managed, invisible to JS).
-2. **Credentials**: All requests must use `withCredentials: true` for the cookie to be sent.
-3. **CORS**: Backend must allow credentials. `Access-Control-Allow-Origin` must be the exact frontend domain (not `*`).
+1. **Storage**: Access token in memory only (not localStorage). Refresh token in httpOnly cookie (browser-managed, invisible to JS).
+2. **Credentials**: All requests must use `withCredentials: true` (Axios) or `credentials: 'include'` (fetch) for the cookie to be sent cross-domain.
+3. **CORS**: Backend allows credentials via `supports_credentials: true`. `Access-Control-Allow-Origin` must be the exact frontend domain (not `*`). Configured via `CORS_ALLOWED_ORIGINS` env variable.
 4. **401 handling**: On 401 → call `POST /api/refresh` → retry original request. If refresh fails → redirect to login.
-5. **Page refresh**: Access token is lost. Call `POST /api/refresh` on app initialization to restore session silently.
+5. **Page refresh**: Access token is lost (it's in memory). Call `POST /api/refresh` on app initialization to restore session silently.
 6. **Concurrent 401s**: Only one refresh call should be in-flight. Queue other failed requests and retry after refresh succeeds.
 7. **Roles & permissions**: Provided by the backend for UI decisions only. Backend remains the authorization source of truth.
 8. **Employee field**: Nullable. Handle users without a linked employee record.
+9. **No device fingerprint**: Security relies on short-lived access tokens and httpOnly cookie refresh tokens, not device fingerprinting.

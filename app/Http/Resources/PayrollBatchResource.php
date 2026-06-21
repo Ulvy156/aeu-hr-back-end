@@ -36,6 +36,7 @@ class PayrollBatchResource extends JsonResource
                     'gross_salary' => $this->decimalSummary('total_gross_salary', $items, 'gross_salary'),
                     'unpaid_deduction' => $this->decimalSummary('total_unpaid_deduction', $items, 'unpaid_deduction'),
                     'absence_deduction' => $this->decimalSummary('total_absence_deduction', $items, 'absence_deduction'),
+                    'special_sick_deduction' => $this->decimalSummary('total_special_sick_deduction', $items, 'special_sick_deduction'),
                     'tax_amount' => $this->decimalSummary('total_tax_amount', $items, 'tax_amount'),
                     'nssf_deduction' => $this->decimalSummary('total_nssf_deduction', $items, 'nssf_deduction'),
                     'net_salary' => $this->decimalSummary('total_net_salary', $items, 'net_salary'),

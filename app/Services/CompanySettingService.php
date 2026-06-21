@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\CompanySetting;
-use App\Support\FileStorage;
 use App\Models\User;
+use App\Support\FileStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 

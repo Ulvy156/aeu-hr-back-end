@@ -27,6 +27,7 @@ class EmployeeUpgradeRequestService
      */
     public function paginate(array $filters, User $viewer): LengthAwarePaginator
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return EmployeeUpgradeRequest::query()

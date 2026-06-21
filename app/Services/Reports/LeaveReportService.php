@@ -25,6 +25,7 @@ class LeaveReportService
      */
     public function report(array $filters): array
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'request_list');
 
         return match ($reportType) {
@@ -42,6 +43,7 @@ class LeaveReportService
      */
     public function export(array $filters): array
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'request_list');
 
         return match ($reportType) {
@@ -159,6 +161,8 @@ class LeaveReportService
                 $row['special']['remaining'],
                 $row['maternity']['entitlement'],
                 $row['maternity']['remaining'],
+                $row['special_sick']['used'],
+                $row['special_sick']['remaining'],
                 $row['unpaid']['rule'],
             ])
             ->all();
@@ -166,7 +170,7 @@ class LeaveReportService
         return [
             'file_name' => 'leave-balance-report.xlsx',
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Annual Used', 'Annual Remaining', 'Sick Used', 'Sick Remaining', 'Special Used', 'Special Remaining', 'Maternity Entitlement', 'Maternity Remaining', 'Unpaid Rule'],
+                headings: ['Employee ID', 'Employee Name', 'Annual Used', 'Annual Remaining', 'Sick Used', 'Sick Remaining', 'Special Used', 'Special Remaining', 'Maternity Entitlement', 'Maternity Remaining', 'Special Sick Used', 'Special Sick Remaining', 'Unpaid Rule'],
                 rows: $rows,
             ),
         ];
@@ -226,7 +230,9 @@ class LeaveReportService
             $annualUsed = $this->usedDaysForLeaveType($leaveRows, 'annual', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
             $sickUsed = $this->usedDaysForLeaveType($leaveRows, 'sick', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
             $specialUsed = $this->usedDaysForLeaveType($leaveRows, 'special', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
+            $specialSickUsed = $this->usedDaysForLeaveType($leaveRows, 'special_sick', $yearStart, $yearEnd, $settings->working_days ?? [], $holidayDates);
             $maternityEntitlement = (float) config('hr.leave.entitlements.maternity', 90);
+            $specialSickEntitlement = (float) config('hr.leave.entitlements.special_sick', 180);
 
             return [
                 'employee' => [
@@ -253,6 +259,12 @@ class LeaveReportService
                 'maternity' => [
                     'entitlement' => $this->formatDecimal($maternityEntitlement),
                     'remaining' => $this->formatDecimal($maternityEntitlement),
+                ],
+                'special_sick' => [
+                    'entitlement' => $this->formatDecimal($specialSickEntitlement),
+                    'used' => $this->formatDecimal($specialSickUsed),
+                    'remaining' => $this->formatDecimal(max(0, $specialSickEntitlement - $specialSickUsed)),
+                    'rule' => 'per_case_per_year',
                 ],
                 'unpaid' => [
                     'rule' => 'unlimited',

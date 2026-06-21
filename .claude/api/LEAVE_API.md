@@ -362,3 +362,13 @@ Cancel a leave request.
 - For manager accounts that do not have a linked employee profile, pass `employee_id` when loading leave balances.
 - `special` leave (e.g. marriage, childbirth of spouse, death of immediate family) is treated like `annual`/`sick`: fully paid, `7.00` days/year, no extra fields or validation beyond the standard `reason` text.
 - Approved `maternity` leave reduces pay during payroll: employees with at least 1 year of service receive `50%` of their daily rate for maternity days, employees with less than 1 year receive `0%`. See `.claude/api/PAYROLL_API.md` for the payroll-side calculation.
+- `special_sick` leave is for extended serious illness. Rules:
+  - Eligibility: employee must have at least 1 year of service (tenure check via `join_date`).
+  - Max 180 days per case, one case per calendar year.
+  - Tiered pay deduction during payroll:
+    - Days 1–30: 100% pay (no deduction)
+    - Days 31–90: 60% pay (40% deduction rate)
+    - Days 91–180: 0% pay (full deduction)
+  - The tier is calculated based on cumulative working days from the leave start date.
+  - No prerequisite — does not require exhausting the regular 7-day sick leave first.
+  - Balance display uses `rule: 'per_case_per_year'`.

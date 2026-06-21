@@ -1,7 +1,6 @@
 <?php
 
 use App\Exceptions\ApiException;
-use App\Http\Middleware\ValidateDeviceId;
 use App\Support\ApiResponse;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -30,7 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
 
-        $middleware->appendToGroup('api', ValidateDeviceId::class);
+        $middleware->encryptCookies(except: ['refresh_token']);
         $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -20,7 +20,7 @@ class StoreLeaveRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'leave_type' => ['required', Rule::in(['annual', 'sick', 'maternity', 'unpaid', 'special'])],
+            'leave_type' => ['required', Rule::in(['annual', 'sick', 'maternity', 'unpaid', 'special', 'special_sick'])],
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'duration_type' => ['required', Rule::in(['full_day', 'half_day'])],

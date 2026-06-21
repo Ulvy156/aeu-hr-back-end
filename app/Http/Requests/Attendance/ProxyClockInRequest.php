@@ -18,7 +18,7 @@ class ProxyClockInRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'employee_id'     => ['required', 'integer', 'exists:employees,id'],
+            'employee_id' => ['required', 'integer', 'exists:employees,id'],
             'attendance_date' => ['required', 'date', 'before_or_equal:today'],
         ];
     }

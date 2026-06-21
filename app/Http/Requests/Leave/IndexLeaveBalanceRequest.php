@@ -18,7 +18,7 @@ class IndexLeaveBalanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
         ];
     }

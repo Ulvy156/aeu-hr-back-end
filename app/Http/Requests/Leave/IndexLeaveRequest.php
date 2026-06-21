@@ -19,9 +19,9 @@ class IndexLeaveRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'status' => ['nullable', Rule::in(['pending', 'approved', 'rejected', 'cancelled'])],
-            'leave_type' => ['nullable', Rule::in(['annual', 'sick', 'maternity', 'unpaid', 'special'])],
+            'leave_type' => ['nullable', Rule::in(['annual', 'sick', 'maternity', 'unpaid', 'special', 'special_sick'])],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],

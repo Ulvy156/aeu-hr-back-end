@@ -3,9 +3,10 @@
 namespace App\Services;
 
 use App\Exceptions\ApiException;
+use App\Models\Employee;
 use App\Models\PayrollItem;
-use App\Support\FileStorage;
 use App\Models\User;
+use App\Support\FileStorage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,6 +24,7 @@ class PayslipService
      */
     public function paginate(array $filters, User $viewer): LengthAwarePaginator
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = PayrollItem::query()

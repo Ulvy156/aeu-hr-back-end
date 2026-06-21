@@ -9,8 +9,6 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 class AttendanceReportService
 {
@@ -20,6 +18,7 @@ class AttendanceReportService
      */
     public function report(array $filters): array
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'daily_list');
 
         return match ($reportType) {
@@ -37,6 +36,7 @@ class AttendanceReportService
      */
     public function export(array $filters): array
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'daily_list');
 
         return match ($reportType) {
@@ -63,7 +63,7 @@ class AttendanceReportService
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
-            ->selectRaw("SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count")
+            ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count')
             ->first();
 
         return [
@@ -116,7 +116,7 @@ class AttendanceReportService
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
-            ->selectRaw("SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count");
+            ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count');
 
         $summary = (clone $query)
             ->get()
@@ -216,7 +216,7 @@ class AttendanceReportService
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
-            ->selectRaw("SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count")
+            ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count')
             ->get()
             ->map(fn (Employee $employee): array => [
                 $employee->employee_id,

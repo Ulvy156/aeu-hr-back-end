@@ -25,6 +25,7 @@ class LeaveService
      */
     public function paginate(array $filters, User $viewer): LengthAwarePaginator
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = LeaveRequest::query()
@@ -327,6 +328,34 @@ class LeaveService
             return;
         }
 
+        if ($leaveType === 'special_sick') {
+            $tenureYears = (int) config('hr.leave.special_sick.tenure_years', 1);
+            if (! $employee->join_date || $employee->join_date->diffInYears(now()) < $tenureYears) {
+                throw ApiException::unprocessable("Special Sick Leave requires at least {$tenureYears} year(s) of service.");
+            }
+
+            $year = $startDate->year;
+            $existingCase = LeaveRequest::query()
+                ->where('employee_id', $employee->id)
+                ->where('leave_type', 'special_sick')
+                ->whereIn('status', ['approved', 'pending'])
+                ->whereYear('start_date', $year)
+                ->exists();
+
+            if ($existingCase) {
+                throw ApiException::unprocessable('Only one Special Sick Leave case is allowed per calendar year.');
+            }
+
+            $totalDays = $this->calculateLeaveDays($startDate, $endDate, $durationType);
+            $entitlement = (float) config('hr.leave.entitlements.special_sick', 180);
+
+            if ($totalDays > $entitlement) {
+                throw ApiException::unprocessable("Requested special sick leave exceeds the {$entitlement}-day entitlement per case.");
+            }
+
+            return;
+        }
+
         foreach ($this->requestedDaysByYear($startDate, $endDate, $durationType) as $year => $requestedDays) {
             $balance = $this->balanceForLeaveType($employee, $leaveType, (int) $year);
 
@@ -352,6 +381,14 @@ class LeaveService
                 'remaining' => $this->formatDecimal((float) config('hr.leave.entitlements.maternity', 90)),
                 'is_unlimited' => false,
                 'rule' => 'per_case',
+            ],
+            [
+                'leave_type' => 'special_sick',
+                'entitlement' => $this->formatDecimal((float) config('hr.leave.entitlements.special_sick', 180)),
+                'used' => $this->formatDecimal($this->approvedLeaveDaysForYear($employee, 'special_sick', $year)),
+                'remaining' => $this->formatDecimal(max(0, (float) config('hr.leave.entitlements.special_sick', 180) - $this->approvedLeaveDaysForYear($employee, 'special_sick', $year))),
+                'is_unlimited' => false,
+                'rule' => 'per_case_per_year',
             ],
             [
                 'leave_type' => 'unpaid',

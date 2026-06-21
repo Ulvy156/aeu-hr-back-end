@@ -19,7 +19,7 @@ class IndexPayslipRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'payroll_batch_id' => ['nullable', 'integer', 'exists:payroll_batches,id'],
             'month' => ['nullable', 'integer', 'between:1,12'],
             'year' => ['nullable', 'integer', 'between:2000,2100'],

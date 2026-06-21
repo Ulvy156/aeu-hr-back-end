@@ -9,6 +9,7 @@ use App\Http\Resources\PayrollItemResource;
 use App\Services\Reports\PayrollReportService;
 use App\Support\ApiResponse;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Support\Arrayable;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -47,7 +48,7 @@ class PayrollReportController extends Controller
 
         if (! in_array($report['resource'], ['payroll_batch', 'payroll_item'], true)) {
             $items = collect($items)
-                ->map(fn (mixed $item): mixed => $item instanceof \Illuminate\Contracts\Support\Arrayable ? $item->toArray() : $item)
+                ->map(fn (mixed $item): mixed => $item instanceof Arrayable ? $item->toArray() : $item)
                 ->values()
                 ->all();
         }

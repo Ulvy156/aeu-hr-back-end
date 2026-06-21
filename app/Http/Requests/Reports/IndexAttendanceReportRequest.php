@@ -20,7 +20,7 @@ class IndexAttendanceReportRequest extends FormRequest
     {
         return [
             'report_type' => ['nullable', Rule::in(['daily_list', 'monthly_summary', 'late_employees', 'absent_employees', 'correction_list'])],
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'attendance_date' => ['nullable', 'date'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],

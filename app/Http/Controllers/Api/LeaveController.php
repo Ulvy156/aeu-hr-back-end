@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Leave\ApproveLeaveRequest;
 use App\Http\Requests\Leave\IndexLeaveBalanceRequest;
@@ -12,11 +13,10 @@ use App\Http\Resources\LeaveBalanceResource;
 use App\Http\Resources\LeaveResource;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Models\User;
 use App\Services\LeaveService;
-use App\Exceptions\ApiException;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
-use App\Models\User;
 
 class LeaveController extends Controller
 {
@@ -103,9 +103,11 @@ class LeaveController extends Controller
         $canViewAny = $user->can('viewBalanceAny', LeaveRequest::class);
         $canViewOwn = $user->can('viewBalanceOwn', LeaveRequest::class);
 
+        $resolvedId = Employee::resolveId($employeeId);
+
         if ($canViewAny) {
-            if ($employeeId !== null) {
-                return Employee::query()->findOrFail((int) $employeeId);
+            if ($resolvedId !== null) {
+                return Employee::query()->findOrFail($resolvedId);
             }
 
             if ($canViewOwn) {
@@ -121,7 +123,7 @@ class LeaveController extends Controller
 
         $employee = $this->employeeForUserOrFail($user);
 
-        if ($employeeId !== null && (int) $employeeId !== $employee->id) {
+        if ($resolvedId !== null && $resolvedId !== $employee->id) {
             throw ApiException::forbidden();
         }
 

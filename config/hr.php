@@ -32,10 +32,22 @@ return [
             'sick' => 7.0,
             'special' => 7.0,
             'maternity' => 90.0,
+            'special_sick' => 180.0,
+        ],
+        'special_sick' => [
+            'tenure_years' => 1,
+            'tiers' => [
+                ['up_to_day' => 30, 'pay_rate' => 1.00],
+                ['up_to_day' => 90, 'pay_rate' => 0.60],
+                ['up_to_day' => 180, 'pay_rate' => 0.00],
+            ],
         ],
     ],
     'auth' => [
-        'access_token_expiration_days' => (int) env('ACCESS_TOKEN_EXPIRATION_DAYS', 7),
+        'access_token_expiration_minutes' => (int) env('ACCESS_TOKEN_EXPIRATION_MINUTES', 15),
+        'refresh_token_expiration_days' => (int) env('REFRESH_TOKEN_EXPIRATION_DAYS', 7),
+        'refresh_cookie_secure' => (bool) env('REFRESH_COOKIE_SECURE', true),
+        'refresh_cookie_same_site' => env('REFRESH_COOKIE_SAME_SITE', 'none'),
     ],
     'payroll' => [
         'tax_brackets' => [

@@ -84,6 +84,15 @@ class Employee extends Model
      *
      * @return array<string, string>
      */
+    public static function resolveId(?string $employeeCode): ?int
+    {
+        if ($employeeCode === null) {
+            return null;
+        }
+
+        return static::where('employee_id', $employeeCode)->value('id');
+    }
+
     protected function casts(): array
     {
         return [

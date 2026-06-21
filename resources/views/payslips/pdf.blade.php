@@ -147,6 +147,18 @@
                     <td>Absence Deduction</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $payslip->absence_deduction, 2) }}</td>
                 </tr>
+                @if((float) $payslip->maternity_deduction > 0)
+                <tr>
+                    <td>Maternity Leave Deduction</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->maternity_deduction, 2) }}</td>
+                </tr>
+                @endif
+                @if((float) $payslip->special_sick_deduction > 0)
+                <tr>
+                    <td>Special Sick Leave Deduction</td>
+                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->special_sick_deduction, 2) }}</td>
+                </tr>
+                @endif
                 <tr>
                     <td>Tax Amount</td>
                     <td class="right">{{ $currency }} {{ number_format((float) $payslip->tax_amount, 2) }}</td>
@@ -202,6 +214,14 @@
                 <th>Unpaid Leave Days</th>
                 <td>{{ number_format((float) $payslip->unpaid_leave_days, 2) }}</td>
             </tr>
+            @if((float) $payslip->special_sick_leave_days > 0)
+            <tr>
+                <th>Special Sick Leave Days</th>
+                <td>{{ number_format((float) $payslip->special_sick_leave_days, 2) }}</td>
+                <th></th>
+                <td></td>
+            </tr>
+            @endif
         </table>
     </div>
 </body>

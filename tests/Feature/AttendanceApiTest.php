@@ -380,7 +380,7 @@ test('attendance list allows hr to filter by employee and status', function () {
     $hrToken = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($hrToken)
-        ->getJson("/api/attendance?employee_id={$otherEmployee->id}&status=present")
+        ->getJson("/api/attendance?employee_id={$otherEmployee->employee_id}&status=present")
         ->assertSuccessful()
         ->assertJsonPath('meta.total', 1)
         ->assertJsonPath('data.0.employee.id', $otherEmployee->id);
@@ -934,12 +934,12 @@ test('qr scan is rejected when employee has already completed attendance for tod
     $empToken = $user->createToken('employee-device')->plainTextToken;
 
     Attendance::query()->create([
-        'employee_id'     => $employee->id,
+        'employee_id' => $employee->id,
         'attendance_date' => '2026-05-05',
-        'clock_in_time'   => '2026-05-05 07:55:00',
-        'clock_out_time'  => '2026-05-05 17:00:00',
-        'status'          => 'present',
-        'is_late'         => false,
+        'clock_in_time' => '2026-05-05 07:55:00',
+        'clock_out_time' => '2026-05-05 17:00:00',
+        'status' => 'present',
+        'is_late' => false,
     ]);
 
     $this->withToken($empToken)
@@ -985,14 +985,14 @@ test('qr scan is rejected for an employee on approved leave today', function () 
     $empToken = $user->createToken('employee-device')->plainTextToken;
 
     LeaveRequest::query()->create([
-        'employee_id'   => $employee->id,
-        'leave_type'    => 'annual',
-        'start_date'    => '2026-05-05',
-        'end_date'      => '2026-05-05',
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
         'duration_type' => 'full_day',
-        'total_days'    => 1,
-        'reason'        => 'Annual leave',
-        'status'        => 'approved',
+        'total_days' => 1,
+        'reason' => 'Annual leave',
+        'status' => 'approved',
     ]);
 
     $this->withToken($empToken)

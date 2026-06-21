@@ -32,6 +32,7 @@ class PayrollService
      */
     public function paginate(array $filters, User $viewer): LengthAwarePaginator
     {
+        $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = PayrollBatch::query()
@@ -399,6 +400,7 @@ class PayrollService
             ->loadSum('items as total_gross_salary', 'gross_salary')
             ->loadSum('items as total_unpaid_deduction', 'unpaid_deduction')
             ->loadSum('items as total_absence_deduction', 'absence_deduction')
+            ->loadSum('items as total_special_sick_deduction', 'special_sick_deduction')
             ->loadSum('items as total_tax_amount', 'tax_amount')
             ->loadSum('items as total_nssf_deduction', 'nssf_deduction')
             ->loadSum('items as total_net_salary', 'net_salary');
@@ -431,6 +433,8 @@ class PayrollService
                 maternityLeaveDays: 0,
                 maternityDeductionRate: $this->maternityDeductionRate($employee->join_date, $periodEnd),
                 settings: $settings,
+                specialSickLeaveDays: 0,
+                specialSickDeductionWeighted: 0,
             );
         }
 
@@ -454,7 +458,14 @@ class PayrollService
             $settings,
             $holidayDates,
         );
-        $absentDays = max(0, $workingDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days']);
+        $specialSickDeductionWeighted = $this->specialSickTieredDeduction(
+            $leaveRows,
+            $activeRange['start'],
+            $activeRange['end'],
+            $settings,
+            $holidayDates,
+        );
+        $absentDays = max(0, $workingDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days'] - $leaveBreakdown['special_sick_leave_days']);
 
         return $this->calculatedItemPayload(
             baseSalary: (float) $employee->base_salary,
@@ -465,6 +476,8 @@ class PayrollService
             maternityLeaveDays: $leaveBreakdown['maternity_leave_days'],
             maternityDeductionRate: $this->maternityDeductionRate($employee->join_date, $periodEnd),
             settings: $settings,
+            specialSickLeaveDays: $leaveBreakdown['special_sick_leave_days'],
+            specialSickDeductionWeighted: $specialSickDeductionWeighted,
         );
     }
 
@@ -478,6 +491,11 @@ class PayrollService
         CompanySetting $settings,
         CarbonInterface $periodEnd,
     ): array {
+        $specialSickLeaveDays = (float) ($overrides['special_sick_leave_days'] ?? $currentItem->special_sick_leave_days);
+        $dailyRate = (float) ($overrides['base_salary'] ?? $currentItem->base_salary) / max(1, (int) $settings->payroll_day_rate);
+        $specialSickDeduction = (float) ($overrides['special_sick_deduction'] ?? $currentItem->special_sick_deduction);
+        $specialSickDeductionWeighted = $dailyRate > 0 ? $specialSickDeduction / $dailyRate : 0.0;
+
         return $this->calculatedItemPayload(
             baseSalary: (float) ($overrides['base_salary'] ?? $currentItem->base_salary),
             workingDays: (float) ($overrides['working_days'] ?? $currentItem->working_days),
@@ -487,6 +505,8 @@ class PayrollService
             maternityLeaveDays: (float) ($overrides['maternity_leave_days'] ?? $currentItem->maternity_leave_days),
             maternityDeductionRate: $this->maternityDeductionRate($currentItem->employee?->join_date, $periodEnd),
             settings: $settings,
+            specialSickLeaveDays: $specialSickLeaveDays,
+            specialSickDeductionWeighted: $specialSickDeductionWeighted,
         );
     }
 
@@ -502,6 +522,8 @@ class PayrollService
         float $maternityLeaveDays,
         float $maternityDeductionRate,
         CompanySetting $settings,
+        float $specialSickLeaveDays = 0.0,
+        float $specialSickDeductionWeighted = 0.0,
     ): array {
         $baseSalarySnapshot = $this->calculateBaseSalary(
             monthlyBaseSalary: $baseSalary,
@@ -515,6 +537,7 @@ class PayrollService
             absentDays: $absentDays,
             maternityLeaveDays: $maternityLeaveDays,
             maternityDeductionRate: $maternityDeductionRate,
+            specialSickDeductionWeighted: $specialSickDeductionWeighted,
         );
         $tax = $this->calculateTax($deductions['taxable_salary']);
         $nssfDeduction = $this->calculateNssfDeduction($deductions['taxable_salary']);
@@ -532,10 +555,12 @@ class PayrollService
             'absent_days' => $this->roundMetric($absentDays),
             'unpaid_leave_days' => $this->roundMetric($unpaidLeaveDays),
             'maternity_leave_days' => $this->roundMetric($maternityLeaveDays),
+            'special_sick_leave_days' => $this->roundMetric($specialSickLeaveDays),
             'gross_salary' => $baseSalarySnapshot['gross_salary'],
             'unpaid_deduction' => $deductions['unpaid_deduction'],
             'absence_deduction' => $deductions['absence_deduction'],
             'maternity_deduction' => $deductions['maternity_deduction'],
+            'special_sick_deduction' => $deductions['special_sick_deduction'],
             'taxable_salary' => $deductions['taxable_salary'],
             'tax_rate' => $tax['tax_rate'],
             'tax_amount' => $tax['tax_amount'],
@@ -654,7 +679,7 @@ class PayrollService
     /**
      * @param  Collection<int, LeaveRequest>  $leaveRows
      * @param  array<string, true>  $holidayDates
-     * @return array{paid_leave_days: float, unpaid_leave_days: float, maternity_leave_days: float}
+     * @return array{paid_leave_days: float, unpaid_leave_days: float, maternity_leave_days: float, special_sick_leave_days: float}
      */
     protected function leaveBreakdown(
         Collection $leaveRows,
@@ -666,6 +691,7 @@ class PayrollService
         $paidLeaveDays = 0.0;
         $unpaidLeaveDays = 0.0;
         $maternityLeaveDays = 0.0;
+        $specialSickLeaveDays = 0.0;
 
         foreach ($leaveRows as $leave) {
             if (! $leave->start_date || ! $leave->end_date) {
@@ -695,6 +721,8 @@ class PayrollService
                 $unpaidLeaveDays += $days;
             } elseif ($leave->leave_type === 'maternity') {
                 $maternityLeaveDays += $days;
+            } elseif ($leave->leave_type === 'special_sick') {
+                $specialSickLeaveDays += $days;
             } else {
                 $paidLeaveDays += $days;
             }
@@ -704,6 +732,7 @@ class PayrollService
             'paid_leave_days' => $this->roundMetric($paidLeaveDays),
             'unpaid_leave_days' => $this->roundMetric($unpaidLeaveDays),
             'maternity_leave_days' => $this->roundMetric($maternityLeaveDays),
+            'special_sick_leave_days' => $this->roundMetric($specialSickLeaveDays),
         ];
     }
 
@@ -777,7 +806,7 @@ class PayrollService
     }
 
     /**
-     * @return array{unpaid_deduction: float, absence_deduction: float, maternity_deduction: float, taxable_salary: float}
+     * @return array{unpaid_deduction: float, absence_deduction: float, maternity_deduction: float, special_sick_deduction: float, taxable_salary: float}
      */
     protected function calculateDeductions(
         float $dailyRate,
@@ -786,16 +815,19 @@ class PayrollService
         float $absentDays,
         float $maternityLeaveDays,
         float $maternityDeductionRate,
+        float $specialSickDeductionWeighted = 0.0,
     ): array {
         $unpaidDeduction = $this->roundMoney($dailyRate * $unpaidLeaveDays);
         $absenceDeduction = $this->roundMoney($dailyRate * $absentDays);
         $maternityDeduction = $this->roundMoney($dailyRate * $maternityDeductionRate * $maternityLeaveDays);
+        $specialSickDeduction = $this->roundMoney($dailyRate * $specialSickDeductionWeighted);
 
         return [
             'unpaid_deduction' => $unpaidDeduction,
             'absence_deduction' => $absenceDeduction,
             'maternity_deduction' => $maternityDeduction,
-            'taxable_salary' => $this->roundMoney(max(0, $grossSalary - $unpaidDeduction - $absenceDeduction - $maternityDeduction)),
+            'special_sick_deduction' => $specialSickDeduction,
+            'taxable_salary' => $this->roundMoney(max(0, $grossSalary - $unpaidDeduction - $absenceDeduction - $maternityDeduction - $specialSickDeduction)),
         ];
     }
 
@@ -810,6 +842,77 @@ class PayrollService
         }
 
         return $joinDate->diffInYears($referenceDate) >= 1 ? 0.5 : 1.0;
+    }
+
+    /**
+     * Calculate tiered special sick leave deduction weighted sum for the payroll period.
+     * Returns the sum of per-day deduction rates (multiply by daily_rate to get deduction amount).
+     *
+     * @param  Collection<int, LeaveRequest>  $leaveRows
+     * @param  array<string, true>  $holidayDates
+     */
+    protected function specialSickTieredDeduction(
+        Collection $leaveRows,
+        CarbonInterface $periodStart,
+        CarbonInterface $periodEnd,
+        CompanySetting $settings,
+        array $holidayDates,
+    ): float {
+        $tiers = collect(config('hr.leave.special_sick.tiers', []));
+        $totalDeductionWeighted = 0.0;
+
+        $specialSickLeaves = $leaveRows->where('leave_type', 'special_sick');
+
+        foreach ($specialSickLeaves as $leave) {
+            if (! $leave->start_date || ! $leave->end_date) {
+                continue;
+            }
+
+            $segmentStart = $leave->start_date->greaterThan($periodStart)
+                ? $leave->start_date->copy()->startOfDay()
+                : $periodStart->copy()->startOfDay();
+            $segmentEnd = $leave->end_date->lessThan($periodEnd)
+                ? $leave->end_date->copy()->startOfDay()
+                : $periodEnd->copy()->startOfDay();
+
+            if ($segmentStart->gt($segmentEnd)) {
+                continue;
+            }
+
+            $cumulativeDaysBefore = 0.0;
+            if ($leave->start_date->lt($segmentStart)) {
+                $preHolidayDates = $this->holidayDates($leave->start_date, $segmentStart->copy()->subDay());
+                $cumulativeDaysBefore = $this->countWorkingDays(
+                    $leave->start_date->copy()->startOfDay(),
+                    $segmentStart->copy()->subDay()->startOfDay(),
+                    $settings,
+                    $preHolidayDates,
+                );
+            }
+
+            $cursor = $segmentStart->copy()->startOfDay();
+            $dayCounter = $cumulativeDaysBefore;
+
+            while ($cursor->lte($segmentEnd)) {
+                if ($this->isWorkingPayrollDate($cursor, $settings, $holidayDates)) {
+                    $dayCounter++;
+
+                    $deductionRate = 1.0;
+                    foreach ($tiers as $tier) {
+                        if ($dayCounter <= $tier['up_to_day']) {
+                            $deductionRate = 1.0 - $tier['pay_rate'];
+                            break;
+                        }
+                    }
+
+                    $totalDeductionWeighted += $deductionRate;
+                }
+
+                $cursor->addDay();
+            }
+        }
+
+        return $totalDeductionWeighted;
     }
 
     /**

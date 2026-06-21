@@ -285,6 +285,11 @@ Only editable fields are accepted per item. Computed fields such as `gross_salar
 - Approved `maternity` leave days reduce pay (`maternity_leave_days` / `maternity_deduction` on the payroll item) based on the employee's tenure as of the end of the payroll period:
   - Employees with **at least 1 year of service** (`join_date` to period end) are paid `50%` of their daily rate for maternity leave days — `maternity_deduction = daily_rate * 0.5 * maternity_leave_days`.
   - Employees with **less than 1 year of service** are unpaid for maternity leave days — `maternity_deduction = daily_rate * 1.0 * maternity_leave_days` (same effect as unpaid leave).
+- Approved `special_sick` leave days use tiered pay deduction (`special_sick_leave_days` / `special_sick_deduction` on the payroll item):
+  - Days 1–30 of the case: 100% pay (no deduction).
+  - Days 31–90 of the case: 60% pay (40% deduction per day = `daily_rate * 0.4`).
+  - Days 91–180 of the case: 0% pay (full deduction per day = `daily_rate * 1.0`).
+  - The tier is based on cumulative working days from the leave's original start date, so a leave spanning multiple payroll periods correctly progresses through tiers.
 - Payslip PDF uses the company logo from company settings when available and falls back safely when no logo exists.
 
 ## Frontend Notes
