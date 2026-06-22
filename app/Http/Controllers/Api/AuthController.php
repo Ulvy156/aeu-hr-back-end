@@ -12,12 +12,9 @@ use App\Services\UserPermissionService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthController extends Controller
 {
-    protected const REFRESH_TOKEN_COOKIE = 'refresh_token';
-
     public function __construct(
         protected AuthService $authService,
         protected AuditLogService $auditLogService,
@@ -55,27 +52,7 @@ class AuthController extends Controller
                 'user' => $this->authUserPayload($payload['user'], $request),
             ],
             message: 'Login successful.',
-        )->withCookie($this->makeRefreshCookie($payload['refresh_token_plain']));
-    }
-
-    public function refresh(Request $request): JsonResponse
-    {
-        $refreshTokenPlain = $request->cookie(self::REFRESH_TOKEN_COOKIE);
-
-        if (! $refreshTokenPlain) {
-            return ApiResponse::error('Refresh token not found.', status: 401);
-        }
-
-        $payload = $this->authService->refresh($refreshTokenPlain);
-
-        return ApiResponse::success(
-            data: [
-                'access_token' => $payload['access_token'],
-                'token_type' => $payload['token_type'],
-                'expires_in' => $payload['expires_in'],
-            ],
-            message: 'Token refreshed successfully.',
-        )->withCookie($this->makeRefreshCookie($payload['refresh_token_plain']));
+        );
     }
 
     public function logout(Request $request): JsonResponse
@@ -92,13 +69,12 @@ class AuthController extends Controller
             userAgent: $request->userAgent(),
         );
 
-        $refreshTokenPlain = $request->cookie(self::REFRESH_TOKEN_COOKIE);
-        $this->authService->logout($request->user(), $refreshTokenPlain);
+        $this->authService->logout($request->user());
 
         return ApiResponse::success(
             data: null,
             message: 'Logout successful.',
-        )->withCookie($this->forgetRefreshCookie());
+        );
     }
 
     public function me(Request $request): JsonResponse
@@ -123,33 +99,5 @@ class AuthController extends Controller
             $summary['roles'],
             $summary['permissions'],
         ))->resolve($request);
-    }
-
-    protected function makeRefreshCookie(string $token): Cookie
-    {
-        $days = (int) config('hr.auth.refresh_token_expiration_days', 7);
-
-        return Cookie::create(
-            name: self::REFRESH_TOKEN_COOKIE,
-            value: $token,
-            expire: time() + ($days * 86400),
-            path: '/',
-            secure: (bool) config('hr.auth.refresh_cookie_secure', true),
-            httpOnly: true,
-            sameSite: Cookie::SAMESITE_NONE,
-        );
-    }
-
-    protected function forgetRefreshCookie(): Cookie
-    {
-        return Cookie::create(
-            name: self::REFRESH_TOKEN_COOKIE,
-            value: '',
-            expire: 1,
-            path: '/',
-            secure: (bool) config('hr.auth.refresh_cookie_secure', true),
-            httpOnly: true,
-            sameSite: Cookie::SAMESITE_NONE,
-        );
     }
 }

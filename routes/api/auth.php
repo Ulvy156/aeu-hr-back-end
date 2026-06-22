@@ -9,7 +9,6 @@ Route::get('/health', fn () => response()->json(['status' => 'ok']));
 
 Route::middleware('throttle:login')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/refresh', [AuthController::class, 'refresh']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

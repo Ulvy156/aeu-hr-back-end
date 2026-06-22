@@ -18,7 +18,6 @@ class UserService
 {
     public function __construct(
         protected AuditLogService $auditLogService,
-        protected AuthService $authService,
     ) {}
 
     /**
@@ -165,7 +164,7 @@ class UserService
 
             if ($data['status'] === 'inactive') {
                 $user->tokens()->delete();
-                $this->authService->revokeAllRefreshTokens($user);
+
             }
 
             $user = $user->fresh(['roles:id,name', 'employee.department', 'employee.position']);
@@ -213,7 +212,6 @@ class UserService
                 'status' => Status::Inactive->value,
             ]);
             $user->tokens()->delete();
-            $this->authService->revokeAllRefreshTokens($user);
             $user->delete();
 
             $this->auditLogService->log(
@@ -248,7 +246,6 @@ class UserService
         return DB::transaction(function () use ($user, $newPassword, $actor, $ipAddress, $userAgent): User {
             $user->update(['password' => $newPassword]);
             $user->tokens()->delete();
-            $this->authService->revokeAllRefreshTokens($user);
 
             $this->auditLogService->log(
                 action: 'reset_password',

@@ -43,12 +43,7 @@ return [
             ],
         ],
     ],
-    'auth' => [
-        'access_token_expiration_minutes' => (int) env('ACCESS_TOKEN_EXPIRATION_MINUTES', 15),
-        'refresh_token_expiration_days' => (int) env('REFRESH_TOKEN_EXPIRATION_DAYS', 7),
-        'refresh_cookie_secure' => (bool) env('REFRESH_COOKIE_SECURE', true),
-        'refresh_cookie_same_site' => env('REFRESH_COOKIE_SAME_SITE', 'none'),
-    ],
+    'auth' => [],
     'payroll' => [
         'tax_brackets' => [
             ['up_to' => 375.00, 'rate' => 0.00],
