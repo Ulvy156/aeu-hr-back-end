@@ -30,15 +30,17 @@ class UserService
         return User::query()
             ->with(['roles:id,name', 'employee.department', 'employee.position'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
-                $query->where(function (Builder $query) use ($search): void {
+                $term = '%'.Str::lower($search).'%';
+
+                $query->where(function (Builder $query) use ($term): void {
                     $query
-                        ->where('name', 'like', '%'.$search.'%')
-                        ->orWhere('email', 'like', '%'.$search.'%')
-                        ->orWhereHas('employee', function (Builder $query) use ($search): void {
+                        ->whereRaw('LOWER(name) LIKE ?', [$term])
+                        ->orWhereRaw('LOWER(email) LIKE ?', [$term])
+                        ->orWhereHas('employee', function (Builder $query) use ($term): void {
                             $query
-                                ->where('full_name', 'like', '%'.$search.'%')
-                                ->orWhereHas('department', fn (Builder $departmentQuery) => $departmentQuery->where('name', 'like', '%'.$search.'%'))
-                                ->orWhereHas('position', fn (Builder $positionQuery) => $positionQuery->where('name', 'like', '%'.$search.'%'));
+                                ->whereRaw('LOWER(full_name) LIKE ?', [$term])
+                                ->orWhereHas('department', fn (Builder $departmentQuery) => $departmentQuery->whereRaw('LOWER(name) LIKE ?', [$term]))
+                                ->orWhereHas('position', fn (Builder $positionQuery) => $positionQuery->whereRaw('LOWER(name) LIKE ?', [$term]));
                         });
                 });
             })

@@ -29,6 +29,8 @@ class EmploymentHistory extends Model
 
     public const FIELD_PROBATION_END_DATE = 'probation_end_date';
 
+    public const FIELD_INTERN_END_DATE = 'intern_end_date';
+
     public const FIELD_MANAGER_ID = 'manager_id';
 
     public const TRACKED_FIELDS = [
@@ -37,6 +39,7 @@ class EmploymentHistory extends Model
         self::FIELD_BASE_SALARY,
         self::FIELD_EMPLOYMENT_STATUS,
         self::FIELD_PROBATION_END_DATE,
+        self::FIELD_INTERN_END_DATE,
         self::FIELD_MANAGER_ID,
     ];
 

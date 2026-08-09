@@ -115,13 +115,13 @@ test('hr can create a multi-field upgrade request for department position and sa
     $response->assertCreated();
 
     expect($response->json('data.current_values'))->toMatchArray([
-        'department_id' => $deptA->id,
-        'position_id' => $posA->id,
+        'department_id' => ['id' => $deptA->id, 'name' => $deptA->name],
+        'position_id' => ['id' => $posA->id, 'name' => $posA->name],
         'base_salary' => '1000.00',
     ])
         ->and($response->json('data.proposed_values'))->toMatchArray([
-            'department_id' => $deptB->id,
-            'position_id' => $posB->id,
+            'department_id' => ['id' => $deptB->id, 'name' => $deptB->name],
+            'position_id' => ['id' => $posB->id, 'name' => $posB->name],
             'base_salary' => '2000.00',
         ]);
 });
@@ -244,6 +244,48 @@ test('ceo can approve a pending upgrade request and it updates the employee and 
 
     expect(Activity::query()->where('log_name', 'employee_upgrade_requests')->where('description', 'approve')->exists())->toBeTrue()
         ->and(Activity::query()->where('log_name', 'employees')->where('description', 'update')->exists())->toBeTrue();
+});
+
+test('ceo can approve a pending upgrade request to intern and it derives intern_end_date', function () {
+    $employee = upgradeEmployee([
+        'employment_status' => 'full-time',
+        'base_salary' => '1000.00',
+        'join_date' => '2026-01-01',
+    ]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'employment_status' => 'intern',
+            'base_salary' => '1500.00',
+        ],
+    ])->assertCreated();
+
+    $id = $createResponse->json('data.id');
+
+    Sanctum::actingAs(upgradeActor('ceo'));
+
+    $this->postJson("/api/employee-upgrade-requests/{$id}/approve")
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'approved');
+
+    $employee->refresh();
+    $employee->load('user');
+
+    expect($employee->employment_status->value)->toBe('intern')
+        ->and($employee->base_salary)->toBe('1500.00')
+        ->and($employee->intern_end_date->toDateString())->toBe('2026-04-01')
+        ->and($employee->user->status->value)->toBe('active');
+
+    $historyFields = EmploymentHistory::query()->where('employee_id', $employee->id)->pluck('field')->all();
+
+    expect($historyFields)->toContain('base_salary')
+        ->and($historyFields)->toContain('employment_status')
+        ->and($historyFields)->toContain('intern_end_date')
+        ->and($historyFields)->not->toContain('department_id')
+        ->and($historyFields)->not->toContain('position_id');
 });
 
 test('ceo can reject a pending upgrade request with a reason and rejecting without one fails', function () {
@@ -521,10 +563,32 @@ test('hr can create an upgrade request proposing a new manager', function () {
         ->assertCreated()
         ->assertJsonPath('data.status', 'pending')
         ->assertJsonPath('data.current_values', ['manager_id' => null])
-        ->assertJsonPath('data.proposed_values', ['manager_id' => $manager->id]);
+        ->assertJsonPath('data.proposed_values', ['manager_id' => ['id' => $manager->id, 'name' => $manager->full_name]]);
 
     expect($employee->fresh()->manager_id)->toBeNull()
         ->and(EmploymentHistory::query()->count())->toBe(0);
+});
+
+test('upgrade request still resolves department name after the department is soft deleted', function () {
+    [$oldDepartment] = upgradeDepartmentAndPosition('Legacy Dept', 'Legacy Role');
+    [$newDepartment] = upgradeDepartmentAndPosition('New Dept', 'New Role');
+    $employee = upgradeEmployee(['department_id' => $oldDepartment->id]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => ['department_id' => $newDepartment->id],
+    ])->assertCreated();
+
+    $id = $createResponse->json('data.id');
+
+    $oldDepartment->delete();
+
+    $this->getJson("/api/employee-upgrade-requests/{$id}")
+        ->assertSuccessful()
+        ->assertJsonPath('data.current_values.department_id', ['id' => $oldDepartment->id, 'name' => 'Legacy Dept'])
+        ->assertJsonPath('data.proposed_values.department_id', ['id' => $newDepartment->id, 'name' => 'New Dept']);
 });
 
 test('upgrade request rejects an employee being proposed as their own manager', function () {

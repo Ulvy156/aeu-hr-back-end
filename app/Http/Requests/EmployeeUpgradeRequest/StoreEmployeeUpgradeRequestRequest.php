@@ -69,7 +69,7 @@ class StoreEmployeeUpgradeRequestRequest extends FormRequest
                 $employmentStatus = $proposedValues['employment_status'] ?? null;
                 $lastWorkingDate = $proposedValues['last_working_date'] ?? null;
 
-                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true) && $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value, EmploymentStatus::Intern->value], true) && $lastWorkingDate) {
                     $validator->errors()->add('proposed_values.last_working_date', 'Active or probation employment status must not have a last working date.');
                 }
 

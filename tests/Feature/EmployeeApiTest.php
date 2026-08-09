@@ -169,6 +169,43 @@ test('creating a probation employee allows hr to override probation_end_date', f
         ->assertJsonPath('data.probation_end_date', '2026-06-30');
 });
 
+test('creating an intern employee defaults intern_end_date to join_date plus the configured period', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
+        'employment_status' => 'intern',
+        'manager_id' => $manager->id,
+    ]));
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath('data.employment_status', 'intern')
+        ->assertJsonPath('data.intern_end_date', '2026-08-01');
+
+    $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
+
+    expect($employee->intern_end_date->toDateString())->toBe('2026-08-01')
+        ->and($employee->user->status->value)->toBe('active');
+});
+
+test('creating an intern employee allows hr to override intern_end_date', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $response = $this->withToken($token)->postJson('/api/employees', employeePayload($linkedUser, [
+        'employment_status' => 'intern',
+        'intern_end_date' => '2026-06-30',
+        'manager_id' => $manager->id,
+    ]));
+
+    $response
+        ->assertCreated()
+        ->assertJsonPath('data.intern_end_date', '2026-06-30');
+});
+
 test('employee create fails when manager_id is missing for a non-ceo user', function () {
     $linkedUser = linkableUser();
     $linkedUser->assignRole('employee');
@@ -212,6 +249,34 @@ test('employee create fails when manager_id does not reference an existing emplo
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Validation failed')
         ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee create fails when date_of_birth is less than 18 years ago', function () {
+    $linkedUser = linkableUser();
+    $manager = createManagerEmployee();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'manager_id' => $manager->id,
+            'date_of_birth' => now()->subYears(17)->toDateString(),
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('date_of_birth');
+});
+
+test('employee create succeeds when date_of_birth is exactly 18 years ago', function () {
+    $linkedUser = linkableUser();
+    $manager = createManagerEmployee();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'manager_id' => $manager->id,
+            'date_of_birth' => now()->subYears(18)->toDateString(),
+        ]))
+        ->assertCreated();
 });
 
 test('employee create fails when user id is missing', function () {

@@ -30,6 +30,7 @@ class EmployeeResource extends JsonResource
             'base_salary' => (string) $this->base_salary,
             'employment_status' => $this->employment_status,
             'probation_end_date' => $this->probation_end_date?->toDateString(),
+            'intern_end_date' => $this->intern_end_date?->toDateString(),
             'emergency_contact' => $this->emergency_contact,
             'profile_photo' => $this->profile_photo,
             'profile_photo_url' => FileStorage::url($this->profile_photo),

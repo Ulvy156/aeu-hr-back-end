@@ -226,6 +226,8 @@ return [
         'ceo' => [
             'permissions' => [
                 'attendance.view_any',
+                'employees.view_any',
+                'employees.view',
                 'employees.search',
                 'leaves.view_any',
                 'leave_balances.view_any',

@@ -123,7 +123,7 @@ Authenticate a user and issue an access token.
 }
 ```
 
-- Non-admin users must have a linked `Employee` profile with `employment_status` of `full-time` or `probation` to log in. Users without an employee profile, or whose employee profile is `resigned`/`terminated`, are rejected:
+- Non-admin users must have a linked `Employee` profile with `employment_status` of `full-time`, `probation`, or `intern` to log in. Users without an employee profile, or whose employee profile is `resigned`/`terminated`, are rejected:
 
 ```json
 {

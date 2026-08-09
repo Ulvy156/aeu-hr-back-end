@@ -32,11 +32,13 @@ class EmployeeService
         return Employee::query()
             ->with(['user:id,name,email,status', 'department', 'position', 'manager'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
-                $query->where(function (Builder $query) use ($search): void {
+                $normalizedSearch = '%'.Str::lower($search).'%';
+
+                $query->where(function (Builder $query) use ($normalizedSearch): void {
                     $query
-                        ->where('employee_id', 'like', '%'.$search.'%')
-                        ->orWhere('full_name', 'like', '%'.$search.'%')
-                        ->orWhereHas('user', fn (Builder $userQuery) => $userQuery->where('email', 'like', '%'.$search.'%'));
+                        ->whereRaw('LOWER(employee_id) LIKE ?', [$normalizedSearch])
+                        ->orWhereRaw('LOWER(full_name) LIKE ?', [$normalizedSearch])
+                        ->orWhereHas('user', fn (Builder $userQuery) => $userQuery->whereRaw('LOWER(email) LIKE ?', [$normalizedSearch]));
                 });
             })
             ->when($filters['department_id'] ?? null, fn (Builder $query, $departmentId) => $query->where('department_id', $departmentId))
@@ -316,6 +318,7 @@ class EmployeeService
             'base_salary' => $data['base_salary'],
             'employment_status' => $data['employment_status'],
             'probation_end_date' => $this->resolveProbationEndDate($data),
+            'intern_end_date' => $this->resolveInternEndDate($data),
             'emergency_contact' => $data['emergency_contact'] ?? null,
         ];
     }
@@ -339,10 +342,28 @@ class EmployeeService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function resolveInternEndDate(array $data): ?string
+    {
+        if ($data['employment_status'] !== EmploymentStatus::Intern->value) {
+            return null;
+        }
+
+        if (! empty($data['intern_end_date'])) {
+            return $data['intern_end_date'];
+        }
+
+        return Carbon::parse($data['join_date'])
+            ->addMonths((int) config('hr.employment.intern_period_months', 3))
+            ->toDateString();
+    }
+
+    /**
      * Apply a partial set of employment-field changes (subset of department_id,
      * position_id, base_salary, employment_status, last_working_date), deriving
-     * probation_end_date and syncing the linked user's status the same way a
-     * full profile update would.
+     * probation_end_date/intern_end_date and syncing the linked user's status
+     * the same way a full profile update would.
      *
      * @param  array<string, mixed>  $changes
      * @return array<string, mixed> the attributes actually applied
@@ -356,6 +377,12 @@ class EmployeeService
                 'employment_status' => $changes['employment_status'],
                 'join_date' => $employee->join_date?->toDateString(),
                 'probation_end_date' => $changes['probation_end_date'] ?? null,
+            ]);
+
+            $attributes['intern_end_date'] = $this->resolveInternEndDate([
+                'employment_status' => $changes['employment_status'],
+                'join_date' => $employee->join_date?->toDateString(),
+                'intern_end_date' => $changes['intern_end_date'] ?? null,
             ]);
         }
 
@@ -404,6 +431,7 @@ class EmployeeService
             'base_salary' => (string) $employee->base_salary,
             'employment_status' => $employee->employment_status->value,
             'probation_end_date' => $employee->probation_end_date?->toDateString(),
+            'intern_end_date' => $employee->intern_end_date?->toDateString(),
             'user_status' => $employee->user?->status?->value,
             'document_names' => collect($employee->documents ?? [])->pluck('name')->all(),
         ];
@@ -436,7 +464,7 @@ class EmployeeService
 
     protected function userStatusFromEmploymentStatus(string $employmentStatus): string
     {
-        return in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true)
+        return in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value, EmploymentStatus::Intern->value], true)
             ? Status::Active->value
             : Status::Inactive->value;
     }

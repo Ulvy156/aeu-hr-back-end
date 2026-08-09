@@ -83,7 +83,7 @@ class EmploymentHistoryService
         return match ($field) {
             EmploymentHistory::FIELD_DEPARTMENT_ID, EmploymentHistory::FIELD_POSITION_ID, EmploymentHistory::FIELD_MANAGER_ID => $this->normalizeId($old) !== $this->normalizeId($new),
             EmploymentHistory::FIELD_BASE_SALARY => number_format((float) $old, 2, '.', '') !== number_format((float) $new, 2, '.', ''),
-            EmploymentHistory::FIELD_PROBATION_END_DATE => $this->normalizeDate($old) !== $this->normalizeDate($new),
+            EmploymentHistory::FIELD_PROBATION_END_DATE, EmploymentHistory::FIELD_INTERN_END_DATE => $this->normalizeDate($old) !== $this->normalizeDate($new),
             default => $old !== $new,
         };
     }
@@ -106,7 +106,7 @@ class EmploymentHistoryService
             EmploymentHistory::FIELD_MANAGER_ID => $this->resolveManagerSnapshot($this->normalizeId($rawValue), $employee, $oldManager, $isOld),
             EmploymentHistory::FIELD_BASE_SALARY => ['value' => $rawValue === null ? null : (float) $rawValue],
             EmploymentHistory::FIELD_EMPLOYMENT_STATUS => ['value' => $rawValue],
-            EmploymentHistory::FIELD_PROBATION_END_DATE => $this->resolveDateSnapshot($rawValue, $isOld),
+            EmploymentHistory::FIELD_PROBATION_END_DATE, EmploymentHistory::FIELD_INTERN_END_DATE => $this->resolveDateSnapshot($rawValue, $isOld),
             default => null,
         };
     }

@@ -65,6 +65,7 @@ class EmployeeUpgradeRequestController extends Controller
             'requestedBy:id,name',
             'reviewedBy:id,name',
         ]);
+        \Log::info($upgradeRequest);
 
         return ApiResponse::success(
             data: EmployeeUpgradeRequestResource::make($upgradeRequest)->resolve(request()),

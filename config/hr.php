@@ -25,6 +25,7 @@ return [
     ],
     'employment' => [
         'probation_period_months' => 3,
+        'intern_period_months' => 3,
     ],
     'leave' => [
         'entitlements' => [

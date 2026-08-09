@@ -15,7 +15,9 @@ HR-proposed changes to an employee's department, position, base salary, employme
 - `employment_status` (when proposed, `last_working_date` must also be supplied in `proposed_values` — see Validation Notes)
 - `manager_id` (who the employee reports to — see Validation Notes; see also `.claude/api/EMPLOYEE_HIERARCHY_API.md`)
 
-`probation_end_date` is never proposed directly — it is derived automatically on approval the same way it is on `POST`/`PUT /api/employees`.
+`probation_end_date` and `intern_end_date` are never proposed directly — they are derived automatically on approval the same way they are on `POST`/`PUT /api/employees`.
+
+`department_id`, `position_id`, and `manager_id` are sent as raw integers in the create request (see below), but are echoed back in every response's `current_values`/`proposed_values` as `{ "id": <int>, "name": "<string|null>" }` snapshots — `name` is resolved at read time (including soft-deleted departments/positions/employees), not stored. `base_salary`, `employment_status`, and `last_working_date` remain plain scalars.
 
 ## Base Endpoint
 
@@ -78,8 +80,8 @@ Return a paginated list of upgrade requests, most recent first.
     {
       "id": 5,
       "status": "pending",
-      "current_values": { "base_salary": "1000.00" },
-      "proposed_values": { "base_salary": "1500.00" },
+      "current_values": { "department_id": { "id": 1, "name": "Sales" }, "base_salary": "1000.00" },
+      "proposed_values": { "department_id": { "id": 2, "name": "Engineering" }, "base_salary": "1500.00" },
       "effective_date": "2026-07-01",
       "rejection_reason": null,
       "attachments": [
@@ -135,16 +137,16 @@ Use `multipart/form-data` when sending `attachments`.
   - `department_id`: optional integer, must exist in `departments`
   - `position_id`: optional integer, must exist in `positions`
   - `base_salary`: numeric, minimum `0`
-  - `employment_status`: one of `full-time`, `probation`, `resigned`, `terminated`
+  - `employment_status`: one of `full-time`, `probation`, `intern`, `resigned`, `terminated`
   - `manager_id`: optional integer, must exist in `employees` — the employee this employee will report to. Send `null` to clear the manager (remove from the org chart's reporting line).
-  - `last_working_date`: optional date — required if `employment_status` is `resigned`/`terminated`, forbidden if `full-time`/`probation`
+  - `last_working_date`: optional date — required if `employment_status` is `resigned`/`terminated`, forbidden if `full-time`/`probation`/`intern`
 - `attachments`: optional array, max `3` files, each `pdf`, `jpg`, `jpeg`, `png`, `webp`, `doc`, or `docx`, max `5120` KB
 
 ### Validation Notes
 
 - At least one of `department_id`, `position_id`, `base_salary`, `employment_status`, `manager_id` must be present in `proposed_values`.
 - Unknown keys in `proposed_values` are rejected.
-- If `employment_status` is `resigned` or `terminated`, `last_working_date` is required; if `full-time` or `probation`, `last_working_date` must be absent/null.
+- If `employment_status` is `resigned` or `terminated`, `last_working_date` is required; if `full-time`, `probation`, or `intern`, `last_working_date` must be absent/null.
 - At least one proposed value must differ from the employee's current data, otherwise `422` on `proposed_values`.
 - If the resulting `position_id` (proposed or current) belongs to a department, it must match the resulting `department_id` (proposed or current), otherwise `422` on `proposed_values.position_id`.
 - An employee cannot be proposed as their own manager — `422` on `proposed_values.manager_id`.
@@ -186,7 +188,7 @@ Return one upgrade request. Uses the same shape as the list item.
 
 ## POST /api/employee-upgrade-requests/{upgradeRequest}/approve
 
-Approve a pending request. Applies `proposed_values` to the employee, derives `probation_end_date` and syncs the linked user's `active`/`inactive` status when `employment_status` changes, and records one `employment_histories` row per changed tracked field (see `.claude/api/EMPLOYMENT_HISTORY_API.md`).
+Approve a pending request. Applies `proposed_values` to the employee, derives `probation_end_date`/`intern_end_date` and syncs the linked user's `active`/`inactive` status when `employment_status` changes, and records one `employment_histories` row per changed tracked field (see `.claude/api/EMPLOYMENT_HISTORY_API.md`).
 
 ### Validation Notes
 

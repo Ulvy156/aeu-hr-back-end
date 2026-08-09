@@ -33,7 +33,7 @@ class AuthService
         if (! $user->hasRole('admin')) {
             $employee = $user->employee;
 
-            if (! $employee || ! in_array($employee->employment_status, [EmploymentStatus::FullTime, EmploymentStatus::Probation], true)) {
+            if (! $employee || ! in_array($employee->employment_status, [EmploymentStatus::FullTime, EmploymentStatus::Probation, EmploymentStatus::Intern], true)) {
                 throw ValidationException::withMessages([
                     'email' => ['Your account is not linked to an active employee profile. Please contact HR.'],
                 ]);

@@ -29,7 +29,7 @@ All employee endpoints require a Sanctum bearer token.
 - Update employee salary during update: `employees.update_salary`
 - Delete employee: `employees.delete`
 
-HR and Admin can manage employees with the current seeded role setup.
+HR and Admin can manage employees with the current seeded role setup. CEO can additionally list and view employee detail (`employees.view_any`/`employees.view`), but cannot create, update, or delete.
 
 ## Endpoint List
 
@@ -97,7 +97,7 @@ Soft-deleted employees are excluded from the default list.
 - `search`: optional string, searches `employee_id`, `full_name`, and the linked user's `email`
 - `department_id`: optional integer, filters by department
 - `position_id`: optional integer, filters by position
-- `employment_status`: optional enum, `full-time`, `probation`, `resigned`, or `terminated`
+- `employment_status`: optional enum, `full-time`, `probation`, `intern`, `resigned`, or `terminated`
 - `per_page`: optional integer, `1` to `100`
 
 ### Response Example
@@ -120,6 +120,7 @@ Soft-deleted employees are excluded from the default list.
       "base_salary": "1200.50",
       "employment_status": "full-time",
       "probation_end_date": null,
+      "intern_end_date": null,
       "emergency_contact": null,
       "profile_photo": "employee-profile-photos/avatar.jpg",
       "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
@@ -194,7 +195,7 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
 - `user_id`: required integer, must exist in `users.id`, and must not already exist in `employees.user_id`
 - `full_name`: required string, max `255` — also sets the linked user's `users.name`
 - `gender`: optional enum, `male`, `female`, or `other`
-- `date_of_birth`: optional date
+- `date_of_birth`: optional date, must be on or before 18 years ago (employee must be at least 18)
 - `phone_number`: optional string, max `50`
 - `address`: optional string
 - `department_id`: optional integer, must exist in `departments`
@@ -203,8 +204,9 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
 - `join_date`: required date
 - `last_working_date`: optional date
 - `base_salary`: required numeric, minimum `0`
-- `employment_status`: required enum, `full-time`, `probation`, `resigned`, or `terminated`
+- `employment_status`: required enum, `full-time`, `probation`, `intern`, `resigned`, or `terminated`
 - `probation_end_date`: optional date, must be on or after `join_date`. Only meaningful when `employment_status` is `probation` — see notes below.
+- `intern_end_date`: optional date, must be on or after `join_date`. Only meaningful when `employment_status` is `intern` — see notes below.
 - `emergency_contact`: optional string
 - `profile_photo`: optional image, `jpg`, `jpeg`, `png`, or `webp`, max `2048 KB`
 - `documents`: optional array of files, max `5` items. Total size of all documents must not exceed `20 MB`.
@@ -223,6 +225,8 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
 - Do not send an existing stored photo path or URL back as `profile_photo`.
 - When `employment_status` is `probation` and `probation_end_date` is omitted, the backend defaults it to `join_date` + `config('hr.employment.probation_period_months')` (default 3 months). The frontend can omit the field for the default, or send an explicit date to override it.
 - When `employment_status` is not `probation`, `probation_end_date` is ignored and stored as `null`.
+- When `employment_status` is `intern` and `intern_end_date` is omitted, the backend defaults it to `join_date` + `config('hr.employment.intern_period_months')` (default 3 months). The frontend can omit the field for the default, or send an explicit date to override it.
+- When `employment_status` is not `intern`, `intern_end_date` is ignored and stored as `null`.
 
 ### Response Example
 
@@ -243,6 +247,7 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
     "base_salary": "1200.50",
     "employment_status": "full-time",
     "probation_end_date": null,
+    "intern_end_date": null,
     "emergency_contact": null,
     "profile_photo": "employee-profile-photos/avatar.jpg",
     "profile_photo_url": "https://files.example.com/employee-profile-photos/avatar.jpg",
@@ -341,11 +346,13 @@ Use `multipart/form-data` when replacing `profile_photo` or uploading/replacing 
 ### Validation Notes
 
 - `full_name` updates the linked user account's `users.name`.
+- `date_of_birth` must be on or before 18 years ago (employee must be at least 18).
 - This endpoint does not accept `email`. The linked user's `users.email` (login email) can only be changed by an `admin` via `PUT /api/users/{user}`.
-- Active or probationary employees must not have `last_working_date`.
+- Active, probationary, or intern employees must not have `last_working_date`.
 - Resigned or terminated employees must have `last_working_date`.
 - `last_working_date` must be on or after `join_date`.
 - `probation_end_date` must be on or after `join_date`. See create endpoint notes for default behavior when `employment_status` is `probation`.
+- `intern_end_date` must be on or after `join_date`. See create endpoint notes for default behavior when `employment_status` is `intern`.
 - If `position_id` belongs to a department, it must match `department_id`.
 - `manager_id`: integer, must exist in `employees.id` (non-soft-deleted). **Required for every employee except the CEO** (the employee's linked user account holds the `ceo` role).
 - An employee cannot be set as their own manager, and a `manager_id` change that would create a circular reporting relationship is rejected.
@@ -389,8 +396,8 @@ Soft delete an employee.
 - The backend syncs the linked user account's `name` from `full_name` on create and update.
 - The employee resource has no top-level `email` field — read the linked user's email from `user.email`. There is no separate employee-level email column.
 - `POST` and `PUT /api/employees` do not accept an `email` field. The linked user's email is set when the user account is created (`POST /api/users`, admin only) and can only be changed afterwards by an `admin` via `PUT /api/users/{user}`.
-- When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`. `full-time` and `probation` both keep the linked user `active`.
-- Employees with `employment_status` of `full-time` or `probation` can log in normally; `resigned`/`terminated` employees cannot (see `.claude/api/AUTH_API.md`).
+- When `employment_status` becomes `resigned` or `terminated`, the linked user becomes `inactive`. `full-time`, `probation`, and `intern` all keep the linked user `active`.
+- Employees with `employment_status` of `full-time`, `probation`, or `intern` can log in normally; `resigned`/`terminated` employees cannot (see `.claude/api/AUTH_API.md`).
 - The linked `user_id` cannot be changed through employee update endpoints.
 - `DELETE /api/employees/{employee}` soft deletes both the employee and the linked user.
 - Default employee list responses exclude soft-deleted employee records.

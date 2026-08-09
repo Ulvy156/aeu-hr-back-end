@@ -14,336 +14,328 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        $mgmtDept = Department::where('name', 'Management')->first();
-        $hrDept = Department::where('name', 'Human Resources')->first();
-        $finDept = Department::where('name', 'Finance & Accounting')->first();
-        $opsDept = Department::where('name', 'Operations')->first();
-        $adminDept = Department::where('name', 'Administration')->first();
-        $mktDept = Department::where('name', 'Marketing & Communications')->first();
+        $managerDept = Department::where('name', 'Manager')->first();
+        $accountingDept = Department::where('name', 'Accounting')->first();
+        $marketingDept = Department::where('name', 'Marketing')->first();
+        $commercialDept = Department::where('name', 'Commercial')->first();
+        $hrAdminDept = Department::where('name', 'HR & Admin')->first();
 
-        $ceoPos = Position::where('name', 'Chief Executive Officer')->first();
-        $deputyPos = Position::where('name', 'Deputy Director')->first();
-        $hrManagerPos = Position::where('name', 'HR Manager')->first();
-        $hrOfficerPos = Position::where('name', 'HR Officer')->first();
-        $finManagerPos = Position::where('name', 'Finance Manager')->first();
-        $accountantPos = Position::where('name', 'Accountant')->first();
-        $opsManagerPos = Position::where('name', 'Operations Manager')->first();
-        $opsCoordPos = Position::where('name', 'Operations Coordinator')->first();
-        $fieldOfficerPos = Position::where('name', 'Field Officer')->first();
-        $adminManagerPos = Position::where('name', 'Admin Manager')->first();
-        $adminOfficerPos = Position::where('name', 'Admin Officer')->first();
-        $mktManagerPos = Position::where('name', 'Marketing Manager')->first();
-        $mktOfficerPos = Position::where('name', 'Marketing Officer')->first();
+        $generalManagerPos = Position::where('name', 'General Manager')->first();
+        $accountingOfficerPos = Position::where('name', 'Accounting & Stock Control Officer')->first();
+        $digitalMarketingSupervisorPos = Position::where('name', 'Digital Marketing Supervisor')->first();
+        $graphicDesignerPos = Position::where('name', 'Graphic Designer')->first();
+        $seniorSalesSupervisorPos = Position::where('name', 'Senior Sales Supervisor')->first();
+        $salesSupervisorPos = Position::where('name', 'Sales Supervisor')->first();
+        $seniorSalesExecutivePos = Position::where('name', 'Senior Sales Executive')->first();
+        $salesExecutivePos = Position::where('name', 'Sales Executive')->first();
+        $hrManagerPos = Position::where('name', 'HR Manager')->where('department_id', $hrAdminDept?->id)->first();
 
+        // Romanized from Khmer-script source names — best-effort transliteration, verify against official records.
         $users = [
-            // ── CEO ─────────────────────────────────────────────────────────
+            // ── General Manager ─────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'CEO User',
-                    'email' => 'ceo@example.com',
+                    'name' => 'Sim Sea',
+                    'email' => 'sim.sea@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'ceo',
                 'employee' => [
                     'employee_id' => 'EMP-0001',
-                    'full_name' => 'CEO User',
+                    'full_name' => 'Sim Sea',
                     'gender' => 'male',
-                    'date_of_birth' => '1975-03-15',
-                    'phone_number' => '+855-12-000-001',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $mgmtDept?->id,
-                    'position_id' => $ceoPos?->id,
+                    'phone_number' => '0882207078',
+                    'department_id' => $managerDept?->id,
+                    'position_id' => $generalManagerPos?->id,
                     'manager_employee_id' => null,
-                    'join_date' => '2018-01-01',
-                    'base_salary' => 8000.00,
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Deputy Director (Admin) ─────────────────────────────────────
+            // ── Accounting & Stock Control Officer ──────────────────────────
             [
                 'user' => [
-                    'name' => 'Deputy Director User',
-                    'email' => 'deputy-director@example.com',
+                    'name' => 'Lach Sreytea',
+                    'email' => 'lach.sreytea@example.com',
                     'status' => Status::Active->value,
                 ],
-                'role' => 'admin',
+                'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0002',
-                    'full_name' => 'Deputy Director User',
+                    'full_name' => 'Lach Sreytea',
                     'gender' => 'female',
-                    'date_of_birth' => '1980-08-20',
-                    'phone_number' => '+855-12-000-002',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $mgmtDept?->id,
-                    'position_id' => $deputyPos?->id,
+                    'phone_number' => '070363285',
+                    'department_id' => $accountingDept?->id,
+                    'position_id' => $accountingOfficerPos?->id,
                     'manager_employee_id' => 'EMP-0001',
-                    'join_date' => '2018-06-01',
-                    'base_salary' => 6000.00,
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── HR Manager ──────────────────────────────────────────────────
+            // ── Digital Marketing Supervisor ─────────────────────────────────
             [
                 'user' => [
-                    'name' => 'HR Manager User',
-                    'email' => 'hr-manager@example.com',
+                    'name' => 'Roth Nearath',
+                    'email' => 'roth.nearath@example.com',
                     'status' => Status::Active->value,
                 ],
-                'role' => 'hr',
+                'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0003',
-                    'full_name' => 'HR Manager User',
-                    'gender' => 'female',
-                    'date_of_birth' => '1985-07-22',
-                    'phone_number' => '+855-12-000-003',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $hrDept?->id,
-                    'position_id' => $hrManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2019-06-01',
-                    'base_salary' => 4500.00,
+                    'full_name' => 'Roth Nearath',
+                    'gender' => 'male',
+                    'phone_number' => '0965328849',
+                    'department_id' => $marketingDept?->id,
+                    'position_id' => $digitalMarketingSupervisorPos?->id,
+                    'manager_employee_id' => 'EMP-0001',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── HR Officer ──────────────────────────────────────────────────
+            // ── Graphic Designer ──────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'HR Officer User',
-                    'email' => 'hr-officer@example.com',
+                    'name' => 'Ith Dava',
+                    'email' => 'ith.dava@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0004',
-                    'full_name' => 'HR Officer User',
+                    'full_name' => 'Ith Dava',
                     'gender' => 'male',
-                    'date_of_birth' => '1992-03-10',
-                    'phone_number' => '+855-12-000-004',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $hrDept?->id,
-                    'position_id' => $hrOfficerPos?->id,
+                    'phone_number' => '099799230',
+                    'department_id' => $marketingDept?->id,
+                    'position_id' => $graphicDesignerPos?->id,
                     'manager_employee_id' => 'EMP-0003',
-                    'join_date' => '2021-02-01',
-                    'base_salary' => 2600.00,
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Finance Manager ─────────────────────────────────────────────
+            // ── Senior Sales Supervisor ──────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Finance Manager User',
-                    'email' => 'finance-manager@example.com',
+                    'name' => 'Chorn Chan',
+                    'email' => 'chorn.chan@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0005',
-                    'full_name' => 'Finance Manager User',
+                    'full_name' => 'Chorn Chan',
                     'gender' => 'male',
-                    'date_of_birth' => '1982-12-08',
-                    'phone_number' => '+855-12-000-005',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $finDept?->id,
-                    'position_id' => $finManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2019-02-01',
-                    'base_salary' => 4000.00,
+                    'phone_number' => '010682982',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $seniorSalesSupervisorPos?->id,
+                    'manager_employee_id' => 'EMP-0001',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Accountant ──────────────────────────────────────────────────
+            // ── Sales Supervisor ──────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Accountant User',
-                    'email' => 'accountant@example.com',
+                    'name' => 'Chea Samprous',
+                    'email' => 'chea.samprous@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0006',
-                    'full_name' => 'Accountant User',
-                    'gender' => 'female',
-                    'date_of_birth' => '1990-04-10',
-                    'phone_number' => '+855-12-000-006',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $finDept?->id,
-                    'position_id' => $accountantPos?->id,
+                    'full_name' => 'Chea Samprous',
+                    'gender' => 'male',
+                    'phone_number' => '081279872',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesSupervisorPos?->id,
                     'manager_employee_id' => 'EMP-0005',
-                    'join_date' => '2021-03-01',
-                    'base_salary' => 2800.00,
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Operations Manager ──────────────────────────────────────────
+            // ── Sales Executive ───────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Operations Manager User',
-                    'email' => 'ops-manager@example.com',
+                    'name' => 'Tan Da',
+                    'email' => 'tan.da@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0007',
-                    'full_name' => 'Operations Manager User',
+                    'full_name' => 'Tan Da',
                     'gender' => 'male',
-                    'date_of_birth' => '1984-05-14',
-                    'phone_number' => '+855-12-000-007',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $opsDept?->id,
-                    'position_id' => $opsManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2019-09-01',
-                    'base_salary' => 3500.00,
+                    'phone_number' => '0966929332',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0006',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Operations Coordinator ──────────────────────────────────────
+            // ── Sales Executive ───────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Operations Coordinator User',
-                    'email' => 'ops-coordinator@example.com',
+                    'name' => 'Soung Vatha',
+                    'email' => 'soung.vatha@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0008',
-                    'full_name' => 'Operations Coordinator User',
-                    'gender' => 'female',
-                    'date_of_birth' => '1993-09-05',
-                    'phone_number' => '+855-12-000-008',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $opsDept?->id,
-                    'position_id' => $opsCoordPos?->id,
-                    'manager_employee_id' => 'EMP-0007',
-                    'join_date' => '2022-01-10',
-                    'base_salary' => 2500.00,
+                    'full_name' => 'Soung Vatha',
+                    'gender' => 'male',
+                    'phone_number' => '0889137024',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0006',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Field Officer ───────────────────────────────────────────────
+            // ── Senior Sales Executive ──────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Field Officer User',
-                    'email' => 'field-officer@example.com',
+                    'name' => 'Him Kimsreng',
+                    'email' => 'him.kimsreng@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0009',
-                    'full_name' => 'Field Officer User',
+                    'full_name' => 'Him Kimsreng',
                     'gender' => 'male',
-                    'date_of_birth' => '1995-02-18',
-                    'phone_number' => '+855-12-000-009',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $opsDept?->id,
-                    'position_id' => $fieldOfficerPos?->id,
-                    'manager_employee_id' => 'EMP-0007',
-                    'join_date' => '2023-04-01',
-                    'base_salary' => 2200.00,
+                    'phone_number' => '0968381084',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $seniorSalesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0005',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Admin Manager ───────────────────────────────────────────────
+            // ── Sales Executive ───────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Admin Manager User',
-                    'email' => 'admin-manager@example.com',
+                    'name' => 'Chorn Kanna',
+                    'email' => 'chorn.kanna@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0010',
-                    'full_name' => 'Admin Manager User',
-                    'gender' => 'female',
-                    'date_of_birth' => '1986-11-30',
-                    'phone_number' => '+855-12-000-010',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $adminDept?->id,
-                    'position_id' => $adminManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2020-03-01',
-                    'base_salary' => 3200.00,
+                    'full_name' => 'Chorn Kanna',
+                    'gender' => 'male',
+                    'phone_number' => '0702923046',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0009',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Admin Officer ───────────────────────────────────────────────
+            // ── Sales Executive ───────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Admin Officer User',
-                    'email' => 'admin-officer@example.com',
+                    'name' => 'Van Uttam',
+                    'email' => 'van.uttam@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0011',
-                    'full_name' => 'Admin Officer User',
+                    'full_name' => 'Van Uttam',
                     'gender' => 'male',
-                    'date_of_birth' => '1994-06-25',
-                    'phone_number' => '+855-12-000-011',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $adminDept?->id,
-                    'position_id' => $adminOfficerPos?->id,
-                    'manager_employee_id' => 'EMP-0010',
-                    'join_date' => '2022-07-01',
-                    'base_salary' => 2000.00,
+                    'phone_number' => '0967661004',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0009',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Marketing Manager ───────────────────────────────────────────
+            // ── Sales Executive (no phone number in source) ──────────────────
             [
                 'user' => [
-                    'name' => 'Marketing Manager User',
-                    'email' => 'marketing-manager@example.com',
+                    'name' => 'Teng Kimhan',
+                    'email' => 'teng.kimhan@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0012',
-                    'full_name' => 'Marketing Manager User',
-                    'gender' => 'female',
-                    'date_of_birth' => '1988-01-15',
-                    'phone_number' => '+855-12-000-012',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $mktDept?->id,
-                    'position_id' => $mktManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2020-08-15',
-                    'base_salary' => 3500.00,
+                    'full_name' => 'Teng Kimhan',
+                    'gender' => 'male',
+                    'phone_number' => null,
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0009',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Marketing Officer ───────────────────────────────────────────
+            // ── Sales Executive ───────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Marketing Officer User',
-                    'email' => 'marketing-officer@example.com',
+                    'name' => 'Chum Sokunthary',
+                    'email' => 'chum.sokunthary@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0013',
-                    'full_name' => 'Marketing Officer User',
+                    'full_name' => 'Chum Sokunthary',
                     'gender' => 'male',
-                    'date_of_birth' => '1996-10-20',
-                    'phone_number' => '+855-12-000-013',
-                    'address' => 'Phnom Penh, Cambodia',
-                    'department_id' => $mktDept?->id,
-                    'position_id' => $mktOfficerPos?->id,
-                    'manager_employee_id' => 'EMP-0012',
-                    'join_date' => '2023-01-15',
-                    'base_salary' => 1800.00,
+                    'phone_number' => '077656838',
+                    'department_id' => $commercialDept?->id,
+                    'position_id' => $salesExecutivePos?->id,
+                    'manager_employee_id' => 'EMP-0009',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── HR Manager ────────────────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Narak',
+                    'email' => 'narak@gmail.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => ['hr', 'admin'],
+                'employee' => [
+                    'employee_id' => 'EMP-0014',
+                    'full_name' => 'Narak',
+                    'gender' => null,
+                    'phone_number' => null,
+                    'department_id' => $hrAdminDept?->id,
+                    'position_id' => $hrManagerPos?->id,
+                    'manager_employee_id' => 'EMP-0001',
+                    'join_date' => now()->toDateString(),
+                    'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],

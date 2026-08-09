@@ -128,6 +128,7 @@ Soft-deleted users are excluded from the default list.
         "full_name": "Finance User",
         "employment_status": "full-time",
         "probation_end_date": null,
+        "intern_end_date": null,
         "department": {
           "id": 1,
           "name": "Finance"
@@ -240,6 +241,7 @@ Return one user with their single assigned role, effective permissions, and link
       "full_name": "HR User",
       "employment_status": "full-time",
       "probation_end_date": null,
+      "intern_end_date": null,
       "department": {
         "id": 2,
         "name": "Operations"

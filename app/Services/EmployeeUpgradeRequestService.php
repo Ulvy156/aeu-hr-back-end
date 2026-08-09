@@ -328,6 +328,7 @@ class EmployeeUpgradeRequestService
             'base_salary' => (string) $employee->base_salary,
             'employment_status' => $employee->employment_status->value,
             'probation_end_date' => $employee->probation_end_date?->toDateString(),
+            'intern_end_date' => $employee->intern_end_date?->toDateString(),
             'last_working_date' => $employee->last_working_date?->toDateString(),
             'user_status' => $employee->user?->status?->value,
         ];

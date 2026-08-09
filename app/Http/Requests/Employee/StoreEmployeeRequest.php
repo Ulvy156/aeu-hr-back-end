@@ -33,7 +33,7 @@ class StoreEmployeeRequest extends FormRequest
             'full_name' => ['required', 'string', 'max:255'],
             'password' => ['prohibited'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other'])],
-            'date_of_birth' => ['nullable', 'date'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:'.now()->subYears(18)->toDateString()],
             'phone_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
@@ -49,6 +49,7 @@ class StoreEmployeeRequest extends FormRequest
             'base_salary' => ['required', 'numeric', 'min:0'],
             'employment_status' => ['required', Rule::enum(EmploymentStatus::class)],
             'probation_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
+            'intern_end_date' => ['nullable', 'date', 'after_or_equal:join_date'],
             'emergency_contact' => ['nullable', 'string'],
             'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'documents' => ['nullable', 'array', 'max:5'],
@@ -64,6 +65,7 @@ class StoreEmployeeRequest extends FormRequest
         return [
             'user_id.unique' => 'The selected user already has an employee profile.',
             'manager_id.required' => 'A manager is required for this employee.',
+            'date_of_birth.before_or_equal' => 'The employee must be at least 18 years old.',
         ];
     }
 
@@ -102,7 +104,7 @@ class StoreEmployeeRequest extends FormRequest
                 $employmentStatus = $this->input('employment_status');
                 $lastWorkingDate = $this->input('last_working_date');
 
-                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value], true) && $lastWorkingDate) {
+                if (in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value, EmploymentStatus::Intern->value], true) && $lastWorkingDate) {
                     $validator->errors()->add('last_working_date', 'Active employees must not have a last working date.');
                 }
 
