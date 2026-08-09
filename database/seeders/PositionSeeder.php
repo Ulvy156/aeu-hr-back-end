@@ -14,25 +14,28 @@ class PositionSeeder extends Seeder
         $structure = [
             'Management' => [
                 'Chief Executive Officer',
-                'Director',
+                'Deputy Director',
             ],
             'Human Resources' => [
                 'HR Manager',
                 'HR Officer',
             ],
-            'Finance' => [
+            'Finance & Accounting' => [
                 'Finance Manager',
                 'Accountant',
-                'Finance Officer',
-            ],
-            'Information Technology' => [
-                'Tech Lead',
-                'Senior Software Engineer',
-                'Software Engineer',
             ],
             'Operations' => [
                 'Operations Manager',
-                'Operations Officer',
+                'Operations Coordinator',
+                'Field Officer',
+            ],
+            'Administration' => [
+                'Admin Manager',
+                'Admin Officer',
+            ],
+            'Marketing & Communications' => [
+                'Marketing Manager',
+                'Marketing Officer',
             ],
         ];
 

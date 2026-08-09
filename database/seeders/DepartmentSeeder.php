@@ -13,9 +13,10 @@ class DepartmentSeeder extends Seeder
         $departments = [
             'Management',
             'Human Resources',
-            'Finance',
-            'Information Technology',
+            'Finance & Accounting',
             'Operations',
+            'Administration',
+            'Marketing & Communications',
         ];
 
         foreach ($departments as $name) {

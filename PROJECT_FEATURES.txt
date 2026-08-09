@@ -1,0 +1,157 @@
+HR MANAGEMENT SYSTEM - FEATURE LIST (SIMPLE EXPLANATION)
+==========================================================
+This file lists every feature currently built in this backend project,
+explained in simple, easy-to-understand words.
+
+1. LOGIN & AUTHENTICATION
+--------------------------
+Lets users log in with email and password to get a secure access token
+(no passwords are sent again after login; the token proves who they are).
+Includes logging out and checking "who am I" (current logged-in user info).
+
+2. USER ACCOUNTS & ROLES
+--------------------------
+Manages the login accounts of every person in the system (admin, HR, CEO,
+employee). Each user has exactly one role. Admins/HR can create, update,
+disable, delete users, and reset passwords.
+
+3. ROLES & PERMISSIONS
+--------------------------
+Controls what each type of user is allowed to do. There are 4 roles:
+- Admin: full access to everything
+- HR: manages employees, attendance, leave, payroll, announcements, etc.
+- CEO: approves leave/payroll/announcements, views reports
+- Employee: uses their own attendance, leave, payslips, profile
+Permissions can be viewed and assigned to control access precisely.
+
+4. DEPARTMENTS
+--------------------------
+Manage the list of company departments (e.g. Sales, IT, Finance) - create,
+view, update, delete.
+
+5. POSITIONS (JOB TITLES)
+--------------------------
+Manage job positions/titles (e.g. "HR Officer", "Accountant"), which can
+be linked to a department.
+
+6. EMPLOYEES
+--------------------------
+Manage employee profiles: name, contact info, department, position,
+salary, photo, and linked login account. Each employee gets an
+auto-generated ID like EMP-00001.
+
+7. EMPLOYEE ORG CHART (HIERARCHY)
+--------------------------
+Shows the company's reporting structure as a tree - who reports to whom,
+based on each employee's manager.
+
+8. EMPLOYMENT HISTORY
+--------------------------
+A read-only career timeline for each employee, showing past changes to
+department, position, salary, employment status, manager, and probation
+end date. This history is created automatically when an official change
+request is approved.
+
+9. EMPLOYEE UPGRADE REQUESTS
+--------------------------
+A formal way for HR to propose important employee changes (promotion,
+transfer, salary raise, status change, new manager) that must be approved
+by the CEO before taking effect. Once approved, it updates the employee
+record and adds an entry to Employment History.
+
+10. ATTENDANCE
+--------------------------
+Employees clock in and out using their phone's GPS location, which the
+system checks against the office location (must be within an allowed
+distance). Features include:
+- Clock in / clock out
+- QR code-based attendance (generate and scan a QR code to clock in)
+- Automatically detecting late arrivals
+- Automatically marking employees absent if they never clocked in
+- HR can manually correct attendance records
+- "Proxy clock" - HR can clock in/out on behalf of an employee if needed
+
+11. LEAVE MANAGEMENT
+--------------------------
+Employees can request time off. Leave types include:
+- Annual leave (18 days/year)
+- Sick leave (7 days/year)
+- Special leave (7 days/year)
+- Maternity leave (90 days)
+- Special sick leave (long-term illness, up to 180 days with reducing pay)
+Every leave request needs two approvals: first HR, then the CEO ("dual
+approval"). Employees can also cancel a leave request, and everyone can
+check their current leave balance (how many days they have left).
+
+12. PUBLIC HOLIDAYS
+--------------------------
+Manage the list of official company holidays. These days are excluded
+from attendance lateness/absence checks and affect payroll calculations.
+
+13. PAYROLL
+--------------------------
+Generates employee salaries automatically each pay period. The system:
+- Calculates prorated salary (partial pay if someone joined/left mid-month)
+- Applies tax deductions based on salary brackets
+- Applies NSSF (social security) deductions
+- Requires HR to generate and submit payroll, then CEO must approve or
+  reject it before it's final
+
+14. PAYSLIPS
+--------------------------
+Once payroll is approved, each employee gets a downloadable PDF payslip
+showing their salary breakdown (earnings, deductions, net pay). Employees
+can view/download their own; HR/Admin can view/download anyone's.
+
+15. COMPANY SETTINGS
+--------------------------
+A single place to configure company-wide rules used across the system:
+company name/logo/contact info, office GPS location and allowed clock-in
+distance, working hours, working days, currency, and payroll day-rate.
+
+16. DASHBOARD
+--------------------------
+Gives each role a quick summary screen after login, with different
+information depending on whether you're Admin, HR, CEO, or Employee
+(e.g. headcount, pending approvals, attendance summary).
+
+17. REPORTS & EXCEL EXPORTS
+--------------------------
+Generates reports for payroll, attendance, and leave, viewable on screen
+or exported as Excel files for record-keeping or offline analysis.
+
+18. AUDIT LOGS
+--------------------------
+Keeps a permanent record of important actions taken in the system (who
+did what, when, and what changed). Only Admin and CEO can view this log.
+Used to track accountability and investigate issues.
+
+19. MANUAL BACKUP
+--------------------------
+Allows an Admin to trigger a backup of the system's data and download it,
+for safekeeping outside the live system.
+
+20. ANNOUNCEMENTS
+--------------------------
+An internal company notice/bulletin board. HR creates announcements which
+go through a workflow: Draft -> Pending Approval -> Published (or
+Rejected) -> Archived. Announcements can be:
+- Sent to everyone, a specific role, a specific department, or one person
+- Attached with one file
+- Tracked for which employees have read them
+Announcement categories (e.g. "Policy", "Event") can also be managed.
+
+21. RECRUITMENT
+--------------------------
+A simple hiring tracker with two parts:
+- Vacancies: job openings, how many people are needed, how many are
+  filled, and whether the position is open or closed
+- Candidates: applicants for a vacancy, their CV, where they applied
+  from, interview scheduling, pipeline status (e.g. applied, interviewed,
+  hired/rejected)
+
+==========================================================
+NOTE: All calculations (attendance distance, late/absent detection, leave
+balances, payroll amounts, tax, and proration) are always done by the
+backend server, never trusted from the app/frontend, to keep the data
+accurate and secure.

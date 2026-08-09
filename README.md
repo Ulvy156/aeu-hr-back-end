@@ -1,57 +1,91 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# HR Management System - Backend API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A secure, clean, and maintainable REST API for a Human Resource Management System, built with Laravel.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **Laravel** (latest)
+- **PostgreSQL** (local dev) / **SQLite in-memory** (tests)
+- **Laravel Sanctum** — token-based API authentication
+- **Spatie Laravel Permission** — role & permission based authorization
+- **DomPDF** — payslip PDF generation
+- **Laravel Excel** — report exports
+- **Laravel Storage** (Cloudflare R2) — file storage
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+The backend is the single source of truth for all business logic, calculations, and validations (nothing is trusted from the frontend). Implemented modules:
 
-## Learning Laravel
+- **Authentication** — Sanctum token login/logout
+- **Users, Roles & Permissions** — 4 roles (admin, hr, ceo, employee) via Spatie
+- **Departments & Positions** — company structure management
+- **Employees** — profiles, org chart hierarchy, employment history, HR-proposed upgrade requests with CEO approval
+- **Attendance** — GPS-validated clock in/out, QR code attendance, late/absent detection, corrections
+- **Leave Management** — annual/sick/special/maternity/special-sick leave with dual approval (HR + CEO)
+- **Public Holidays** — feeds into attendance and payroll calculations
+- **Payroll** — proration, tax brackets, NSSF deductions, generate → submit → approve/reject workflow
+- **Payslips** — PDF generation and download
+- **Company Settings** — office location, working hours, currency, etc.
+- **Dashboard** — role-specific summaries
+- **Reports & Excel Exports** — payroll, attendance, leave
+- **Audit Logs** — tracks who did what, when
+- **Manual Backup** — admin-triggered data backup/download
+- **Announcements** — internal notice board with approval workflow and audience targeting
+- **Recruitment** — vacancy postings and candidate pipeline tracking
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+For a plain-language description of every feature, see [PROJECT_FEATURES.txt](PROJECT_FEATURES.txt).
+For API endpoint contracts, see [.claude/API_CONTRACT.md](.claude/API_CONTRACT.md) and the per-module docs in `.claude/api/`.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Setup
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Set `DB_CONNECTION=pgsql` (and matching credentials) in `.env`, then:
 
-## Contributing
+```bash
+php artisan migrate --seed
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+This applies migrations and seeds roles/permissions (`RoleSeeder`) plus reference data (departments, positions, announcement categories, etc.).
 
-## Code of Conduct
+### Database
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- Local dev: **PostgreSQL**
+- Tests: **SQLite in-memory** (forced by `phpunit.xml`; requires the `pdo_sqlite` PHP extension)
 
-## Security Vulnerabilities
+```bash
+php artisan migrate               # apply pending migrations
+php artisan migrate:fresh --seed  # rebuild and reseed everything
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### Tests (Pest)
+
+```bash
+php artisan test                              # full suite
+php artisan test --filter=AnnouncementApiTest # one test file
+```
+
+### Code Style
+
+```bash
+vendor/bin/pint         # format PHP (Laravel Pint)
+vendor/bin/pint --test  # check formatting without modifying files
+```
+
+## Architecture
+
+Request flow: `routes/api.php` → Controller (thin) → Service (business logic, wrapped in DB transactions) → Eloquent Model.
+
+- **Responses**: consistent JSON via `App\Support\ApiResponse` (`success`/`error`/`paginated`)
+- **Authorization**: Spatie roles/permissions, defined in `config/hr_permissions.php`, synced by `database/seeders/RoleSeeder.php`
+- **Business constants**: company defaults, leave entitlements, tax brackets, and NSSF rules live in `config/hr.php`
+- **Audit logging**: `App\Services\AuditLogService` wraps Spatie Activitylog for every mutating action
+
+See [CLAUDE.md](CLAUDE.md) for the full development guide and conventions used by this project.
 
 ## License
 

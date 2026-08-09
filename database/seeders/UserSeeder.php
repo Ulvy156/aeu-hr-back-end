@@ -16,37 +16,41 @@ class UserSeeder extends Seeder
     {
         $mgmtDept = Department::where('name', 'Management')->first();
         $hrDept = Department::where('name', 'Human Resources')->first();
-        $finDept = Department::where('name', 'Finance')->first();
-        $engDept = Department::where('name', 'Information Technology')->first();
+        $finDept = Department::where('name', 'Finance & Accounting')->first();
         $opsDept = Department::where('name', 'Operations')->first();
+        $adminDept = Department::where('name', 'Administration')->first();
+        $mktDept = Department::where('name', 'Marketing & Communications')->first();
 
         $ceoPos = Position::where('name', 'Chief Executive Officer')->first();
+        $deputyPos = Position::where('name', 'Deputy Director')->first();
         $hrManagerPos = Position::where('name', 'HR Manager')->first();
         $hrOfficerPos = Position::where('name', 'HR Officer')->first();
         $finManagerPos = Position::where('name', 'Finance Manager')->first();
         $accountantPos = Position::where('name', 'Accountant')->first();
-        $techLeadPos = Position::where('name', 'Tech Lead')->first();
-        $seniorSwPos = Position::where('name', 'Senior Software Engineer')->first();
-        $swEngineerPos = Position::where('name', 'Software Engineer')->first();
         $opsManagerPos = Position::where('name', 'Operations Manager')->first();
-        $opsOfficerPos = Position::where('name', 'Operations Officer')->first();
+        $opsCoordPos = Position::where('name', 'Operations Coordinator')->first();
+        $fieldOfficerPos = Position::where('name', 'Field Officer')->first();
+        $adminManagerPos = Position::where('name', 'Admin Manager')->first();
+        $adminOfficerPos = Position::where('name', 'Admin Officer')->first();
+        $mktManagerPos = Position::where('name', 'Marketing Manager')->first();
+        $mktOfficerPos = Position::where('name', 'Marketing Officer')->first();
 
         $users = [
-            // ── CEO ──────────────────────────────────────────────────────────
+            // ── CEO ─────────────────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'John Smith',
+                    'name' => 'CEO User',
                     'email' => 'ceo@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'ceo',
                 'employee' => [
                     'employee_id' => 'EMP-0001',
-                    'full_name' => 'John Smith',
+                    'full_name' => 'CEO User',
                     'gender' => 'male',
                     'date_of_birth' => '1975-03-15',
-                    'phone_number' => '+1-555-0001',
-                    'address' => '1 Executive Drive, Capital City',
+                    'phone_number' => '+855-12-000-001',
+                    'address' => 'Phnom Penh, Cambodia',
                     'department_id' => $mgmtDept?->id,
                     'position_id' => $ceoPos?->id,
                     'manager_employee_id' => null,
@@ -56,160 +60,290 @@ class UserSeeder extends Seeder
                 ],
             ],
 
-            // ── HR ───────────────────────────────────────────────────────────
+            // ── Deputy Director (Admin) ─────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Sarah Connor',
-                    'email' => 'hr@example.com',
+                    'name' => 'Deputy Director User',
+                    'email' => 'deputy-director@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'admin',
+                'employee' => [
+                    'employee_id' => 'EMP-0002',
+                    'full_name' => 'Deputy Director User',
+                    'gender' => 'female',
+                    'date_of_birth' => '1980-08-20',
+                    'phone_number' => '+855-12-000-002',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $mgmtDept?->id,
+                    'position_id' => $deputyPos?->id,
+                    'manager_employee_id' => 'EMP-0001',
+                    'join_date' => '2018-06-01',
+                    'base_salary' => 6000.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── HR Manager ──────────────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'HR Manager User',
+                    'email' => 'hr-manager@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'hr',
                 'employee' => [
-                    'employee_id' => 'EMP-0002',
-                    'full_name' => 'Sarah Connor',
+                    'employee_id' => 'EMP-0003',
+                    'full_name' => 'HR Manager User',
                     'gender' => 'female',
                     'date_of_birth' => '1985-07-22',
-                    'phone_number' => '+1-555-0002',
-                    'address' => '2 HR Lane, Business District',
+                    'phone_number' => '+855-12-000-003',
+                    'address' => 'Phnom Penh, Cambodia',
                     'department_id' => $hrDept?->id,
                     'position_id' => $hrManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0001',
+                    'manager_employee_id' => 'EMP-0002',
                     'join_date' => '2019-06-01',
                     'base_salary' => 4500.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
 
-            // ── Employees ────────────────────────────────────────────────────
+            // ── HR Officer ──────────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Alice Johnson',
-                    'email' => 'alice.johnson@example.com',
-                    'status' => Status::Active->value,
-                ],
-                'role' => 'employee',
-                'employee' => [
-                    'employee_id' => 'EMP-0003',
-                    'full_name' => 'Alice Johnson',
-                    'gender' => 'female',
-                    'date_of_birth' => '1990-04-10',
-                    'phone_number' => '+1-555-0003',
-                    'address' => '3 Finance St, Commerce Zone',
-                    'department_id' => $finDept?->id,
-                    'position_id' => $accountantPos?->id,
-                    'manager_employee_id' => 'EMP-0008',
-                    'join_date' => '2021-03-01',
-                    'base_salary' => 2800.00,
-                    'employment_status' => EmploymentStatus::FullTime->value,
-                ],
-            ],
-            [
-                'user' => [
-                    'name' => 'Bob Martinez',
-                    'email' => 'bob.martinez@example.com',
+                    'name' => 'HR Officer User',
+                    'email' => 'hr-officer@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0004',
-                    'full_name' => 'Bob Martinez',
+                    'full_name' => 'HR Officer User',
                     'gender' => 'male',
-                    'date_of_birth' => '1988-11-30',
-                    'phone_number' => '+1-555-0004',
-                    'address' => '4 Tech Park, Innovation District',
-                    'department_id' => $engDept?->id,
-                    'position_id' => $seniorSwPos?->id,
-                    'manager_employee_id' => 'EMP-0001',
-                    'join_date' => '2020-08-15',
-                    'base_salary' => 3500.00,
+                    'date_of_birth' => '1992-03-10',
+                    'phone_number' => '+855-12-000-004',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $hrDept?->id,
+                    'position_id' => $hrOfficerPos?->id,
+                    'manager_employee_id' => 'EMP-0003',
+                    'join_date' => '2021-02-01',
+                    'base_salary' => 2600.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
+
+            // ── Finance Manager ─────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Clara Davis',
-                    'email' => 'clara.davis@example.com',
+                    'name' => 'Finance Manager User',
+                    'email' => 'finance-manager@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0005',
-                    'full_name' => 'Clara Davis',
-                    'gender' => 'female',
-                    'date_of_birth' => '1993-09-05',
-                    'phone_number' => '+1-555-0005',
-                    'address' => '5 Ops Road, Industrial Zone',
-                    'department_id' => $opsDept?->id,
-                    'position_id' => $opsOfficerPos?->id,
-                    'manager_employee_id' => 'EMP-0001',
-                    'join_date' => '2022-01-10',
-                    'base_salary' => 2500.00,
+                    'full_name' => 'Finance Manager User',
+                    'gender' => 'male',
+                    'date_of_birth' => '1982-12-08',
+                    'phone_number' => '+855-12-000-005',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $finDept?->id,
+                    'position_id' => $finManagerPos?->id,
+                    'manager_employee_id' => 'EMP-0002',
+                    'join_date' => '2019-02-01',
+                    'base_salary' => 4000.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
+
+            // ── Accountant ──────────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'David Lee',
-                    'email' => 'david.lee@example.com',
+                    'name' => 'Accountant User',
+                    'email' => 'accountant@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0006',
-                    'full_name' => 'David Lee',
-                    'gender' => 'male',
-                    'date_of_birth' => '1995-02-18',
-                    'phone_number' => '+1-555-0006',
-                    'address' => '6 Dev Street, Tech Quarter',
-                    'department_id' => $engDept?->id,
-                    'position_id' => $swEngineerPos?->id,
-                    'manager_employee_id' => 'EMP-0004',
-                    'join_date' => '2023-04-01',
-                    'base_salary' => 2200.00,
+                    'full_name' => 'Accountant User',
+                    'gender' => 'female',
+                    'date_of_birth' => '1990-04-10',
+                    'phone_number' => '+855-12-000-006',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $finDept?->id,
+                    'position_id' => $accountantPos?->id,
+                    'manager_employee_id' => 'EMP-0005',
+                    'join_date' => '2021-03-01',
+                    'base_salary' => 2800.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
+
+            // ── Operations Manager ──────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Eva Williams',
-                    'email' => 'eva.williams@example.com',
+                    'name' => 'Operations Manager User',
+                    'email' => 'ops-manager@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0007',
-                    'full_name' => 'Eva Williams',
-                    'gender' => 'female',
-                    'date_of_birth' => '1987-06-25',
-                    'phone_number' => '+1-555-0007',
-                    'address' => '7 HR Ave, Central Area',
-                    'department_id' => $hrDept?->id,
-                    'position_id' => $hrOfficerPos?->id,
+                    'full_name' => 'Operations Manager User',
+                    'gender' => 'male',
+                    'date_of_birth' => '1984-05-14',
+                    'phone_number' => '+855-12-000-007',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $opsDept?->id,
+                    'position_id' => $opsManagerPos?->id,
                     'manager_employee_id' => 'EMP-0002',
-                    'join_date' => '2020-11-01',
-                    'base_salary' => 2600.00,
+                    'join_date' => '2019-09-01',
+                    'base_salary' => 3500.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
+
+            // ── Operations Coordinator ──────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Frank Wilson',
-                    'email' => 'frank.wilson@example.com',
+                    'name' => 'Operations Coordinator User',
+                    'email' => 'ops-coordinator@example.com',
                     'status' => Status::Active->value,
                 ],
                 'role' => 'employee',
                 'employee' => [
                     'employee_id' => 'EMP-0008',
-                    'full_name' => 'Frank Wilson',
+                    'full_name' => 'Operations Coordinator User',
+                    'gender' => 'female',
+                    'date_of_birth' => '1993-09-05',
+                    'phone_number' => '+855-12-000-008',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $opsDept?->id,
+                    'position_id' => $opsCoordPos?->id,
+                    'manager_employee_id' => 'EMP-0007',
+                    'join_date' => '2022-01-10',
+                    'base_salary' => 2500.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── Field Officer ───────────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Field Officer User',
+                    'email' => 'field-officer@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'employee',
+                'employee' => [
+                    'employee_id' => 'EMP-0009',
+                    'full_name' => 'Field Officer User',
                     'gender' => 'male',
-                    'date_of_birth' => '1982-12-08',
-                    'phone_number' => '+1-555-0008',
-                    'address' => '8 Finance Blvd, Commerce Zone',
-                    'department_id' => $finDept?->id,
-                    'position_id' => $finManagerPos?->id,
-                    'manager_employee_id' => 'EMP-0001',
-                    'join_date' => '2019-02-01',
-                    'base_salary' => 4000.00,
+                    'date_of_birth' => '1995-02-18',
+                    'phone_number' => '+855-12-000-009',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $opsDept?->id,
+                    'position_id' => $fieldOfficerPos?->id,
+                    'manager_employee_id' => 'EMP-0007',
+                    'join_date' => '2023-04-01',
+                    'base_salary' => 2200.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── Admin Manager ───────────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Admin Manager User',
+                    'email' => 'admin-manager@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'employee',
+                'employee' => [
+                    'employee_id' => 'EMP-0010',
+                    'full_name' => 'Admin Manager User',
+                    'gender' => 'female',
+                    'date_of_birth' => '1986-11-30',
+                    'phone_number' => '+855-12-000-010',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $adminDept?->id,
+                    'position_id' => $adminManagerPos?->id,
+                    'manager_employee_id' => 'EMP-0002',
+                    'join_date' => '2020-03-01',
+                    'base_salary' => 3200.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── Admin Officer ───────────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Admin Officer User',
+                    'email' => 'admin-officer@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'employee',
+                'employee' => [
+                    'employee_id' => 'EMP-0011',
+                    'full_name' => 'Admin Officer User',
+                    'gender' => 'male',
+                    'date_of_birth' => '1994-06-25',
+                    'phone_number' => '+855-12-000-011',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $adminDept?->id,
+                    'position_id' => $adminOfficerPos?->id,
+                    'manager_employee_id' => 'EMP-0010',
+                    'join_date' => '2022-07-01',
+                    'base_salary' => 2000.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── Marketing Manager ───────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Marketing Manager User',
+                    'email' => 'marketing-manager@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'employee',
+                'employee' => [
+                    'employee_id' => 'EMP-0012',
+                    'full_name' => 'Marketing Manager User',
+                    'gender' => 'female',
+                    'date_of_birth' => '1988-01-15',
+                    'phone_number' => '+855-12-000-012',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $mktDept?->id,
+                    'position_id' => $mktManagerPos?->id,
+                    'manager_employee_id' => 'EMP-0002',
+                    'join_date' => '2020-08-15',
+                    'base_salary' => 3500.00,
+                    'employment_status' => EmploymentStatus::FullTime->value,
+                ],
+            ],
+
+            // ── Marketing Officer ───────────────────────────────────────────
+            [
+                'user' => [
+                    'name' => 'Marketing Officer User',
+                    'email' => 'marketing-officer@example.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'employee',
+                'employee' => [
+                    'employee_id' => 'EMP-0013',
+                    'full_name' => 'Marketing Officer User',
+                    'gender' => 'male',
+                    'date_of_birth' => '1996-10-20',
+                    'phone_number' => '+855-12-000-013',
+                    'address' => 'Phnom Penh, Cambodia',
+                    'department_id' => $mktDept?->id,
+                    'position_id' => $mktOfficerPos?->id,
+                    'manager_employee_id' => 'EMP-0012',
+                    'join_date' => '2023-01-15',
+                    'base_salary' => 1800.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
             ],
@@ -223,7 +357,6 @@ class UserSeeder extends Seeder
                 array_merge($data['user'], ['password' => 'password'])
             );
 
-            // Only assign role on first creation to avoid overwriting manual changes
             if ($user->roles->isEmpty()) {
                 $user->assignRole($data['role']);
             }
@@ -245,8 +378,6 @@ class UserSeeder extends Seeder
             }
         }
 
-        // Second pass: resolve manager_employee_id (e.g. 'EMP-0008') to the
-        // manager's actual primary key, now that every employee row exists.
         foreach ($employeesByCode as $entry) {
             $managerCode = $entry['manager_employee_id'];
 
