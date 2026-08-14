@@ -321,14 +321,14 @@ class UserSeeder extends Seeder
             // ── HR Manager ────────────────────────────────────────────────────
             [
                 'user' => [
-                    'name' => 'Narak',
-                    'email' => 'narak@gmail.com',
+                    'name' => 'HR',
+                    'email' => 'hr@gmail.com',
                     'status' => Status::Active->value,
                 ],
-                'role' => ['hr', 'admin'],
+                'role' => 'hr',
                 'employee' => [
                     'employee_id' => 'EMP-0014',
-                    'full_name' => 'Narak',
+                    'full_name' => 'HR',
                     'gender' => null,
                     'phone_number' => null,
                     'department_id' => $hrAdminDept?->id,
@@ -338,6 +338,16 @@ class UserSeeder extends Seeder
                     'base_salary' => 0.00,
                     'employment_status' => EmploymentStatus::FullTime->value,
                 ],
+            ],
+
+            // ── Admin (system account, no employee record) ───────────────────
+            [
+                'user' => [
+                    'name' => 'admin',
+                    'email' => 'admin@gmail.com',
+                    'status' => Status::Active->value,
+                ],
+                'role' => 'admin',
             ],
         ];
 
