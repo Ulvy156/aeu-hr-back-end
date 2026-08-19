@@ -8,6 +8,7 @@ use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Activitylog\Models\Activity;
+use Spatie\Permission\Models\Permission;
 
 uses(RefreshDatabase::class);
 
@@ -632,6 +633,64 @@ test('admin can list roles and permissions and sync user roles', function () {
     expect($targetUser->fresh()->hasRole('hr'))->toBeTrue()
         ->and($targetUser->fresh()->hasRole('employee'))->toBeFalse()
         ->and($targetUser->fresh()->getRoleNames())->toHaveCount(1);
+});
+
+test('admin can update a permission description', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $permission = Permission::where('name', 'payrolls.approve')->firstOrFail();
+
+    $response = $this->withToken($token)
+        ->patchJson("/api/permissions/{$permission->id}", [
+            'description' => 'Approve a payroll before it can be paid out',
+        ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'Permission description updated successfully.')
+        ->assertJsonPath('data.id', $permission->id)
+        ->assertJsonPath('data.description', 'Approve a payroll before it can be paid out')
+        ->assertJsonPath('data.name', 'payrolls.approve')
+        ->assertJsonPath('data.module', 'payrolls');
+
+    expect($permission->fresh()->description)->toBe('Approve a payroll before it can be paid out')
+        ->and($permission->fresh()->name)->toBe('payrolls.approve')
+        ->and($permission->fresh()->module)->toBe('payrolls');
+});
+
+test('updating a permission description rejects extra fields', function () {
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $permission = Permission::where('name', 'payrolls.approve')->firstOrFail();
+
+    $this->withToken($token)
+        ->patchJson("/api/permissions/{$permission->id}", [
+            'description' => 'Updated',
+            'name' => 'payrolls.hacked',
+        ])
+        ->assertSuccessful();
+
+    expect($permission->fresh()->name)->toBe('payrolls.approve');
+});
+
+test('non-admin users cannot update a permission description', function () {
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $permission = Permission::where('name', 'payrolls.approve')->firstOrFail();
+
+    $this->withToken($token)
+        ->patchJson("/api/permissions/{$permission->id}", [
+            'description' => 'Should not be allowed',
+        ])
+        ->assertForbidden();
+
+    expect($permission->fresh()->description)->not->toBe('Should not be allowed');
 });
 
 test('role sync rejects multiple roles', function () {

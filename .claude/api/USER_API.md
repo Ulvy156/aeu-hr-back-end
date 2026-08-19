@@ -24,6 +24,7 @@ All user management endpoints require a Sanctum bearer token.
 - User dropdown search uses `users.search`.
 - Role lookup uses `roles_permissions.roles_view`.
 - Permission lookup uses `roles_permissions.permissions_view`.
+- Permission description editing uses `roles_permissions.manage` (`admin` only).
 - Role assignment uses `users.assign_roles`.
 - Direct user permission management uses `users.assign_permissions`.
 
@@ -37,6 +38,7 @@ All user management endpoints require a Sanctum bearer token.
 - `DELETE /api/users/{user}`
 - `GET /api/roles`
 - `GET /api/permissions`
+- `PATCH /api/permissions/{permission}`
 - `PUT /api/users/{user}/roles`
 - `GET /api/users/{user}/permissions`
 - `PUT /api/users/{user}/permissions`
@@ -362,12 +364,14 @@ Return available Spatie permissions.
     {
       "id": 1,
       "name": "users.assign_roles",
-      "module": "users"
+      "module": "users",
+      "description": "Assign roles to a system user"
     },
     {
       "id": 2,
       "name": "departments.view_any",
-      "module": "departments"
+      "module": "departments",
+      "description": "View the list of departments"
     }
   ]
 }
@@ -375,7 +379,45 @@ Return available Spatie permissions.
 
 ### Frontend Notes
 
-- `module` is derived safely from the permission name prefix before the first dot.
+- `id` is returned by the API but is not meant to be shown in the UI — use `name` for display and grouping. Keep `id` around internally since it's what `PATCH /api/permissions/{permission}` below is addressed by.
+- `module` and `description` are stored columns on the `permissions` table, sourced from `config/hr_permissions.php` (group key → `module`, value → `description`) and synced by `RoleSeeder`. Both may be `null` for any permission not present in that config.
+- `module` reflects the config group key exactly (e.g. `recruitment_vacancies`, `recruitment_candidates`), not a naive split of the permission name — permissions with multiple dots (like `recruitment.vacancies.view`) still resolve to the correct, distinct module.
+
+---
+
+## PATCH /api/permissions/{permission}
+
+`{permission}` is the permission's numeric `id`.
+
+Update a permission's `description`. This is the only editable field — `name`, `guard_name`, and `module` are config-owned (see `config/hr_permissions.php`) and cannot be changed through this endpoint; any other field sent in the request body is silently ignored.
+
+### Authorization
+
+- `admin` only, via `roles_permissions.manage`.
+
+### Request Body
+
+- `description`: optional, nullable string, max 500 characters.
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "Permission description updated successfully.",
+  "data": {
+    "id": 52,
+    "name": "payrolls.approve",
+    "module": "payrolls",
+    "description": "Approve a payroll before it can be paid out"
+  }
+}
+```
+
+### Frontend Notes
+
+- Editing a permission's description here does **not** persist across a `RoleSeeder` reseed — the seeder overwrites `description`/`module` from `config/hr_permissions.php` on every run. Treat this endpoint as a runtime override that a future reseed will reset to the config value.
+- Audit logged as `update_description` in the `permissions` module.
 
 ---
 

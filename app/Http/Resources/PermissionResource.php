@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 
 /**
@@ -20,7 +19,8 @@ class PermissionResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'module' => Str::before($this->name, '.'),
+            'module' => $this->module,
+            'description' => $this->description,
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Permission\UpdatePermissionDescriptionRequest;
 use App\Http\Requests\User\SyncUserRolesRequest;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
@@ -11,6 +12,7 @@ use App\Models\User;
 use App\Services\UserService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Spatie\Permission\Models\Permission;
 
 class RolePermissionController extends Controller
 {
@@ -37,6 +39,22 @@ class RolePermissionController extends Controller
                 ->map(fn ($permission) => PermissionResource::make($permission)->resolve(request()))
                 ->all(),
             message: 'Permissions fetched successfully.',
+        );
+    }
+
+    public function updatePermissionDescription(UpdatePermissionDescriptionRequest $request, Permission $permission): JsonResponse
+    {
+        $permission = $this->userService->updatePermissionDescription(
+            permission: $permission,
+            description: $request->validated('description'),
+            actor: $request->user(),
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        return ApiResponse::success(
+            data: PermissionResource::make($permission)->resolve($request),
+            message: 'Permission description updated successfully.',
         );
     }
 

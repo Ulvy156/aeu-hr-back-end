@@ -147,10 +147,14 @@ class EmployeeService
                 );
             }
 
+            $userStatus = $this->userStatusFromEmploymentStatus($data['employment_status']);
+
             $user->update([
                 'name' => $data['full_name'],
-                'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
+                'status' => $userStatus,
             ]);
+
+            $this->revokeTokensIfInactive($user, $userStatus);
 
             $employee = Employee::query()->create([
                 ...$this->employeeAttributes($data),
@@ -195,10 +199,14 @@ class EmployeeService
             $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
             $oldValues = $this->auditAttributes($employee);
 
+            $userStatus = $this->userStatusFromEmploymentStatus($data['employment_status']);
+
             $employee->user->update([
                 'name' => $data['full_name'],
-                'status' => $this->userStatusFromEmploymentStatus($data['employment_status']),
+                'status' => $userStatus,
             ]);
+
+            $this->revokeTokensIfInactive($employee->user, $userStatus);
 
             $attributes = $this->employeeAttributes($data);
 
@@ -388,10 +396,14 @@ class EmployeeService
 
         $employee->update($attributes);
 
-        if (array_key_exists('employment_status', $changes)) {
-            $employee->user?->update([
-                'status' => $this->userStatusFromEmploymentStatus($changes['employment_status']),
+        if (array_key_exists('employment_status', $changes) && $employee->user) {
+            $userStatus = $this->userStatusFromEmploymentStatus($changes['employment_status']);
+
+            $employee->user->update([
+                'status' => $userStatus,
             ]);
+
+            $this->revokeTokensIfInactive($employee->user, $userStatus);
         }
 
         return $attributes;
@@ -467,5 +479,12 @@ class EmployeeService
         return in_array($employmentStatus, [EmploymentStatus::FullTime->value, EmploymentStatus::Probation->value, EmploymentStatus::Intern->value], true)
             ? Status::Active->value
             : Status::Inactive->value;
+    }
+
+    protected function revokeTokensIfInactive(User $user, string $status): void
+    {
+        if ($status === Status::Inactive->value) {
+            $user->tokens()->delete();
+        }
     }
 }

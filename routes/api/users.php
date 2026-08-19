@@ -29,5 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
             ->middleware('permission:roles_permissions.roles_view');
         Route::get('/permissions', [RolePermissionController::class, 'permissions'])
             ->middleware('permission:roles_permissions.permissions_view');
+        Route::patch('/permissions/{permission}', [RolePermissionController::class, 'updatePermissionDescription'])
+            ->middleware('permission:roles_permissions.manage');
     });
 });

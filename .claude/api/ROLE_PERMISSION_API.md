@@ -36,11 +36,14 @@ Permissions use `module.action` names. Examples from backend config:
 - `audit_logs.view`
 - `company_settings.update`
 
+Each permission also carries a `description` (e.g. `payrolls.approve` → "Approve a submitted payroll") and a `module` (its config group key, e.g. `payrolls`), both sourced from `config/hr_permissions.php` and synced to the `permissions` table by `RoleSeeder`. See `GET /api/permissions` in [USER_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/USER_API.md) for the response shape.
+
 ## Endpoint List
 
 - Read [USER_API.md](D:/AEU/Thesis/HR/aeu-hr-back-end/.claude/api/USER_API.md) for:
   - `GET /api/roles`
   - `GET /api/permissions`
+  - `PATCH /api/permissions/{permission}` (admin-only, edits `description` only)
   - `PUT /api/users/{user}/roles`
   - `GET /api/users/{user}/permissions`
   - `PUT /api/users/{user}/permissions`

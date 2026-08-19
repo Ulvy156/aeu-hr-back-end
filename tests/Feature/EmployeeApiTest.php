@@ -1172,3 +1172,67 @@ test('deleting an employee removes documents from storage', function () {
 
     $disk->assertMissing($path);
 });
+
+test('setting employment status to resigned or terminated revokes the employee active tokens', function (string $newStatus) {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'revoke.tokens@example.com']);
+    $linkedUser->assignRole('employee');
+    $linkedUser->createToken('mobile-device');
+    $linkedUser->createToken('web-device');
+    [, $hrToken] = employeeActor('hr');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Revoke Token Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+    ]);
+
+    expect($linkedUser->tokens()->count())->toBe(2);
+
+    $response = $this->withToken($hrToken)->putJson("/api/employees/{$employee->id}", [
+        'full_name' => 'Revoke Token Test',
+        'join_date' => '2026-05-01',
+        'last_working_date' => '2026-06-01',
+        'base_salary' => '1000.00',
+        'employment_status' => $newStatus,
+        'manager_id' => $manager->id,
+    ]);
+
+    $response->assertOk();
+
+    expect($linkedUser->tokens()->count())->toBe(0);
+})->with(['resigned', 'terminated']);
+
+test('employee update keeps active tokens when employment status stays active', function () {
+    $manager = createManagerEmployee();
+    $linkedUser = linkableUser(['email' => 'keep.tokens@example.com']);
+    $linkedUser->assignRole('employee');
+    $linkedUser->createToken('mobile-device');
+    [, $hrToken] = employeeActor('hr');
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Keep Token Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+    ]);
+
+    $response = $this->withToken($hrToken)->putJson("/api/employees/{$employee->id}", [
+        'full_name' => 'Keep Token Test',
+        'join_date' => '2026-05-01',
+        'base_salary' => '1500.00',
+        'employment_status' => 'full-time',
+        'manager_id' => $manager->id,
+    ]);
+
+    $response->assertOk();
+
+    expect($linkedUser->tokens()->count())->toBe(1);
+});

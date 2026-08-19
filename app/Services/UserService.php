@@ -313,9 +313,36 @@ class UserService
     public function availablePermissions(): Collection
     {
         return Permission::query()
-            ->select(['id', 'name'])
+            ->select(['id', 'name', 'description', 'module'])
             ->orderBy('name')
             ->get();
+    }
+
+    public function updatePermissionDescription(
+        Permission $permission,
+        ?string $description,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): Permission {
+        return DB::transaction(function () use ($permission, $description, $actor, $ipAddress, $userAgent): Permission {
+            $oldDescription = $permission->description;
+
+            $permission->update(['description' => $description]);
+
+            $this->auditLogService->log(
+                action: 'update_description',
+                module: 'permissions',
+                user: $actor,
+                subject: $permission,
+                oldValues: ['description' => $oldDescription],
+                newValues: ['description' => $permission->description],
+                ipAddress: $ipAddress,
+                userAgent: $userAgent,
+            );
+
+            return $permission;
+        });
     }
 
     /**

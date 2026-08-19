@@ -80,7 +80,7 @@ test('leave permissions are assigned with least privilege by role', function () 
 test('admin role receives every seeded permission in the users group', function () {
     $this->seed(RoleSeeder::class);
 
-    $usersPermissions = collect(config('hr_permissions.groups.users'))
+    $usersPermissions = collect(array_keys(config('hr_permissions.groups.users')))
         ->filter()
         ->values();
 

@@ -20,10 +20,15 @@ class RoleSeeder extends Seeder
         $guard = (string) config('hr_permissions.guard', 'web');
         $groups = (array) config('hr_permissions.groups', []);
         $roles = (array) config('hr_permissions.roles', []);
-        $allPermissions = $this->allPermissions($groups);
+        $permissionDescriptions = $this->permissionDescriptions($groups);
+        $permissionModules = $this->permissionModules($groups);
+        $allPermissions = $permissionDescriptions->keys();
 
-        $allPermissions->each(function (string $permissionName) use ($guard): void {
-            Permission::findOrCreate($permissionName, $guard);
+        $permissionDescriptions->each(function (?string $description, string $permissionName) use ($guard, $permissionModules): void {
+            Permission::query()->updateOrCreate(
+                ['name' => $permissionName, 'guard_name' => $guard],
+                ['description' => $description, 'module' => $permissionModules->get($permissionName)],
+            );
         });
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -49,25 +54,34 @@ class RoleSeeder extends Seeder
     }
 
     /**
-     * @param  array<string, array<int, string>>  $groups
+     * @param  array<string, array<string, string>>  $groups
+     * @return Collection<string, string>
      */
-    protected function allPermissions(array $groups): Collection
+    protected function permissionDescriptions(array $groups): Collection
     {
-        return collect($groups)
-            ->flatten()
-            ->filter()
-            ->unique()
-            ->values();
+        return collect($groups)->collapse();
+    }
+
+    /**
+     * @param  array<string, array<string, string>>  $groups
+     * @return Collection<string, string>
+     */
+    protected function permissionModules(array $groups): Collection
+    {
+        return collect($groups)->flatMap(
+            fn (array $permissions, string $groupName) => collect(array_keys($permissions))
+                ->mapWithKeys(fn (string $permissionName) => [$permissionName => $groupName])
+        );
     }
 
     /**
      * @param  array<string, mixed>  $definition
-     * @param  array<string, array<int, string>>  $groups
+     * @param  array<string, array<string, string>>  $groups
      */
     protected function permissionsForRole(array $definition, array $groups): Collection
     {
         $groupPermissions = collect($definition['groups'] ?? [])
-            ->flatMap(fn (string $groupName) => $groups[$groupName] ?? []);
+            ->flatMap(fn (string $groupName) => array_keys($groups[$groupName] ?? []));
 
         $directPermissions = collect($definition['permissions'] ?? []);
 
