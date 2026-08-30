@@ -201,6 +201,23 @@ class AttendanceService
     }
 
     /**
+     * Removes stale 'absent' attendance records for dates a leave request now covers.
+     *
+     * Approved-leave days never get an attendance row under normal clock-in flow (it's
+     * blocked upfront), so this reconciles the case where markAbsent already ran for a
+     * date before a retroactive/backdated leave request was approved for it.
+     */
+    public function reconcileApprovedLeave(int $employeeId, CarbonInterface $startDate, CarbonInterface $endDate): int
+    {
+        return Attendance::query()
+            ->where('employee_id', $employeeId)
+            ->where('status', 'absent')
+            ->whereDate('attendance_date', '>=', $startDate->toDateString())
+            ->whereDate('attendance_date', '<=', $endDate->toDateString())
+            ->delete();
+    }
+
+    /**
      * @return array{attendance_date: string, created_count: int}
      */
     public function markAbsent(?string $attendanceDate = null): array

@@ -18,6 +18,7 @@ class LeaveService
     public function __construct(
         protected AuditLogService $auditLogService,
         protected CompanySettingService $companySettingService,
+        protected AttendanceService $attendanceService,
     ) {}
 
     /**
@@ -154,6 +155,11 @@ class LeaveService
                 ? 'approved'
                 : 'pending';
             $leave->save();
+
+            if ($leave->status === 'approved') {
+                $this->attendanceService->reconcileApprovedLeave($leave->employee_id, $leave->start_date, $leave->end_date);
+            }
+
             $leave = $this->loadRelations($leave->fresh());
 
             $this->auditLogService->log(

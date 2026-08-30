@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Attendance;
 use App\Models\CompanySetting;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
@@ -566,6 +567,42 @@ test('final leave approval requires both hr and ceo approvals and approval order
         ->assertJsonPath('data.status', 'approved')
         ->assertJsonPath('data.hr_approval_status', 'approved')
         ->assertJsonPath('data.ceo_approval_status', 'approved');
+});
+
+test('final approval of a retroactive leave clears stale absent attendance records for the covered dates', function () {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+
+    $pastDate = '2026-04-27';
+    $leave = makeLeave($employee, [
+        'start_date' => $pastDate,
+        'end_date' => $pastDate,
+    ]);
+
+    $absentAttendance = Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => $pastDate,
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+
+    $hr = User::factory()->create(['email' => 'hr.approver@example.com']);
+    $hr->assignRole('hr');
+    $ceo = User::factory()->create(['email' => 'ceo.approver@example.com']);
+    $ceo->assignRole('ceo');
+
+    Sanctum::actingAs($hr);
+    $this->postJson("/api/leaves/{$leave->id}/approve")->assertSuccessful();
+
+    // Not yet fully approved, so the stale absent record must remain untouched.
+    expect(Attendance::query()->whereKey($absentAttendance->id)->exists())->toBeTrue();
+
+    Sanctum::actingAs($ceo);
+    $this->postJson("/api/leaves/{$leave->id}/approve")
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'approved');
+
+    expect(Attendance::query()->whereKey($absentAttendance->id)->exists())->toBeFalse();
 });
 
 test('rejection requires a reason', function () {
