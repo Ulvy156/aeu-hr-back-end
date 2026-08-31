@@ -14,7 +14,7 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        $managerDept = Department::where('name', 'Manager')->first();
+        $executiveDept = Department::where('name', 'Executive')->first();
         $accountingDept = Department::where('name', 'Accounting')->first();
         $marketingDept = Department::where('name', 'Marketing')->first();
         $commercialDept = Department::where('name', 'Commercial')->first();
@@ -45,7 +45,7 @@ class UserSeeder extends Seeder
                     'full_name' => 'Sim Sea',
                     'gender' => 'male',
                     'phone_number' => '0882207078',
-                    'department_id' => $managerDept?->id,
+                    'department_id' => $executiveDept?->id,
                     'position_id' => $generalManagerPos?->id,
                     'manager_employee_id' => null,
                     'join_date' => now()->toDateString(),

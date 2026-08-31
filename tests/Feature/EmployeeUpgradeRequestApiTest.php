@@ -623,6 +623,54 @@ test('upgrade request rejects a manager change that would create a circular repo
         ->assertJsonValidationErrors('proposed_values.manager_id');
 });
 
+test('upgrade request rejects a manager_id proposal when the manager belongs to a different department', function () {
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    [$otherDepartment] = upgradeDepartmentAndPosition('Engineering', 'Engineer');
+
+    $manager = upgradeEmployee(['full_name' => 'Other Dept Manager', 'department_id' => $otherDepartment->id]);
+    $employee = upgradeEmployee(['department_id' => $department->id]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'manager_id' => $manager->id,
+        ],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proposed_values.manager_id');
+});
+
+test('upgrade request accepts a manager_id proposal when the manager is ceo despite a different department', function () {
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    [$ceoDepartment] = upgradeDepartmentAndPosition('Executive', 'CEO');
+
+    $ceoUser = User::factory()->create([
+        'name' => 'Chief Executive',
+        'email' => 'ceo.upgrade.department@example.com',
+        'status' => 'active',
+    ]);
+    $ceoUser->assignRole('ceo');
+    $ceo = upgradeEmployee([
+        'user_id' => $ceoUser->id,
+        'full_name' => 'Chief Executive',
+        'department_id' => $ceoDepartment->id,
+    ]);
+    $employee = upgradeEmployee(['department_id' => $department->id]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'employee_id' => $employee->id,
+        'proposed_values' => [
+            'manager_id' => $ceo->id,
+        ],
+    ])
+        ->assertCreated()
+        ->assertJsonPath('data.proposed_values.manager_id.id', $ceo->id);
+});
+
 test('ceo can approve a manager_id upgrade request and it updates the employee and employment history', function () {
     $manager = upgradeEmployee(['full_name' => 'Manager Two']);
     $employee = upgradeEmployee(['manager_id' => null]);

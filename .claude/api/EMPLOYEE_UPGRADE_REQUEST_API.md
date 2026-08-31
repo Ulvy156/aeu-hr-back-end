@@ -151,6 +151,7 @@ Use `multipart/form-data` when sending `attachments`.
 - If the resulting `position_id` (proposed or current) belongs to a department, it must match the resulting `department_id` (proposed or current), otherwise `422` on `proposed_values.position_id`.
 - An employee cannot be proposed as their own manager — `422` on `proposed_values.manager_id`.
 - A proposed `manager_id` cannot create a circular reporting relationship (e.g. proposing that an employee report to one of their own subordinates) — `422` on `proposed_values.manager_id`.
+- The proposed manager must belong to the same resulting `department_id` (proposed or current) as the employee, unless the manager holds the `ceo` role — `422` on `proposed_values.manager_id`. Skipped if either side's department is not set.
 - `current_values`/`proposed_values` in the response only include the fields that actually changed (plus `last_working_date` whenever `employment_status` changes).
 - Attachments are immutable — there is no endpoint to add/remove files on an existing request.
 

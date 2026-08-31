@@ -30,7 +30,7 @@ class UpdateEmployeeRequest extends FormRequest
             'date_of_birth' => ['nullable', 'date', 'before_or_equal:'.now()->subYears(18)->toDateString()],
             'phone_number' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string'],
-            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
             'position_id' => ['nullable', 'integer', 'exists:positions,id'],
             'manager_id' => [
                 'nullable',
@@ -59,6 +59,7 @@ class UpdateEmployeeRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'department_id.required' => 'A department is required for this employee.',
             'manager_id.required' => 'A manager is required for this employee.',
             'date_of_birth.before_or_equal' => 'The employee must be at least 18 years old.',
         ];
@@ -175,6 +176,21 @@ class UpdateEmployeeRequest extends FormRequest
                     }
 
                     $currentId = (int) $managerOfCurrent;
+                }
+            },
+            function (Validator $validator): void {
+                if (! $this->filled('manager_id') || ! $this->filled('department_id')) {
+                    return;
+                }
+
+                $manager = Employee::query()->with('user')->find($this->integer('manager_id'));
+
+                if (! $manager || $manager->department_id === null) {
+                    return;
+                }
+
+                if ($manager->department_id !== $this->integer('department_id') && ! $manager->user?->hasRole('ceo')) {
+                    $validator->errors()->add('manager_id', 'The selected manager must belong to the same department, unless they hold the CEO role.');
                 }
             },
         ];

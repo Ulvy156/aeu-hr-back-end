@@ -42,7 +42,16 @@ class EmployeeService
                         ->orWhereHas('user', fn (Builder $userQuery) => $userQuery->whereRaw('LOWER(email) LIKE ?', [$normalizedSearch]));
                 });
             })
-            ->when($filters['department_id'] ?? null, fn (Builder $query, $departmentId) => $query->where('department_id', $departmentId))
+            ->when($filters['department_id'] ?? null, function (Builder $query, $departmentId) use ($filters): void {
+                if (filter_var($filters['include_ceo'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    $query->where(function (Builder $query) use ($departmentId): void {
+                        $query->where('department_id', $departmentId)
+                            ->orWhereHas('user', fn (Builder $userQuery) => $userQuery->role('ceo'));
+                    });
+                } else {
+                    $query->where('department_id', $departmentId);
+                }
+            })
             ->when($filters['position_id'] ?? null, fn (Builder $query, $positionId) => $query->where('position_id', $positionId))
             ->when($filters['employment_status'] ?? null, fn (Builder $query, $status) => $query->where('employment_status', $status))
             ->orderByDesc('created_at')

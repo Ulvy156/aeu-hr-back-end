@@ -11,7 +11,7 @@ class DepartmentSeeder extends Seeder
     public function run(): void
     {
         $departments = [
-            'Manager',
+            'Executive',
             'Accounting',
             'Marketing',
             'Commercial',

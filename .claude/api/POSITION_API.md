@@ -94,7 +94,7 @@ Create a new position.
 ### Request Fields
 
 - `name`: required string, max `255`
-- `department_id`: optional integer, must exist in `departments`
+- `department_id`: required integer, must exist in `departments`
 - `status`: required enum, `active` or `inactive`
 
 ### Response Example
@@ -165,7 +165,7 @@ Update a position.
 
 ### Validation Notes
 
-- `department_id` is optional because positions may exist without a department.
+- `department_id` is required. Positions created before this rule may still exist without a department (untouched, unless later edited).
 - `status` must be `active` or `inactive`.
 
 ---

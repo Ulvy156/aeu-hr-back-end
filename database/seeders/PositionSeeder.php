@@ -12,7 +12,7 @@ class PositionSeeder extends Seeder
     public function run(): void
     {
         $structure = [
-            'Manager' => [
+            'Executive' => [
                 'General Manager',
             ],
             'Accounting' => [

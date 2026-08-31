@@ -81,6 +81,51 @@ test('hr can filter create view update and delete positions', function () {
     ]);
 });
 
+test('position create fails when department_id is missing', function () {
+    $this->seed(RoleSeeder::class);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/positions', [
+            'name' => 'No Department Position',
+            'status' => 'active',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('department_id');
+});
+
+test('position update fails when department_id is missing', function () {
+    $this->seed(RoleSeeder::class);
+
+    $department = Department::query()->create([
+        'name' => 'Operations',
+        'status' => 'active',
+    ]);
+
+    $position = Position::query()->create([
+        'name' => 'Operations Officer',
+        'department_id' => $department->id,
+        'status' => 'active',
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->putJson("/api/positions/{$position->id}", [
+            'name' => 'Operations Officer',
+            'status' => 'active',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('department_id');
+});
+
 test('position deletion is rejected when employees are assigned to it', function () {
     $this->seed(RoleSeeder::class);
 

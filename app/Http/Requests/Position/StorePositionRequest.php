@@ -21,7 +21,7 @@ class StorePositionRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
             'status' => ['required', Rule::enum(Status::class)],
         ];
     }

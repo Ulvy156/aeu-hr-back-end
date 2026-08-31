@@ -51,6 +51,17 @@ function employeeDepartmentAndPosition(): array
     return [$department, $position];
 }
 
+function defaultEmployeeDepartmentId(): int
+{
+    static $counter = 0;
+    $counter++;
+
+    return Department::query()->create([
+        'name' => "Default Department {$counter}",
+        'status' => 'active',
+    ])->id;
+}
+
 /**
  * @param  array<string, mixed>  $overrides
  */
@@ -60,6 +71,7 @@ function employeePayload(User $linkedUser, array $overrides = []): array
         'user_id' => $linkedUser->id,
         'full_name' => 'Employee Profile',
         'gender' => 'female',
+        'department_id' => defaultEmployeeDepartmentId(),
         'join_date' => '2026-05-01',
         'base_salary' => '1200.50',
         'employment_status' => 'full-time',
@@ -204,6 +216,51 @@ test('creating an intern employee allows hr to override intern_end_date', functi
     $response
         ->assertCreated()
         ->assertJsonPath('data.intern_end_date', '2026-06-30');
+});
+
+test('employee create fails when department_id is missing', function () {
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', [
+            'user_id' => $linkedUser->id,
+            'full_name' => 'No Department',
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('department_id');
+});
+
+test('employee update fails when department_id is missing', function () {
+    [$department] = employeeDepartmentAndPosition();
+    $linkedUser = linkableUser();
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Has Department',
+        'department_id' => $department->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => $employee->full_name,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('department_id');
 });
 
 test('employee create fails when manager_id is missing for a non-ceo user', function () {
@@ -405,6 +462,7 @@ test('employee update fails when manager_id is missing for a non-ceo employee', 
 });
 
 test('employee update allows missing manager_id for the ceo', function () {
+    $department = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
     $linkedUser = linkableUser([
         'name' => 'Chief Executive',
         'email' => 'update.ceo@example.com',
@@ -415,6 +473,7 @@ test('employee update allows missing manager_id for the ceo', function () {
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Chief Executive',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '5000.00',
         'employment_status' => 'full-time',
@@ -425,6 +484,7 @@ test('employee update allows missing manager_id for the ceo', function () {
     $this->withToken($token)
         ->putJson("/api/employees/{$employee->id}", [
             'full_name' => 'Chief Executive',
+            'department_id' => $department->id,
             'join_date' => '2026-05-01',
             'base_salary' => '5000.00',
             'employment_status' => 'full-time',
@@ -480,6 +540,222 @@ test('employee update rejects manager_id that points to itself or creates a circ
         ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee create fails when manager belongs to a different department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $manager = createManagerEmployee(['department_id' => $otherDepartment->id]);
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $manager->id,
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee create succeeds when manager is ceo despite a different department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $ceoDepartment = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
+    $ceoUser = linkableUser([
+        'name' => 'Chief Executive',
+        'email' => 'ceo.department@example.com',
+    ]);
+    $ceoUser->assignRole('ceo');
+    $ceo = createManagerEmployee([
+        'user_id' => $ceoUser->id,
+        'employee_id' => 'MGR-00002',
+        'full_name' => 'Chief Executive',
+        'department_id' => $ceoDepartment->id,
+    ]);
+    $linkedUser = linkableUser([
+        'name' => 'Cross Department Report',
+        'email' => 'cross.department@example.com',
+    ]);
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'full_name' => 'Cross Department Report',
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $ceo->id,
+        ]))
+        ->assertCreated()
+        ->assertJsonPath('data.manager.id', $ceo->id);
+});
+
+test('employee create succeeds when manager belongs to the same department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $manager = createManagerEmployee(['department_id' => $department->id]);
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $manager->id,
+        ]))
+        ->assertCreated()
+        ->assertJsonPath('data.manager.id', $manager->id);
+});
+
+test('employee update fails when manager belongs to a different department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $sameDeptManager = createManagerEmployee(['department_id' => $department->id]);
+    $otherDeptManager = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Other Dept Manager', 'email' => 'other.dept.manager@example.com'])->id,
+        'employee_id' => 'MGR-00003',
+        'full_name' => 'Other Dept Manager',
+        'department_id' => $otherDepartment->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '2000.00',
+        'employment_status' => 'full-time',
+    ]);
+    $linkedUser = linkableUser();
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Department Bound Employee',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'manager_id' => $sameDeptManager->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => $employee->full_name,
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $otherDeptManager->id,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'Validation failed')
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee update succeeds when manager is ceo despite a different department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $ceoDepartment = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
+    $ceoUser = linkableUser([
+        'name' => 'Chief Executive',
+        'email' => 'ceo.update.department@example.com',
+    ]);
+    $ceoUser->assignRole('ceo');
+    $ceo = Employee::query()->create([
+        'user_id' => $ceoUser->id,
+        'employee_id' => 'MGR-00004',
+        'full_name' => 'Chief Executive',
+        'department_id' => $ceoDepartment->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '5000.00',
+        'employment_status' => 'full-time',
+    ]);
+    $sameDeptManager = createManagerEmployee(['department_id' => $department->id]);
+    $linkedUser = linkableUser();
+
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Falls Back To Ceo',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'manager_id' => $sameDeptManager->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => $employee->full_name,
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $ceo->id,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.manager.id', $ceo->id);
+});
+
+test('admin can filter the employee list by department while still including the ceo', function () {
+    $department = Department::query()->create(['name' => 'Finance', 'status' => 'active']);
+    $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+
+    $inDepartment = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Finance Staff', 'email' => 'finance.staff@example.com'])->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Finance Staff',
+        'department_id' => $department->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    $ceoUser = linkableUser(['name' => 'Chief Executive', 'email' => 'ceo.filter@example.com']);
+    $ceoUser->assignRole('ceo');
+    $ceo = Employee::query()->create([
+        'user_id' => $ceoUser->id,
+        'employee_id' => 'EMP-00002',
+        'full_name' => 'Chief Executive',
+        'department_id' => $otherDepartment->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '5000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    $otherStaff = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Engineering Staff', 'email' => 'engineering.staff@example.com'])->id,
+        'employee_id' => 'EMP-00003',
+        'full_name' => 'Engineering Staff',
+        'department_id' => $otherDepartment->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('admin');
+
+    $withCeo = $this->withToken($token)
+        ->getJson("/api/employees?department_id={$department->id}&include_ceo=1")
+        ->assertSuccessful();
+
+    $ids = collect($withCeo->json('data'))->pluck('id')->all();
+
+    expect($ids)->toContain($inDepartment->id)
+        ->toContain($ceo->id)
+        ->not->toContain($otherStaff->id);
+
+    $withoutCeo = $this->withToken($token)
+        ->getJson("/api/employees?department_id={$department->id}")
+        ->assertSuccessful();
+
+    $idsWithoutCeo = collect($withoutCeo->json('data'))->pluck('id')->all();
+
+    expect($idsWithoutCeo)->toContain($inDepartment->id)
+        ->not->toContain($ceo->id)
+        ->not->toContain($otherStaff->id);
 });
 
 test('normal employee cannot create employee profile', function () {
@@ -940,6 +1216,7 @@ test('employee creation fails with invalid document file type', function () {
 });
 
 test('employee update can add documents to an existing employee', function () {
+    $department = Department::query()->create(['name' => 'Docs Department', 'status' => 'active']);
     $manager = createManagerEmployee();
     $linkedUser = linkableUser(['email' => 'updatedocs@example.com']);
     $linkedUser->assignRole('employee');
@@ -949,6 +1226,7 @@ test('employee update can add documents to an existing employee', function () {
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -958,6 +1236,7 @@ test('employee update can add documents to an existing employee', function () {
     $response = $this->withToken($token)->post("/api/employees/{$employee->id}", [
         '_method' => 'PUT',
         'full_name' => 'Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -977,6 +1256,7 @@ test('employee update can add documents to an existing employee', function () {
 });
 
 test('employee update can remove specific documents by index', function () {
+    $department = Department::query()->create(['name' => 'Docs Department', 'status' => 'active']);
     $manager = createManagerEmployee();
     $linkedUser = linkableUser(['email' => 'removedocs@example.com']);
     $linkedUser->assignRole('employee');
@@ -991,6 +1271,7 @@ test('employee update can remove specific documents by index', function () {
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Remove Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1004,6 +1285,7 @@ test('employee update can remove specific documents by index', function () {
 
     $response = $this->withToken($token)->putJson("/api/employees/{$employee->id}", [
         'full_name' => 'Remove Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1024,6 +1306,7 @@ test('employee update can remove specific documents by index', function () {
 });
 
 test('employee update can simultaneously remove and add documents', function () {
+    $department = Department::query()->create(['name' => 'Docs Department', 'status' => 'active']);
     $manager = createManagerEmployee();
     $linkedUser = linkableUser(['email' => 'swapDocs@example.com']);
     $linkedUser->assignRole('employee');
@@ -1036,6 +1319,7 @@ test('employee update can simultaneously remove and add documents', function () 
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Swap Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1048,6 +1332,7 @@ test('employee update can simultaneously remove and add documents', function () 
     $response = $this->withToken($token)->post("/api/employees/{$employee->id}", [
         '_method' => 'PUT',
         'full_name' => 'Swap Doc Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1174,6 +1459,7 @@ test('deleting an employee removes documents from storage', function () {
 });
 
 test('setting employment status to resigned or terminated revokes the employee active tokens', function (string $newStatus) {
+    $department = Department::query()->create(['name' => 'Tokens Department', 'status' => 'active']);
     $manager = createManagerEmployee();
     $linkedUser = linkableUser(['email' => 'revoke.tokens@example.com']);
     $linkedUser->assignRole('employee');
@@ -1185,6 +1471,7 @@ test('setting employment status to resigned or terminated revokes the employee a
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Revoke Token Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1195,6 +1482,7 @@ test('setting employment status to resigned or terminated revokes the employee a
 
     $response = $this->withToken($hrToken)->putJson("/api/employees/{$employee->id}", [
         'full_name' => 'Revoke Token Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'last_working_date' => '2026-06-01',
         'base_salary' => '1000.00',
@@ -1208,6 +1496,7 @@ test('setting employment status to resigned or terminated revokes the employee a
 })->with(['resigned', 'terminated']);
 
 test('employee update keeps active tokens when employment status stays active', function () {
+    $department = Department::query()->create(['name' => 'Tokens Department', 'status' => 'active']);
     $manager = createManagerEmployee();
     $linkedUser = linkableUser(['email' => 'keep.tokens@example.com']);
     $linkedUser->assignRole('employee');
@@ -1218,6 +1507,7 @@ test('employee update keeps active tokens when employment status stays active', 
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Keep Token Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
@@ -1226,6 +1516,7 @@ test('employee update keeps active tokens when employment status stays active', 
 
     $response = $this->withToken($hrToken)->putJson("/api/employees/{$employee->id}", [
         'full_name' => 'Keep Token Test',
+        'department_id' => $department->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1500.00',
         'employment_status' => 'full-time',
