@@ -103,6 +103,35 @@ test('admin can update company settings with a logo and the update is audited', 
     Storage::disk(config('filesystems.cloud'))->assertExists($setting->company_logo);
 });
 
+test('admin can update company settings via post with multipart form data', function () {
+    CompanySetting::query()->create([
+        'company_name' => 'Old Company',
+        'working_days' => ['monday', 'tuesday'],
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $response = $this->withToken($token)->post('/api/settings/company', [
+        'company_name' => 'AEU HR via POST',
+        'company_logo' => UploadedFile::fake()->image('logo.png'),
+        'working_days' => ['monday', 'tuesday', 'wednesday'],
+    ], [
+        'Accept' => 'application/json',
+    ]);
+
+    $response
+        ->assertSuccessful()
+        ->assertJsonPath('data.company_name', 'AEU HR via POST');
+
+    $setting = CompanySetting::query()->sole();
+    expect($setting->company_name)->toBe('AEU HR via POST')
+        ->and($setting->company_logo)->toStartWith('company-logos/');
+
+    Storage::disk(config('filesystems.cloud'))->assertExists($setting->company_logo);
+});
+
 test('employees cannot view company settings and hr cannot update them', function () {
     $employee = User::factory()->create();
     $employee->assignRole('employee');

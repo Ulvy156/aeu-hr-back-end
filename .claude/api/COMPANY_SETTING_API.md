@@ -28,7 +28,8 @@ With the current seeded roles:
 ## Endpoint List
 
 - `GET /api/settings/company`
-- `PUT /api/settings/company`
+- `PUT /api/settings/company` (JSON updates)
+- `POST /api/settings/company` (`multipart/form-data` updates, required when uploading `company_logo`)
 
 ---
 
@@ -84,7 +85,9 @@ Update the singleton company settings record.
 
 ### Request Body
 
-Use JSON for normal updates or `multipart/form-data` when uploading `company_logo`.
+Use JSON (`PUT`) for normal updates. Use `multipart/form-data` (`POST`) when uploading `company_logo`.
+
+> **Important:** PHP does not parse `multipart/form-data` bodies for `PUT` requests, so a `PUT` request with a `FormData` body arrives on the server empty and silently updates nothing. Always send `multipart/form-data` payloads as `POST /api/settings/company` (same endpoint, same controller action — no `_method` override needed).
 
 ```json
 {
@@ -142,5 +145,5 @@ Use JSON for normal updates or `multipart/form-data` when uploading `company_log
 - Treat this as a singleton settings page, not a list/detail module.
 - Use `company_logo_url` to display the current logo preview.
 - `company_logo` remains the stored relative path, not the full public URL.
-- Send `multipart/form-data` only when replacing the logo; JSON is fine for normal updates.
+- Send `multipart/form-data` as `POST` only when replacing the logo; JSON via `PUT` is fine for normal updates. Never send a `multipart/form-data` body as `PUT` — PHP silently drops the body and the update becomes a no-op.
 - Time inputs can submit `HH:MM`; the backend normalizes them to `HH:MM:SS` in the response.
