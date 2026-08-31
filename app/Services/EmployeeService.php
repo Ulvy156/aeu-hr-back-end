@@ -11,6 +11,7 @@ use App\Support\FileStorage;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -133,53 +134,68 @@ class EmployeeService
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): Employee {
-        return DB::transaction(function () use ($data, $profilePhoto, $documentFiles, $actor, $ipAddress, $userAgent): Employee {
-            $employeeId = $this->generateEmployeeId();
-            $user = User::query()
-                ->with('employeeWithTrashed')
-                ->lockForUpdate()
-                ->findOrFail($data['user_id']);
+        $profilePhotoPath = $profilePhoto
+            ? FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto)
+            : null;
+        $documentPaths = ! empty($documentFiles) ? $this->storeDocuments($documentFiles) : null;
 
-            if ($user->employeeWithTrashed) {
-                throw ApiException::unprocessable(
-                    'The selected user already has an employee profile.',
-                    ['user_id' => ['The selected user already has an employee profile.']],
-                );
+        $attempt = 0;
+
+        while (true) {
+            $attempt++;
+
+            try {
+                return DB::transaction(function () use ($data, $profilePhotoPath, $documentPaths, $actor, $ipAddress, $userAgent): Employee {
+                    $employeeId = $this->generateEmployeeId();
+                    $user = User::query()
+                        ->with('employeeWithTrashed')
+                        ->lockForUpdate()
+                        ->findOrFail($data['user_id']);
+
+                    if ($user->employeeWithTrashed) {
+                        throw ApiException::unprocessable(
+                            'The selected user already has an employee profile.',
+                            ['user_id' => ['The selected user already has an employee profile.']],
+                        );
+                    }
+
+                    $userStatus = $this->userStatusFromEmploymentStatus($data['employment_status']);
+
+                    $user->update([
+                        'name' => $data['full_name'],
+                        'status' => $userStatus,
+                    ]);
+
+                    $this->revokeTokensIfInactive($user, $userStatus);
+
+                    $employee = Employee::query()->create([
+                        ...$this->employeeAttributes($data),
+                        'employee_id' => $employeeId,
+                        'user_id' => $user->id,
+                        'profile_photo' => $profilePhotoPath,
+                        'documents' => $documentPaths,
+                    ]);
+
+                    $employee->load(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
+
+                    $this->auditLogService->log(
+                        action: 'create',
+                        module: 'employees',
+                        user: $actor,
+                        subject: $employee,
+                        newValues: $this->auditAttributes($employee),
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                    );
+
+                    return $employee;
+                });
+            } catch (UniqueConstraintViolationException $exception) {
+                if ($attempt >= 5 || ! str_contains($exception->getMessage(), 'employees_employee_id_unique')) {
+                    throw $exception;
+                }
             }
-
-            $userStatus = $this->userStatusFromEmploymentStatus($data['employment_status']);
-
-            $user->update([
-                'name' => $data['full_name'],
-                'status' => $userStatus,
-            ]);
-
-            $this->revokeTokensIfInactive($user, $userStatus);
-
-            $employee = Employee::query()->create([
-                ...$this->employeeAttributes($data),
-                'employee_id' => $employeeId,
-                'user_id' => $user->id,
-                'profile_photo' => $profilePhoto
-                    ? FileStorage::disk()->putFile('employee-profile-photos', $profilePhoto)
-                    : null,
-                'documents' => ! empty($documentFiles) ? $this->storeDocuments($documentFiles) : null,
-            ]);
-
-            $employee->load(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
-
-            $this->auditLogService->log(
-                action: 'create',
-                module: 'employees',
-                user: $actor,
-                subject: $employee,
-                newValues: $this->auditAttributes($employee),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
-
-            return $employee;
-        });
+        }
     }
 
     /**
@@ -411,19 +427,17 @@ class EmployeeService
 
     public function generateEmployeeId(): string
     {
-        $latestEmployeeId = Employee::withTrashed()
+        // Ordering by employee_id as a string breaks once the zero-padded
+        // width changes (e.g. "EMP-0014" sorts after "EMP-00015"), so the
+        // numeric suffix is compared in PHP instead of via SQL ordering.
+        $highestNumber = Employee::withTrashed()
             ->where('employee_id', 'like', 'EMP-%')
             ->lockForUpdate()
-            ->orderByDesc('employee_id')
-            ->value('employee_id');
+            ->pluck('employee_id')
+            ->map(fn (string $employeeId) => (int) substr($employeeId, 4))
+            ->max() ?? 0;
 
-        if (! $latestEmployeeId) {
-            return 'EMP-00001';
-        }
-
-        $nextNumber = ((int) substr($latestEmployeeId, 4)) + 1;
-
-        return 'EMP-'.str_pad((string) $nextNumber, 5, '0', STR_PAD_LEFT);
+        return 'EMP-'.str_pad((string) ($highestNumber + 1), 5, '0', STR_PAD_LEFT);
     }
 
     /**
