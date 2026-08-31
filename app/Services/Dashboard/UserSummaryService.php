@@ -17,7 +17,7 @@ class UserSummaryService
      */
     public function summary(): array
     {
-        $totals = User::query()
+        $totals = User::withTrashed()
             ->selectRaw('COUNT(*) as total_users')
             ->selectRaw("SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_users")
             ->selectRaw("SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) as inactive_users")

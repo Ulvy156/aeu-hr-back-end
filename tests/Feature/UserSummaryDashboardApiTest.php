@@ -55,6 +55,27 @@ test('authorized admin can access the user summary dashboard with correct counts
         ->assertJsonPath('data.users_by_role.employee', 3);
 });
 
+test('deactivated (soft-deleted) users are still counted as inactive', function () {
+    $admin = User::factory()->create([
+        'status' => 'active',
+    ]);
+    $admin->assignRole('admin');
+    $token = $admin->createToken('admin-device')->plainTextToken;
+
+    $deactivated = User::factory()->create([
+        'status' => 'inactive',
+    ]);
+    $deactivated->assignRole('hr');
+    $deactivated->delete();
+
+    $this->withToken($token)
+        ->getJson('/api/dashboard/users-summary')
+        ->assertSuccessful()
+        ->assertJsonPath('data.total_users', 2)
+        ->assertJsonPath('data.active_users', 1)
+        ->assertJsonPath('data.inactive_users', 1);
+});
+
 test('unauthorized user cannot access the user summary dashboard', function () {
     $hr = User::factory()->create([
         'status' => 'active',

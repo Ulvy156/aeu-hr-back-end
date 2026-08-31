@@ -206,7 +206,7 @@ test('users with soft deleted employee profiles are excluded from without employ
         ]);
 });
 
-test('soft deleted users are excluded from available employee user selector', function () {
+test('soft deleted users without a linked employee still appear in the employee user selector', function () {
     $softDeletedUser = User::factory()->create([
         'name' => 'Deleted User',
         'email' => 'deleted.selector@example.com',
@@ -233,7 +233,7 @@ test('soft deleted users are excluded from available employee user selector', fu
             'id' => $availableUser->id,
             'email' => 'available.selector@example.com',
         ])
-        ->assertJsonMissing([
+        ->assertJsonFragment([
             'id' => $softDeletedUser->id,
             'email' => 'deleted.selector@example.com',
         ]);
@@ -271,7 +271,7 @@ test('default user list behavior remains unchanged when no safe selector filters
         ]);
 });
 
-test('default user list excludes soft deleted users', function () {
+test('default user list includes deactivated (soft deleted) users', function () {
     $visibleUser = User::factory()->create([
         'name' => 'Visible User',
         'email' => 'visible.user@example.com',
@@ -298,9 +298,10 @@ test('default user list excludes soft deleted users', function () {
             'id' => $visibleUser->id,
             'email' => 'visible.user@example.com',
         ])
-        ->assertJsonMissing([
+        ->assertJsonFragment([
             'id' => $deletedUser->id,
             'email' => 'deleted.user@example.com',
+            'status' => 'inactive',
         ]);
 });
 

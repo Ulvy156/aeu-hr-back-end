@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,8 +28,11 @@ class UserService
     {
         $perPage = (int) ($filters['per_page'] ?? 15);
 
-        return User::query()
-            ->with(['roles:id,name', 'employee.department', 'employee.position'])
+        return User::withTrashed()
+            ->with([
+                'roles:id,name',
+                'employee' => fn (HasOne $query) => $query->withTrashed()->with(['department', 'position']),
+            ])
             ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
                 $term = '%'.Str::lower($search).'%';
 
