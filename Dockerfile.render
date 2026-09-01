@@ -17,9 +17,9 @@ RUN printf "opcache.enable=1\nopcache.memory_consumption=256\nopcache.max_accele
     && printf "upload_max_filesize=50M\npost_max_size=50M\nmemory_limit=256M\n" \
         > /usr/local/etc/php/conf.d/limits.ini
 
-# Runtime system packages only (nginx, supervisor, envsubst)
+# Runtime system packages only (nginx, supervisor, envsubst, pg_dump for backups)
 RUN --mount=type=cache,target=/etc/apk/cache \
-    apk add nginx supervisor gettext
+    apk add nginx supervisor gettext postgresql-client
 
 # Composer binary
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

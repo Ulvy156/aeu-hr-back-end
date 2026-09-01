@@ -35,7 +35,7 @@ All announcement endpoints require a Sanctum bearer token.
 - Approve or reject: `announcements.approve`
 - Archive: `announcements.archive`
 
-Admin receives all of the above through the existing `all => true` role configuration.
+`admin` is granted the full `announcements` and `announcement_categories` permission groups (via the `groups` key on the `admin` role in `config/hr_permissions.php`) — full control over both categories and the announcement workflow, including create/update/submit/approve/reject/archive.
 
 Default assignments for the other roles (configured in `config/hr_permissions.php`, synced via `RoleSeeder`):
 
@@ -43,7 +43,7 @@ Default assignments for the other roles (configured in `config/hr_permissions.ph
 - `ceo`: `announcements.view`, `announcements.approve`, `announcement_categories.view`
 - `employee`: `announcements.view`, `announcement_categories.view`
 
-Note `hr` does not have `announcements.approve` — the dual-control rule (creator cannot approve their own announcement) means an HR-created announcement is approved by the `ceo`. Category management (`announcement_categories.create`/`update`/`deactivate`) remains admin-only by default. Adjust via the role/permission management endpoints if needed.
+Note `hr` does not have `announcements.approve` — the dual-control rule (creator cannot approve their own announcement) means an HR-created announcement is approved by the `ceo` or `admin`. This same rule applies to `admin`: an admin-created announcement must be approved by someone else (e.g. `ceo`, or another admin). Adjust via the role/permission management endpoints if needed.
 
 There is no separate `announcements.reject` permission — rejection uses `announcements.approve`.
 

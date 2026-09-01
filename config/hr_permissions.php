@@ -162,6 +162,8 @@ return [
                 'users',
                 'roles_permissions',
                 'backups',
+                'announcements',
+                'announcement_categories',
             ],
             'permissions' => [
                 'departments.view_any',
@@ -185,9 +187,6 @@ return [
                 'reports.leave_export',
                 'audit_logs.view',
                 'dashboards.admin_view',
-                'announcements.view',
-                'announcements.view_draft',
-                'announcement_categories.view',
                 'recruitment.vacancies.view',
                 'recruitment.candidates.view',
             ],
