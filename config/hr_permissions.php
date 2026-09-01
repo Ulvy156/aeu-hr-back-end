@@ -190,8 +190,6 @@ return [
                 'announcement_categories.view',
                 'recruitment.vacancies.view',
                 'recruitment.candidates.view',
-                'employee_upgrade_requests.view_any',
-                'employee_upgrade_requests.view',
             ],
         ],
         'hr' => [
