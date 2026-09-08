@@ -23,6 +23,7 @@ All attendance endpoints require a Sanctum bearer token.
 - Clock out: `attendance.clock_out`
 - Correct attendance: `attendance.correct`
 - Mark absent: `attendance.mark_absent`
+- Mark missing clock-out: `attendance.mark_missing_clock_out`
 - Proxy clock in/out for employees: `attendance.proxy_clock`
 - Generate / manage QR tokens: `attendance.generate_qr`
 
@@ -36,6 +37,7 @@ All attendance endpoints require a Sanctum bearer token.
 - `GET /api/attendance`
 - `PUT /api/attendance/{attendance}/correction`
 - `POST /api/attendance/mark-absent`
+- `POST /api/attendance/mark-missing-clock-out`
 - `POST /api/attendance/qr/generate`
 - `GET /api/attendance/qr/current`
 - `GET /api/attendance/qr/{qrToken}/download`
@@ -68,10 +70,10 @@ Return the authenticated employee's own attendance summary for a given month.
 ### Summary Calculation Rules
 
 - `present` — count of attendance records with `status = present`.
-- `late` — count of attendance records with `status = late`.
-- `absent` — count of attendance records with `status = absent`.
-- `missing_clock_out` — count of records where the employee clocked in but did not clock out.
-- `attended_days` — `present + late + missing_clock_out` (days physically present regardless of late status).
+- `late` — count of attendance records with `is_late = true` (time-based vs company `working_start_time`; kept even if status later becomes `missing_clock_out`).
+- `absent` — count of attendance records with `status = absent` (from `mark-absent` or correction). Days with no attendance row are not counted until marked.
+- `missing_clock_out` — count of records with `status = missing_clock_out`. Open clock-ins past `working_end_time + grace hours` (default 2, config `hr.attendance.missing_clock_out_grace_hours`) are auto-flipped before summary is calculated, and also via scheduled/manual mark-missing-clock-out.
+- `attended_days` — unique records with `status` in `present`, `late`, or `missing_clock_out`.
 - `working_days_in_period` — count of configured company working days in the period, excluding active public holidays and capped at today for the current month.
 - `attendance_rate` — `(attended_days / working_days_in_period) × 100`, formatted to two decimals. Returns `"0.00"` when `working_days_in_period` is zero.
 
@@ -538,6 +540,45 @@ Create absent attendance records for a date.
 }
 ```
 
+## POST /api/attendance/mark-missing-clock-out
+
+Mark attendance records that were clocked in but never clocked out as `missing_clock_out`, once `working_end_time + grace hours` has passed.
+
+### Request Behavior
+
+- No payload: evaluates all eligible open clock-ins
+- With payload: limits to the provided attendance date
+
+### Request Example
+
+```json
+{
+  "attendance_date": "2026-05-03"
+}
+```
+
+### Rules
+
+- Only users with `attendance.mark_missing_clock_out` can run it.
+- `attendance_date` is optional, must be a valid date, and cannot be in the future.
+- Only records with `clock_in_time` set, `clock_out_time` null, and status `present` or `late` are considered.
+- A record is updated only when `now >= attendance_date + working_end_time + grace hours` (default grace: 2 hours from `config('hr.attendance.missing_clock_out_grace_hours')`).
+- `is_late` is preserved; only `status` becomes `missing_clock_out`.
+- Also runs on a schedule (`attendance:mark-missing-clock-out` every 15 minutes) and is reconciled for the viewer when fetching `/summary`.
+
+### Success Example
+
+```json
+{
+  "success": true,
+  "message": "Missing clock-out marking completed successfully.",
+  "data": {
+    "attendance_date": "2026-05-03",
+    "updated_count": 2
+  }
+}
+```
+
 ## Error Responses
 
 ### 401 Unauthenticated
@@ -602,6 +643,8 @@ All attendance responses include these fields:
 - Frontend must not calculate late status or GPS distance.
 - Correction UI must not send GPS fields or `is_late`.
 - `mark-absent` should display the returned `created_count` as the backend source of truth.
+- `mark-missing-clock-out` should display the returned `updated_count` as the backend source of truth.
+- Summary `absent` / `late` / `missing_clock_out` come from backend status and `is_late`; frontend must not re-derive them from working-day math.
 - Proxy clock-in/out UI must not send time fields — times are controlled by company settings on the backend.
 - Show `proxied_clock_in_by_user` and `proxied_clock_out_by_user` as a badge or tooltip (e.g. "Clocked in by Admin Alice") so HR managers can identify proxy records at a glance.
 

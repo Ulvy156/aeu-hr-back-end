@@ -706,6 +706,175 @@ test('mark absent respects employee join date and last working date', function (
         ->and(Attendance::query()->where('employee_id', $lastDayEmployee->id)->exists())->toBeTrue();
 });
 
+test('attendance summary counts absent by status and late by is_late', function () {
+    Carbon::setTestNow('2026-05-08 10:00:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-04',
+        'clock_in_time' => '2026-05-04 08:00:00',
+        'clock_out_time' => '2026-05-04 17:00:00',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:30:00',
+        'clock_out_time' => '2026-05-05 17:00:00',
+        'status' => 'late',
+        'is_late' => true,
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-06',
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-07',
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=5&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.present', 1)
+        ->assertJsonPath('data.summary.late', 1)
+        ->assertJsonPath('data.summary.absent', 2)
+        ->assertJsonPath('data.summary.missing_clock_out', 0)
+        ->assertJsonPath('data.summary.attended_days', 2);
+});
+
+test('attendance summary auto-marks forgotten clock-out after grace hours and counts it', function () {
+    Carbon::setTestNow('2026-05-05 19:00:00');
+    attendanceCompanySettings([
+        'working_end_time' => '17:00:00',
+    ]);
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $openLate = Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:30:00',
+        'clock_out_time' => null,
+        'status' => 'late',
+        'is_late' => true,
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=5&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.late', 1)
+        ->assertJsonPath('data.summary.missing_clock_out', 1)
+        ->assertJsonPath('data.summary.attended_days', 1);
+
+    expect($openLate->fresh()->status)->toBe('missing_clock_out')
+        ->and($openLate->fresh()->is_late)->toBeTrue();
+});
+
+test('mark missing clock-out updates eligible records after grace hours', function () {
+    Carbon::setTestNow('2026-05-05 19:05:00');
+    attendanceCompanySettings([
+        'working_end_time' => '17:00:00',
+    ]);
+
+    [, $eligible] = attendanceEmployeeUser();
+    [, $stillWithinGrace] = attendanceEmployeeUser('employee', [
+        'email' => 'within.grace@example.com',
+    ], [
+        'employee_id' => 'EMP-70007',
+        'full_name' => 'Within Grace',
+        'email' => 'within.grace@example.com',
+    ]);
+    [, $alreadyClockedOut] = attendanceEmployeeUser('employee', [
+        'email' => 'clocked.out@example.com',
+    ], [
+        'employee_id' => 'EMP-70008',
+        'full_name' => 'Clocked Out',
+        'email' => 'clocked.out@example.com',
+    ]);
+
+    $eligibleAttendance = Attendance::query()->create([
+        'employee_id' => $eligible->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00',
+        'clock_out_time' => null,
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $alreadyClockedOut->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00',
+        'clock_out_time' => '2026-05-05 17:00:00',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+
+    Carbon::setTestNow('2026-05-05 18:30:00');
+    $withinGraceAttendance = Attendance::query()->create([
+        'employee_id' => $stillWithinGrace->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00',
+        'clock_out_time' => null,
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+
+    Carbon::setTestNow('2026-05-05 18:30:00');
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    // 18:30 is still before 17:00 + 2h = 19:00, so nothing should update yet.
+    $this->withToken($token)
+        ->postJson('/api/attendance/mark-missing-clock-out', [
+            'attendance_date' => '2026-05-05',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.updated_count', 0);
+
+    Carbon::setTestNow('2026-05-05 19:00:00');
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/mark-missing-clock-out', [
+            'attendance_date' => '2026-05-05',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.attendance_date', '2026-05-05')
+        ->assertJsonPath('data.updated_count', 2);
+
+    expect($eligibleAttendance->fresh()->status)->toBe('missing_clock_out')
+        ->and($withinGraceAttendance->fresh()->status)->toBe('missing_clock_out')
+        ->and(Attendance::query()->where('employee_id', $alreadyClockedOut->id)->value('status'))->toBe('present');
+});
+
+test('mark missing clock-out rejects future dates', function () {
+    Carbon::setTestNow('2026-05-05 20:00:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/attendance/mark-missing-clock-out', [
+            'attendance_date' => '2026-05-06',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('attendance_date');
+});
+
 // ─── QR Code Attendance ───────────────────────────────────────────────────────
 
 use App\Models\AttendanceQrToken;

@@ -10,6 +10,7 @@ use App\Http\Requests\Attendance\GenerateQrRequest;
 use App\Http\Requests\Attendance\IndexAttendanceRequest;
 use App\Http\Requests\Attendance\IndexAttendanceSummaryRequest;
 use App\Http\Requests\Attendance\MarkAbsentRequest;
+use App\Http\Requests\Attendance\MarkMissingClockOutRequest;
 use App\Http\Requests\Attendance\ProxyClockInRequest;
 use App\Http\Requests\Attendance\ProxyClockOutRequest;
 use App\Http\Requests\Attendance\ScanQrRequest;
@@ -158,6 +159,20 @@ class AttendanceController extends Controller
         return ApiResponse::success(
             data: $result,
             message: 'Absent marking completed successfully.',
+        );
+    }
+
+    public function markMissingClockOut(MarkMissingClockOutRequest $request): JsonResponse
+    {
+        $this->authorize('markMissingClockOut', Attendance::class);
+
+        $result = $this->attendanceService->markMissingClockOut(
+            attendanceDate: $request->validated('attendance_date'),
+        );
+
+        return ApiResponse::success(
+            data: $result,
+            message: 'Missing clock-out marking completed successfully.',
         );
     }
 

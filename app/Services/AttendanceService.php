@@ -268,6 +268,46 @@ class AttendanceService
         ];
     }
 
+    /**
+     * Flip open clock-ins to missing_clock_out after working_end_time + grace hours.
+     *
+     * @return array{attendance_date: string|null, updated_count: int}
+     */
+    public function markMissingClockOut(?string $attendanceDate = null): array
+    {
+        $settings = $this->companySettingService->current();
+        $graceHours = $this->missingClockOutGraceHours();
+        $date = $attendanceDate ? Carbon::parse($attendanceDate)->toDateString() : null;
+
+        $updatedCount = DB::transaction(function () use ($settings, $graceHours, $date): int {
+            $query = Attendance::query()
+                ->whereNotNull('clock_in_time')
+                ->whereNull('clock_out_time')
+                ->whereIn('status', ['present', 'late'])
+                ->when($date, fn (Builder $query) => $query->whereDate('attendance_date', $date))
+                ->lockForUpdate()
+                ->orderBy('id');
+
+            $updated = 0;
+
+            foreach ($query->get() as $attendance) {
+                if (! $this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
+                    continue;
+                }
+
+                $attendance->update(['status' => 'missing_clock_out']);
+                $updated++;
+            }
+
+            return $updated;
+        });
+
+        return [
+            'attendance_date' => $date,
+            'updated_count' => $updatedCount,
+        ];
+    }
+
     public function proxyClockIn(
         User $actor,
         int $employeeId,
@@ -384,6 +424,8 @@ class AttendanceService
         $periodEnd = $periodStart->copy()->endOfMonth();
         $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
 
+        $this->reconcileMissingClockOutForEmployee($employee->id, $periodStart, $effectiveTo);
+
         $records = Attendance::query()
             ->whereBelongsTo($employee)
             ->whereDate('attendance_date', '>=', $periodStart->toDateString())
@@ -391,15 +433,15 @@ class AttendanceService
             ->get(['attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
 
         $present = $records->where('status', 'present')->count();
-        $late = $records->where('status', 'late')->count();
+        // Late is time-based (clock-in vs working_start_time), kept on is_late even after status changes.
+        $late = $records->where('is_late', true)->count();
+        $absent = $records->where('status', 'absent')->count();
         $missingClockOut = $records->where('status', 'missing_clock_out')->count();
-        $attendedDays = $present + $late + $missingClockOut;
+        $attendedDays = $records
+            ->filter(fn (Attendance $record) => in_array($record->status, ['present', 'late', 'missing_clock_out'], true))
+            ->count();
 
         $workingDaysCount = $this->countWorkingDays($periodStart, $effectiveTo);
-
-        // Absent is derived: working days that elapsed with no clock-in, regardless of
-        // whether markAbsent has been run. This ensures the count is always correct.
-        $absent = max(0, $workingDaysCount - $attendedDays);
 
         $attendanceRate = $workingDaysCount > 0
             ? number_format(($attendedDays / $workingDaysCount) * 100, 2)
@@ -721,6 +763,62 @@ class AttendanceService
             ->where('status', Status::Active->value)
             ->whereDate('holiday_date', $date->toDateString())
             ->exists();
+    }
+
+    protected function missingClockOutGraceHours(): int
+    {
+        return max(0, (int) config('hr.attendance.missing_clock_out_grace_hours', 2));
+    }
+
+    protected function missingClockOutDeadline(
+        CarbonInterface|string $attendanceDate,
+        CompanySetting $settings,
+        ?int $graceHours = null,
+    ): CarbonInterface {
+        $date = $attendanceDate instanceof CarbonInterface
+            ? $attendanceDate->toDateString()
+            : Carbon::parse($attendanceDate)->toDateString();
+
+        return Carbon::parse($date.' '.$settings->working_end_time)
+            ->addHours($graceHours ?? $this->missingClockOutGraceHours());
+    }
+
+    protected function hasPassedMissingClockOutDeadline(
+        Attendance $attendance,
+        CompanySetting $settings,
+        ?int $graceHours = null,
+    ): bool {
+        if (! $attendance->attendance_date || ! $attendance->clock_in_time || $attendance->clock_out_time) {
+            return false;
+        }
+
+        return now()->greaterThanOrEqualTo(
+            $this->missingClockOutDeadline($attendance->attendance_date, $settings, $graceHours)
+        );
+    }
+
+    protected function reconcileMissingClockOutForEmployee(
+        int $employeeId,
+        CarbonInterface $from,
+        CarbonInterface $to,
+    ): void {
+        $settings = $this->companySettingService->current();
+        $graceHours = $this->missingClockOutGraceHours();
+
+        Attendance::query()
+            ->where('employee_id', $employeeId)
+            ->whereDate('attendance_date', '>=', $from->toDateString())
+            ->whereDate('attendance_date', '<=', $to->toDateString())
+            ->whereNotNull('clock_in_time')
+            ->whereNull('clock_out_time')
+            ->whereIn('status', ['present', 'late'])
+            ->orderBy('id')
+            ->get()
+            ->each(function (Attendance $attendance) use ($settings, $graceHours): void {
+                if ($this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
+                    $attendance->update(['status' => 'missing_clock_out']);
+                }
+            });
     }
 
     /**

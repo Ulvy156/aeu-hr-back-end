@@ -37,6 +37,11 @@ class AttendancePolicy
         return $user->hasPermissionTo('attendance.mark_absent');
     }
 
+    public function markMissingClockOut(User $user): bool
+    {
+        return $user->hasPermissionTo('attendance.mark_missing_clock_out');
+    }
+
     public function proxyClock(User $user): bool
     {
         return $user->hasPermissionTo('attendance.proxy_clock');
