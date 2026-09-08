@@ -22,13 +22,17 @@ class RecruitmentVacancyController extends Controller
     {
         $this->authorize('viewAny', RecruitmentVacancy::class);
 
-        $paginator = $this->vacancyService->paginate($request->validated());
+        $filters = $request->validated();
+        $paginator = $this->vacancyService->paginate($filters);
         $paginator->through(fn (RecruitmentVacancy $vacancy) => RecruitmentVacancyResource::make($vacancy)->resolve($request));
 
         return ApiResponse::paginated(
             paginator: $paginator,
             data: $paginator->items(),
             message: 'Vacancies fetched successfully.',
+            extra: [
+                'summary' => $this->vacancyService->summary($filters),
+            ],
         );
     }
 

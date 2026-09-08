@@ -58,15 +58,27 @@ Default assignments for the other roles (configured in `config/hr_permissions.ph
 
 ## GET /api/recruitment/vacancies
 
-Return a paginated list of vacancies, eager loaded with `department` and `creator`, sorted newest first.
+Return a paginated list of vacancies, eager loaded with `department` and `creator`, sorted newest first. Also returns a `summary` object for list-page KPIs.
 
 ### Query Parameters
 
 - `search`: optional string, matches `title`
 - `department`: optional integer, filters by `department_id`
-- `status`: optional enum, `open` or `closed`
+- `status`: optional enum, `open` or `closed` (filters `data` / `meta.total` only)
 - `target_hiring_date`: optional date, exact match
 - `per_page`: optional integer, `1` to `100`
+
+### Summary
+
+`summary` is aggregated in SQL (not from the current page). It honours `search`, `department`, and `target_hiring_date`, but **ignores `status`** so Open/Closed pill counts stay correct while the table is filtered by status.
+
+- `open_count`: open vacancies matching those filters
+- `closed_count`: closed vacancies matching those filters
+- `open_required_headcount`: sum of `required_headcount` for matching open vacancies
+- `open_filled_headcount`: sum of `filled_headcount` for matching open vacancies
+- `overdue_open_count`: matching open vacancies whose `target_hiring_date` is before today
+
+The frontend must display these values and must not recompute them from the paginated `data` array.
 
 ### Response Example
 
@@ -94,6 +106,13 @@ Return a paginated list of vacancies, eager loaded with `department` and `creato
     "last_page": 1,
     "per_page": 15,
     "total": 1
+  },
+  "summary": {
+    "open_count": 1,
+    "closed_count": 0,
+    "open_required_headcount": 2,
+    "open_filled_headcount": 0,
+    "overdue_open_count": 1
   }
 }
 ```
@@ -380,6 +399,7 @@ File contents are never logged — only `cv_name`.
 ## Frontend Notes
 
 - Frontend must not send workflow/state fields (`status` on vacancies, `filled_headcount`, `created_by`, `outcome_reason` on create/update of candidates) — these are backend-controlled.
+- Vacancy list KPIs (open/closed counts, open headcount totals, overdue open count) come from `GET /api/recruitment/vacancies` `summary`. Do not derive them from the current page of `data`.
 - Use `multipart/form-data` for `POST /api/recruitment/candidates` (CV is always required) and for `PUT /api/recruitment/candidates/{candidate}` only when replacing the CV; otherwise JSON is fine for the update endpoint.
 - Disable the "Close" action once a vacancy's `status` is `closed`, and disable candidate creation for `closed` vacancies (the backend also enforces both).
 - Disable edit/status-change controls once a candidate's `status` is `hired` — the backend enforces this as read-only.

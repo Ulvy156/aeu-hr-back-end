@@ -22,15 +22,54 @@ class RecruitmentVacancyService
     {
         $perPage = (int) ($filters['per_page'] ?? 15);
 
-        return RecruitmentVacancy::query()
+        return $this->filteredQuery($filters)
             ->with(['department:id,name', 'creator:id,name'])
-            ->when($filters['search'] ?? null, fn (Builder $query, string $search) => $query->where('title', 'like', '%'.$search.'%'))
-            ->when($filters['department'] ?? null, fn (Builder $query, $department) => $query->where('department_id', $department))
-            ->when($filters['status'] ?? null, fn (Builder $query, $status) => $query->where('status', $status))
-            ->when($filters['target_hiring_date'] ?? null, fn (Builder $query, $date) => $query->whereDate('target_hiring_date', $date))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($perPage);
+    }
+
+    /**
+     * Aggregates for the vacancy list UI. Honours search, department, and
+     * target_hiring_date, but ignores status so Open/Closed counts stay stable.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{open_count: int, closed_count: int, open_required_headcount: int, open_filled_headcount: int, overdue_open_count: int}
+     */
+    public function summary(array $filters = []): array
+    {
+        $query = $this->filteredQuery($filters, includeStatus: false);
+        $open = (clone $query)->where('status', 'open');
+
+        $headcount = (clone $open)
+            ->selectRaw('COALESCE(SUM(required_headcount), 0) as open_required_headcount')
+            ->selectRaw('COALESCE(SUM(filled_headcount), 0) as open_filled_headcount')
+            ->first();
+
+        return [
+            'open_count' => (clone $open)->count(),
+            'closed_count' => (clone $query)->where('status', 'closed')->count(),
+            'open_required_headcount' => (int) ($headcount?->open_required_headcount ?? 0),
+            'open_filled_headcount' => (int) ($headcount?->open_filled_headcount ?? 0),
+            'overdue_open_count' => (clone $open)
+                ->whereDate('target_hiring_date', '<', now()->toDateString())
+                ->count(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    protected function filteredQuery(array $filters, bool $includeStatus = true): Builder
+    {
+        return RecruitmentVacancy::query()
+            ->when($filters['search'] ?? null, fn (Builder $query, string $search) => $query->where('title', 'like', '%'.$search.'%'))
+            ->when($filters['department'] ?? null, fn (Builder $query, $department) => $query->where('department_id', $department))
+            ->when(
+                $includeStatus && ($filters['status'] ?? null),
+                fn (Builder $query) => $query->where('status', $filters['status']),
+            )
+            ->when($filters['target_hiring_date'] ?? null, fn (Builder $query, $date) => $query->whereDate('target_hiring_date', $date));
     }
 
     /**

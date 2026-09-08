@@ -149,7 +149,9 @@ test('vacancies can be listed, filtered and viewed', function () {
         ->getJson('/api/recruitment/vacancies?status=open')
         ->assertSuccessful()
         ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.title', 'Backend Developer');
+        ->assertJsonPath('data.0.title', 'Backend Developer')
+        ->assertJsonPath('summary.open_count', 1)
+        ->assertJsonPath('summary.closed_count', 1);
 
     $this->withToken($token)
         ->getJson("/api/recruitment/vacancies?department={$sales->id}")
@@ -162,6 +164,64 @@ test('vacancies can be listed, filtered and viewed', function () {
         ->assertSuccessful()
         ->assertJsonPath('data.title', 'Backend Developer')
         ->assertJsonPath('data.department.id', $engineering->id);
+});
+
+test('vacancy list summary ignores status and counts overdue open roles', function () {
+    $engineering = recruitmentDepartment(['name' => 'Engineering']);
+    $sales = recruitmentDepartment(['name' => 'Sales']);
+    [$admin, $token] = recruitmentAdmin();
+
+    RecruitmentVacancy::query()->create([
+        'title' => 'Backend Developer',
+        'department_id' => $engineering->id,
+        'description' => 'Build APIs.',
+        'required_headcount' => 2,
+        'filled_headcount' => 1,
+        'target_hiring_date' => now()->subDays(3)->toDateString(),
+        'status' => 'open',
+        'created_by' => $admin->id,
+    ]);
+
+    RecruitmentVacancy::query()->create([
+        'title' => 'QA Engineer',
+        'department_id' => $engineering->id,
+        'description' => 'Test APIs.',
+        'required_headcount' => 3,
+        'filled_headcount' => 0,
+        'target_hiring_date' => now()->addMonth()->toDateString(),
+        'status' => 'open',
+        'created_by' => $admin->id,
+    ]);
+
+    RecruitmentVacancy::query()->create([
+        'title' => 'Sales Executive',
+        'department_id' => $sales->id,
+        'description' => 'Drive sales.',
+        'required_headcount' => 1,
+        'filled_headcount' => 1,
+        'target_hiring_date' => now()->subWeek()->toDateString(),
+        'status' => 'closed',
+        'created_by' => $admin->id,
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/recruitment/vacancies?status=closed')
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('summary.open_count', 2)
+        ->assertJsonPath('summary.closed_count', 1)
+        ->assertJsonPath('summary.open_required_headcount', 5)
+        ->assertJsonPath('summary.open_filled_headcount', 1)
+        ->assertJsonPath('summary.overdue_open_count', 1);
+
+    $this->withToken($token)
+        ->getJson("/api/recruitment/vacancies?department={$sales->id}")
+        ->assertSuccessful()
+        ->assertJsonPath('summary.open_count', 0)
+        ->assertJsonPath('summary.closed_count', 1)
+        ->assertJsonPath('summary.open_required_headcount', 0)
+        ->assertJsonPath('summary.open_filled_headcount', 0)
+        ->assertJsonPath('summary.overdue_open_count', 0);
 });
 
 test('vacancy can be updated while open', function () {

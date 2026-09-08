@@ -43,6 +43,8 @@ class ApiResponse
 
     /**
      * Build a paginated JSON response.
+     *
+     * @param  array<string, mixed>  $extra  Extra top-level keys (e.g. `summary`). Does not replace success/message/data/meta.
      */
     public static function paginated(
         LengthAwarePaginator $paginator,
@@ -50,7 +52,10 @@ class ApiResponse
         string $message = 'Data fetched successfully',
         int $status = 200,
         array $headers = [],
+        array $extra = [],
     ): JsonResponse {
+        unset($extra['success'], $extra['message'], $extra['data'], $extra['meta']);
+
         return response()->json([
             'success' => true,
             'message' => $message,
@@ -61,6 +66,7 @@ class ApiResponse
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
             ],
+            ...$extra,
         ], $status, $headers);
     }
 }

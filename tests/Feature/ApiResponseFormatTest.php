@@ -27,6 +27,11 @@ beforeEach(function () {
                 ])
                 ->all(),
             message: 'Data fetched successfully',
+            extra: [
+                'summary' => [
+                    'open_count' => 2,
+                ],
+            ],
         );
     });
 });
@@ -61,5 +66,6 @@ test('paginated responses include the global meta structure', function () {
         ->assertJsonPath('meta.current_page', 1)
         ->assertJsonPath('meta.last_page', 2)
         ->assertJsonPath('meta.per_page', 2)
-        ->assertJsonPath('meta.total', 3);
+        ->assertJsonPath('meta.total', 3)
+        ->assertJsonPath('summary.open_count', 2);
 });
