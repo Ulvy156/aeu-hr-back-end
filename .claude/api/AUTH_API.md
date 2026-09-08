@@ -252,6 +252,7 @@ Authorization: Bearer {access_token}
       "leaves.create",
       "payslips.view_own"
     ],
+    "job_level": "manager",
     "employee": {
       "id": 3,
       "employee_id": "EMP001",
@@ -262,7 +263,7 @@ Authorization: Bearer {access_token}
       "email": "john@example.com",
       "address": "Phnom Penh",
       "department": { "id": 1, "name": "IT" },
-      "position": { "id": 1, "name": "Developer" },
+      "position": { "id": 1, "name": "Developer", "job_level": "manager" },
       "join_date": "2024-01-01",
       "last_working_date": null,
       "employment_status": "full-time",
@@ -273,6 +274,8 @@ Authorization: Bearer {access_token}
 ```
 
 `employee` is `null` for users without a linked employee record (e.g. some `admin`/`hr` accounts). Salary fields are intentionally never included in this response.
+
+`job_level` is the employee's position level (`junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, or `ceo`). It is also nested on `employee.position.job_level`. Both are `null` when the user has no linked employee or position.
 
 ---
 

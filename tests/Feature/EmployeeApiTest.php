@@ -281,18 +281,38 @@ test('employee create allows missing manager_id when the linked user holds the c
         'email' => 'ceo.user@example.com',
     ]);
     $linkedUser->assignRole('ceo');
-    [, $token] = employeeActor('admin');
+    [, $token] = employeeActor('hr');
 
     $this->withToken($token)
         ->postJson('/api/employees', employeePayload($linkedUser, [
             'full_name' => 'Chief Executive',
         ]))
         ->assertCreated()
-        ->assertJsonPath('data.manager', null);
+        ->assertJsonPath('data.manager', null)
+        ->assertJsonPath('data.user.is_ceo', true);
 
     $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
 
     expect($employee->manager_id)->toBeNull();
+});
+
+test('employee create allows a manager_id when the linked user holds the ceo role', function () {
+    $linkedUser = linkableUser([
+        'name' => 'Chief Executive',
+        'email' => 'ceo.with.manager@example.com',
+    ]);
+    $linkedUser->assignRole('ceo');
+    $manager = createManagerEmployee();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'full_name' => 'Chief Executive',
+            'manager_id' => $manager->id,
+        ]))
+        ->assertCreated()
+        ->assertJsonPath('data.manager.id', $manager->id)
+        ->assertJsonPath('data.user.is_ceo', true);
 });
 
 test('employee create fails when manager_id does not reference an existing employee', function () {
@@ -542,7 +562,7 @@ test('employee update rejects manager_id that points to itself or creates a circ
         ->assertJsonValidationErrors('manager_id');
 });
 
-test('employee create fails when manager belongs to a different department', function () {
+test('employee create succeeds when manager belongs to a different department', function () {
     [$department, $position] = employeeDepartmentAndPosition();
     $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
     $manager = createManagerEmployee(['department_id' => $otherDepartment->id]);
@@ -555,9 +575,8 @@ test('employee create fails when manager belongs to a different department', fun
             'position_id' => $position->id,
             'manager_id' => $manager->id,
         ]))
-        ->assertUnprocessable()
-        ->assertJsonPath('message', 'Validation failed')
-        ->assertJsonValidationErrors('manager_id');
+        ->assertCreated()
+        ->assertJsonPath('data.manager.id', $manager->id);
 });
 
 test('employee create succeeds when manager is ceo despite a different department', function () {
@@ -607,7 +626,7 @@ test('employee create succeeds when manager belongs to the same department', fun
         ->assertJsonPath('data.manager.id', $manager->id);
 });
 
-test('employee update fails when manager belongs to a different department', function () {
+test('employee update succeeds when manager belongs to a different department', function () {
     [$department, $position] = employeeDepartmentAndPosition();
     $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
     $sameDeptManager = createManagerEmployee(['department_id' => $department->id]);
@@ -646,9 +665,8 @@ test('employee update fails when manager belongs to a different department', fun
             'base_salary' => '1000.00',
             'employment_status' => 'full-time',
         ])
-        ->assertUnprocessable()
-        ->assertJsonPath('message', 'Validation failed')
-        ->assertJsonValidationErrors('manager_id');
+        ->assertSuccessful()
+        ->assertJsonPath('data.manager.id', $otherDeptManager->id);
 });
 
 test('employee update succeeds when manager is ceo despite a different department', function () {
@@ -956,6 +974,85 @@ test('employee dropdown search forbids employee role', function () {
 
     $this->withToken($token)
         ->getJson('/api/employees/search?q=vy')
+        ->assertForbidden();
+});
+
+test('line manager picker returns employees from any department and omits exclude_id', function () {
+    [$finance] = employeeDepartmentAndPosition();
+    $engineering = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $gmPosition = Position::query()->create([
+        'name' => 'General Manager',
+        'department_id' => $engineering->id,
+        'job_level' => 'gm',
+        'status' => 'active',
+    ]);
+
+    $financeLead = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Finance Lead User', 'email' => 'finance.lead@example.com'])->id,
+        'employee_id' => 'EMP-01001',
+        'full_name' => 'Finance Lead',
+        'department_id' => $finance->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '2000.00',
+        'employment_status' => 'full-time',
+    ]);
+    $engineeringGm = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Engineering GM User', 'email' => 'engineering.gm@example.com'])->id,
+        'employee_id' => 'EMP-01002',
+        'full_name' => 'Engineering GM',
+        'department_id' => $engineering->id,
+        'position_id' => $gmPosition->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '3000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/managers?q=engineering')
+        ->assertSuccessful()
+        ->assertJsonPath('success', true)
+        ->assertJsonPath('message', 'Managers fetched successfully.')
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $engineeringGm->id)
+        ->assertJsonPath('data.0.employee_id', 'EMP-01002')
+        ->assertJsonPath('data.0.full_name', 'Engineering GM')
+        ->assertJsonPath('data.0.department.id', $engineering->id)
+        ->assertJsonPath('data.0.department.name', 'Engineering')
+        ->assertJsonPath('data.0.position.id', $gmPosition->id)
+        ->assertJsonPath('data.0.position.name', 'General Manager')
+        ->assertJsonPath('data.0.position.job_level', 'gm');
+
+    $this->withToken($token)
+        ->getJson("/api/employees/managers?q=lead&exclude_id={$financeLead->id}")
+        ->assertSuccessful()
+        ->assertJsonCount(0, 'data');
+});
+
+test('line manager picker returns empty data for a blank query', function () {
+    Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Searchable Manager User', 'email' => 'searchable.manager@example.com'])->id,
+        'employee_id' => 'EMP-01003',
+        'full_name' => 'Searchable Manager',
+        'join_date' => '2026-01-01',
+        'base_salary' => '2000.00',
+        'employment_status' => 'full-time',
+    ]);
+
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/managers?q=')
+        ->assertSuccessful()
+        ->assertJsonPath('data', []);
+});
+
+test('line manager picker forbids employee role', function () {
+    [, $token] = employeeActor('employee');
+
+    $this->withToken($token)
+        ->getJson('/api/employees/managers?q=searchable')
         ->assertForbidden();
 });
 

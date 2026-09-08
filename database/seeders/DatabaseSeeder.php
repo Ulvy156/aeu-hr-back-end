@@ -24,7 +24,7 @@ class DatabaseSeeder extends Seeder
 
         // Admin user (no employee record — system account)
         $admin = User::firstOrCreate(
-            ['email' => 'admin@example.com'],
+            ['email' => 'admin@gmail.com'],
             ['name' => 'System Admin', 'password' => 'password', 'status' => Status::Active->value]
         );
 

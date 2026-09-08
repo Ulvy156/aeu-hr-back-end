@@ -402,6 +402,7 @@ CREATE TABLE positions (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     department_id BIGINT UNSIGNED NULL,
+    job_level ENUM('junior', 'senior', 'supervisor', 'manager', 'head', 'gm', 'ceo') DEFAULT 'junior',
     status ENUM('active', 'inactive') DEFAULT 'active',
     created_at TIMESTAMP NULL,
     updated_at TIMESTAMP NULL,
@@ -410,6 +411,7 @@ CREATE TABLE positions (
     FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
 
     INDEX idx_positions_department_id (department_id),
+    INDEX idx_positions_job_level (job_level),
     INDEX idx_positions_status (status)
 );
 

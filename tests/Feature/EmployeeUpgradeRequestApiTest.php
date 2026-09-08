@@ -623,7 +623,7 @@ test('upgrade request rejects a manager change that would create a circular repo
         ->assertJsonValidationErrors('proposed_values.manager_id');
 });
 
-test('upgrade request rejects a manager_id proposal when the manager belongs to a different department', function () {
+test('upgrade request accepts a manager_id proposal when the manager belongs to a different department', function () {
     [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
     [$otherDepartment] = upgradeDepartmentAndPosition('Engineering', 'Engineer');
 
@@ -638,8 +638,8 @@ test('upgrade request rejects a manager_id proposal when the manager belongs to 
             'manager_id' => $manager->id,
         ],
     ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('proposed_values.manager_id');
+        ->assertCreated()
+        ->assertJsonPath('data.proposed_values.manager_id.id', $manager->id);
 });
 
 test('upgrade request accepts a manager_id proposal when the manager is ceo despite a different department', function () {

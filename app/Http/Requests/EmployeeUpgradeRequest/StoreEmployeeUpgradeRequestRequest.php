@@ -127,16 +127,6 @@ class StoreEmployeeUpgradeRequestRequest extends FormRequest
 
                             $currentId = (int) $managerId;
                         }
-
-                        if (! $validator->errors()->has('proposed_values.manager_id') && $resultingDepartmentId) {
-                            $manager = Employee::query()->with('user')->find($proposedManagerId);
-
-                            if ($manager && $manager->department_id !== null
-                                && (int) $manager->department_id !== (int) $resultingDepartmentId
-                                && ! $manager->user?->hasRole('ceo')) {
-                                $validator->errors()->add('proposed_values.manager_id', 'The selected manager must belong to the same department, unless they hold the CEO role.');
-                            }
-                        }
                     }
                 }
 

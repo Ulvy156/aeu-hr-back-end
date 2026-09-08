@@ -29,10 +29,12 @@ All leave endpoints require a Sanctum bearer token.
 
 - Generic approval alias: `leaves.approve`
 - Generic rejection alias: `leaves.reject`
-- HR approval: `leaves.approve_hr`
-- HR rejection: `leaves.reject_hr`
+- HR approval: `leaves.approve_hr` (Head of `HR & Admin` only, granted by job-level inheritance)
+- HR rejection: `leaves.reject_hr` (Head of `HR & Admin` only, granted by job-level inheritance)
 - CEO approval: `leaves.approve_ceo`
 - CEO rejection: `leaves.reject_ceo`
+
+Other HR users can list/view leave but cannot approve or reject. Dual approval is still HR Head + CEO.
 
 ### Leave Balances
 

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\JobLevel;
 use App\Enums\Status;
 use App\Models\Department;
 use App\Models\Position;
@@ -13,25 +14,25 @@ class PositionSeeder extends Seeder
     {
         $structure = [
             'Executive' => [
-                'General Manager',
+                ['name' => 'Chief Executive Officer', 'job_level' => JobLevel::Ceo],
+                ['name' => 'General Manager', 'job_level' => JobLevel::Gm],
             ],
             'Accounting' => [
-                'Accounting & Stock Control Officer',
+                ['name' => 'Account & Stock', 'job_level' => JobLevel::Junior],
             ],
             'Marketing' => [
-                'Digital Marketing Supervisor',
-                'Graphic Designer',
+                ['name' => 'Marketing Supervisor', 'job_level' => JobLevel::Supervisor],
+                ['name' => 'Design', 'job_level' => JobLevel::Junior],
+                ['name' => 'Off Line', 'job_level' => JobLevel::Junior],
             ],
             'Commercial' => [
-                'Senior Sales Supervisor',
-                'Sales Supervisor',
-                'Senior Sales Executive',
-                'Sales Executive',
+                ['name' => 'Senior Sales Supervisor', 'job_level' => JobLevel::Supervisor],
+                ['name' => 'Sales Supervisor', 'job_level' => JobLevel::Supervisor],
+                ['name' => 'Sales Executive', 'job_level' => JobLevel::Junior],
+                ['name' => 'Sales Admin', 'job_level' => JobLevel::Junior],
             ],
             'HR & Admin' => [
-                'HR Manager',
-                'HR Officer',
-                'Admin Officer',
+                ['name' => 'HR Admin', 'job_level' => JobLevel::Junior],
             ],
         ];
 
@@ -42,10 +43,13 @@ class PositionSeeder extends Seeder
                 continue;
             }
 
-            foreach ($positions as $positionName) {
+            foreach ($positions as $position) {
                 Position::updateOrCreate(
-                    ['name' => $positionName, 'department_id' => $department->id],
-                    ['status' => Status::Active->value]
+                    ['name' => $position['name'], 'department_id' => $department->id],
+                    [
+                        'status' => Status::Active->value,
+                        'job_level' => $position['job_level']->value,
+                    ]
                 );
             }
         }

@@ -23,6 +23,8 @@ All report endpoints require a Sanctum bearer token.
 - Leave report view: `reports.leave_view`
 - Leave report export: `reports.leave_export`
 
+Department heads with `reports.payroll_view` see payroll reports scoped to their department. Head of `HR & Admin` sees company-wide payroll reports.
+
 ## Endpoint List
 
 - `GET /api/reports/payroll`

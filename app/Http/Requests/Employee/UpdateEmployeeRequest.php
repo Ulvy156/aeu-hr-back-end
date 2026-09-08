@@ -178,21 +178,6 @@ class UpdateEmployeeRequest extends FormRequest
                     $currentId = (int) $managerOfCurrent;
                 }
             },
-            function (Validator $validator): void {
-                if (! $this->filled('manager_id') || ! $this->filled('department_id')) {
-                    return;
-                }
-
-                $manager = Employee::query()->with('user')->find($this->integer('manager_id'));
-
-                if (! $manager || $manager->department_id === null) {
-                    return;
-                }
-
-                if ($manager->department_id !== $this->integer('department_id') && ! $manager->user?->hasRole('ceo')) {
-                    $validator->errors()->add('manager_id', 'The selected manager must belong to the same department, unless they hold the CEO role.');
-                }
-            },
         ];
     }
 

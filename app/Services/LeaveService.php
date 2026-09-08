@@ -92,7 +92,7 @@ class LeaveService
                 'total_days' => $totalDays,
                 'reason' => $data['reason'],
                 'status' => 'pending',
-                'hr_approval_status' => $actor->hasRole('hr') ? 'approved' : 'pending',
+                'hr_approval_status' => $this->isHrLeaveDecider($actor) ? 'approved' : 'pending',
                 'ceo_approval_status' => 'pending',
             ]);
 
@@ -127,7 +127,7 @@ class LeaveService
             $this->assertPendingForDecision($leave);
             $oldValues = $this->auditAttributes($leave);
 
-            if ($actor->hasRole('hr')) {
+            if ($this->isHrLeaveDecider($actor)) {
                 if ($leave->hr_approval_status === 'approved') {
                     throw ApiException::unprocessable('HR has already approved this leave request.');
                 }
@@ -189,7 +189,7 @@ class LeaveService
             $this->assertPendingForDecision($leave);
             $oldValues = $this->auditAttributes($leave);
 
-            if ($actor->hasRole('hr')) {
+            if ($this->isHrLeaveDecider($actor)) {
                 if ($leave->hr_approval_status === 'rejected') {
                     throw ApiException::unprocessable('HR has already rejected this leave request.');
                 }
@@ -525,6 +525,12 @@ class LeaveService
             'hrApprovedBy:id,name',
             'ceoApprovedBy:id,name',
         ]);
+    }
+
+    protected function isHrLeaveDecider(User $actor): bool
+    {
+        return $actor->hasPermissionTo('leaves.approve_hr')
+            || $actor->hasPermissionTo('leaves.reject_hr');
     }
 
     /**

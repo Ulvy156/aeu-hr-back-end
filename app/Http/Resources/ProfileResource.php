@@ -42,6 +42,9 @@ class ProfileResource extends JsonResource
             'status' => $this->status,
             'roles' => $roles,
             'permissions' => $this->permissionNames,
+            'job_level' => $this->relationLoaded('employee')
+                ? $this->employee?->position?->job_level?->value
+                : null,
             'employee' => $this->whenLoaded('employee', function (): ?array {
                 if (! $this->employee) {
                     return null;
@@ -69,6 +72,7 @@ class ProfileResource extends JsonResource
                             ? [
                                 'id' => $this->employee->position->id,
                                 'name' => $this->employee->position->name,
+                                'job_level' => $this->employee->position->job_level?->value,
                             ]
                             : null)
                         : null,

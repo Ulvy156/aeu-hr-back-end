@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\PayrollViewScope;
 use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Attendance;
@@ -12,6 +13,7 @@ use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
 use App\Models\PublicHoliday;
 use App\Models\User;
+use App\Support\PayrollVisibility;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -25,6 +27,7 @@ class PayrollService
     public function __construct(
         protected AuditLogService $auditLogService,
         protected CompanySettingService $companySettingService,
+        protected PayrollVisibility $payrollVisibility,
     ) {}
 
     /**
@@ -42,13 +45,6 @@ class PayrollService
                 'approvedBy:id,name,email',
                 'rejectedBy:id,name,email',
             ])
-            ->withCount('items')
-            ->withSum('items as total_gross_salary', 'gross_salary')
-            ->withSum('items as total_unpaid_deduction', 'unpaid_deduction')
-            ->withSum('items as total_absence_deduction', 'absence_deduction')
-            ->withSum('items as total_tax_amount', 'tax_amount')
-            ->withSum('items as total_nssf_deduction', 'nssf_deduction')
-            ->withSum('items as total_net_salary', 'net_salary')
             ->when($filters['month'] ?? null, fn (Builder $query, int $month) => $query->where('month', $month))
             ->when($filters['year'] ?? null, fn (Builder $query, int $year) => $query->where('year', $year))
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
@@ -56,12 +52,35 @@ class PayrollService
             ->orderByDesc('month')
             ->orderByDesc('id');
 
-        if ($viewer->hasPermissionTo('payrolls.view_any')) {
+        $scope = $this->payrollVisibility->scope($viewer, 'payrolls.view_any', 'payrolls.view_own');
+
+        if ($scope === PayrollViewScope::All) {
+            $this->addItemAggregates($query);
             $query->when(
                 $filters['employee_id'] ?? null,
                 fn (Builder $query, int $employeeId) => $query->whereHas('items', fn (Builder $itemQuery) => $itemQuery->where('employee_id', $employeeId)),
             );
-        } elseif ($viewer->hasPermissionTo('payrolls.view_own')) {
+        } elseif ($scope === PayrollViewScope::Department) {
+            $departmentId = $this->payrollVisibility->departmentId($viewer);
+
+            if (! $departmentId) {
+                throw ApiException::forbidden('No employee profile is linked to this user account.');
+            }
+
+            $departmentConstraint = $this->itemsInDepartment($departmentId);
+            $this->addItemAggregates($query, $departmentConstraint);
+            $query->whereHas('items.employee', fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            $query->when(
+                $filters['employee_id'] ?? null,
+                fn (Builder $query, int $employeeId) => $query->whereHas(
+                    'items',
+                    fn (Builder $itemQuery) => $itemQuery
+                        ->where('employee_id', $employeeId)
+                        ->whereHas('employee', fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId)),
+                ),
+            );
+        } elseif ($scope === PayrollViewScope::Own) {
+            $this->addItemAggregates($query);
             $employee = $viewer->loadMissing('employee')->employee;
 
             if (! $employee) {
@@ -386,24 +405,77 @@ class PayrollService
         });
     }
 
-    public function loadBatchRelations(PayrollBatch $payrollBatch): PayrollBatch
+    public function loadBatchRelations(PayrollBatch $payrollBatch, ?User $viewer = null): PayrollBatch
     {
+        $departmentId = null;
+
+        if ($viewer) {
+            $scope = $this->payrollVisibility->scope($viewer, 'payrolls.view_any', 'payrolls.view_own');
+
+            if ($scope === PayrollViewScope::Department) {
+                $departmentId = $this->payrollVisibility->departmentId($viewer);
+            }
+        }
+
+        $itemConstraint = $departmentId ? $this->itemsInDepartment($departmentId) : null;
+
         return $payrollBatch->load([
             'generatedBy:id,name,email',
             'submittedBy:id,name,email',
             'approvedBy:id,name,email',
             'rejectedBy:id,name,email',
             'items' => fn ($query) => $query
+                ->when($itemConstraint, $itemConstraint)
                 ->with('employee:id,user_id,employee_id,full_name')
                 ->orderBy('employee_id'),
-        ])->loadCount('items')
-            ->loadSum('items as total_gross_salary', 'gross_salary')
-            ->loadSum('items as total_unpaid_deduction', 'unpaid_deduction')
-            ->loadSum('items as total_absence_deduction', 'absence_deduction')
-            ->loadSum('items as total_special_sick_deduction', 'special_sick_deduction')
-            ->loadSum('items as total_tax_amount', 'tax_amount')
-            ->loadSum('items as total_nssf_deduction', 'nssf_deduction')
-            ->loadSum('items as total_net_salary', 'net_salary');
+        ])->loadCount($itemConstraint ? ['items' => $itemConstraint] : 'items')
+            ->loadSum($itemConstraint ? ['items as total_gross_salary' => $itemConstraint] : 'items as total_gross_salary', 'gross_salary')
+            ->loadSum($itemConstraint ? ['items as total_unpaid_deduction' => $itemConstraint] : 'items as total_unpaid_deduction', 'unpaid_deduction')
+            ->loadSum($itemConstraint ? ['items as total_absence_deduction' => $itemConstraint] : 'items as total_absence_deduction', 'absence_deduction')
+            ->loadSum($itemConstraint ? ['items as total_special_sick_deduction' => $itemConstraint] : 'items as total_special_sick_deduction', 'special_sick_deduction')
+            ->loadSum($itemConstraint ? ['items as total_tax_amount' => $itemConstraint] : 'items as total_tax_amount', 'tax_amount')
+            ->loadSum($itemConstraint ? ['items as total_nssf_deduction' => $itemConstraint] : 'items as total_nssf_deduction', 'nssf_deduction')
+            ->loadSum($itemConstraint ? ['items as total_net_salary' => $itemConstraint] : 'items as total_net_salary', 'net_salary');
+    }
+
+    /**
+     * @param  Builder<PayrollBatch>  $query
+     * @param  (\Closure(Builder<PayrollItem>): mixed)|null  $itemConstraint
+     */
+    protected function addItemAggregates(Builder $query, ?\Closure $itemConstraint = null): void
+    {
+        if ($itemConstraint) {
+            $query
+                ->withCount(['items' => $itemConstraint])
+                ->withSum(['items as total_gross_salary' => $itemConstraint], 'gross_salary')
+                ->withSum(['items as total_unpaid_deduction' => $itemConstraint], 'unpaid_deduction')
+                ->withSum(['items as total_absence_deduction' => $itemConstraint], 'absence_deduction')
+                ->withSum(['items as total_tax_amount' => $itemConstraint], 'tax_amount')
+                ->withSum(['items as total_nssf_deduction' => $itemConstraint], 'nssf_deduction')
+                ->withSum(['items as total_net_salary' => $itemConstraint], 'net_salary');
+
+            return;
+        }
+
+        $query
+            ->withCount('items')
+            ->withSum('items as total_gross_salary', 'gross_salary')
+            ->withSum('items as total_unpaid_deduction', 'unpaid_deduction')
+            ->withSum('items as total_absence_deduction', 'absence_deduction')
+            ->withSum('items as total_tax_amount', 'tax_amount')
+            ->withSum('items as total_nssf_deduction', 'nssf_deduction')
+            ->withSum('items as total_net_salary', 'net_salary');
+    }
+
+    /**
+     * @return \Closure(Builder<PayrollItem>): mixed
+     */
+    protected function itemsInDepartment(int $departmentId): \Closure
+    {
+        return fn (Builder $query) => $query->whereHas(
+            'employee',
+            fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId),
+        );
     }
 
     /**

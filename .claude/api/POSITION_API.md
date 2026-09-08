@@ -42,6 +42,7 @@ Return a paginated position list.
 
 - `search`: optional string, filters by position name
 - `department_id`: optional integer, filters by department
+- `job_level`: optional enum, `junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, or `ceo`
 - `status`: optional enum, `active` or `inactive`
 - `per_page`: optional integer, `1` to `100`
 
@@ -55,6 +56,7 @@ Return a paginated position list.
     {
       "id": 1,
       "name": "Accountant",
+      "job_level": "junior",
       "status": "active",
       "department": {
         "id": 1,
@@ -87,6 +89,7 @@ Create a new position.
 {
   "name": "Accountant",
   "department_id": 1,
+  "job_level": "junior",
   "status": "active"
 }
 ```
@@ -95,6 +98,7 @@ Create a new position.
 
 - `name`: required string, max `255`
 - `department_id`: required integer, must exist in `departments`
+- `job_level`: required enum on create/update: `junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, `ceo`
 - `status`: required enum, `active` or `inactive`
 
 ### Response Example
@@ -106,6 +110,7 @@ Create a new position.
   "data": {
     "id": 1,
     "name": "Accountant",
+    "job_level": "junior",
     "status": "active",
     "department": {
       "id": 1,
@@ -134,6 +139,7 @@ Return one position.
   "data": {
     "id": 1,
     "name": "Accountant",
+    "job_level": "junior",
     "status": "active",
     "department": {
       "id": 1,
@@ -159,6 +165,7 @@ Update a position.
 {
   "name": "Senior Accountant",
   "department_id": 1,
+  "job_level": "senior",
   "status": "inactive"
 }
 ```
@@ -167,6 +174,7 @@ Update a position.
 
 - `department_id` is required. Positions created before this rule may still exist without a department (untouched, unless later edited).
 - `status` must be `active` or `inactive`.
+- Changing `job_level` reassigns the default Spatie role for every occupant of that position, except users who already have `hr` or `admin`.
 
 ---
 
@@ -182,6 +190,8 @@ Soft delete a position.
 ## Frontend Notes
 
 - Use `department_id` filtering to power department-specific position dropdowns and lists.
+- `job_level` is required on create and update. Values: `junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, `ceo`.
+- Default Spatie roles from job level: `junior`/`senior`/`supervisor` → `employee`; `manager` → `manager`; `head` → `head`; `gm` → `gm`; `ceo` → `ceo`. Users with `hr` or `admin` keep that role.
 - `department` may be `null`, so frontend selectors should support unassigned positions.
 - Show `employees_count` directly from the backend response.
 - Allow only `active` and `inactive` as status values.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\IndexEmployeeRequest;
+use App\Http\Requests\Employee\IndexLineManagerRequest;
 use App\Http\Requests\Employee\SearchEmployeeRequest;
 use App\Http\Requests\Employee\StoreEmployeeRequest;
 use App\Http\Requests\Employee\UpdateEmployeeRequest;
@@ -40,6 +41,16 @@ class EmployeeController extends Controller
 
         return response()->json(
             $this->employeeService->search($request->validated('q'))->all()
+        );
+    }
+
+    public function managers(IndexLineManagerRequest $request): JsonResponse
+    {
+        $this->authorize('search', Employee::class);
+
+        return ApiResponse::success(
+            data: $this->employeeService->lineManagers($request->validated())->all(),
+            message: 'Managers fetched successfully.',
         );
     }
 

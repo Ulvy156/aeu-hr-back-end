@@ -32,6 +32,7 @@ class EmployeeHierarchyNodeResource extends JsonResource
                 ? [
                     'id' => $this->position->id,
                     'name' => $this->position->name,
+                    'job_level' => $this->position->job_level,
                 ]
                 : null),
             'children' => EmployeeHierarchyNodeResource::collection($this->children ?? []),

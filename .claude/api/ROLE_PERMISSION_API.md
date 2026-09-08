@@ -20,7 +20,14 @@ Role and permission lookup endpoints are implemented as part of the User Managem
 - `admin`
 - `hr`
 - `ceo`
+- `gm`
+- `head`
+- `manager`
 - `employee`
+
+Job level on a position (`junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, `ceo`) sets the linked user's **default** role when the employee is created or their `position_id` changes, unless the user already has `hr` or `admin`. `junior`, `senior`, and `supervisor` all default to `employee`. See [POSITION_API.md](POSITION_API.md).
+
+Department heads (`job_level: head`) can view payroll, payslips, and payroll reports. Non-HR heads only see records for their own department (batch totals are department-scoped too). Head of `HR & Admin` sees all payroll. Job-level inheritance also **appends** `leaves.approve_hr`, `leaves.reject_hr`, `payrolls.generate`, `payrolls.update`, `payrolls.submit`, `payrolls.approve`, and `payrolls.reject` to Head of `HR & Admin` only (including when the user keeps the protected `hr` role). Other HR users can view leave and payroll but cannot generate, edit, submit, approve, or reject. `ceo` still approves leave CEO-step, upgrades, and announcements.
 
 ### Permission Naming Convention
 

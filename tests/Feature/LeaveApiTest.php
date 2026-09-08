@@ -1,11 +1,15 @@
 <?php
 
+use App\Enums\JobLevel;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Models\Position;
 use App\Models\PublicHoliday;
 use App\Models\User;
+use App\Services\JobLevelRoleService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,6 +76,39 @@ function makeLeave(Employee $employee, array $overrides = []): LeaveRequest
         'hr_approval_status' => 'pending',
         'ceo_approval_status' => 'pending',
     ], $overrides));
+}
+
+function leaveHrHeadUser(array $userOverrides = []): User
+{
+    $department = Department::query()->firstOrCreate(
+        ['name' => 'HR & Admin'],
+        ['status' => 'active'],
+    );
+    $position = Position::query()->create([
+        'name' => 'Head of HR '.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Head->value,
+        'status' => 'active',
+    ]);
+    $user = User::factory()->create(array_merge([
+        'status' => 'active',
+    ], $userOverrides));
+    $user->assignRole('employee');
+
+    $employee = Employee::query()->create([
+        'user_id' => $user->id,
+        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'full_name' => $user->name,
+        'join_date' => '2026-01-01',
+        'base_salary' => 1000,
+        'employment_status' => 'full-time',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+    ]);
+
+    app(JobLevelRoleService::class)->syncForEmployee($employee);
+
+    return $user->fresh();
 }
 
 test('employee can create leave and backend calculates total days', function () {
@@ -515,8 +552,7 @@ test('hr approval works and keeps leave pending until ceo approval exists', func
     [, $employee] = leaveEmployeeUser();
     $leave = makeLeave($employee);
 
-    $hr = User::factory()->create();
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser();
     $token = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($token)
@@ -551,8 +587,7 @@ test('final leave approval requires both hr and ceo approvals and approval order
     [, $employee] = leaveEmployeeUser();
     $leave = makeLeave($employee);
 
-    $hr = User::factory()->create(['email' => 'hr.approver@example.com']);
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser(['email' => 'hr.approver@example.com']);
     $ceo = User::factory()->create(['email' => 'ceo.approver@example.com']);
     $ceo->assignRole('ceo');
 
@@ -586,8 +621,7 @@ test('final approval of a retroactive leave clears stale absent attendance recor
         'is_late' => false,
     ]);
 
-    $hr = User::factory()->create(['email' => 'hr.approver@example.com']);
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser(['email' => 'hr.approver@example.com']);
     $ceo = User::factory()->create(['email' => 'ceo.approver@example.com']);
     $ceo->assignRole('ceo');
 
@@ -610,8 +644,7 @@ test('rejection requires a reason', function () {
     [, $employee] = leaveEmployeeUser();
     $leave = makeLeave($employee);
 
-    $hr = User::factory()->create();
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser();
     $token = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($token)
@@ -621,16 +654,15 @@ test('rejection requires a reason', function () {
         ->assertJsonValidationErrors('rejection_reason');
 });
 
-test('rejection by hr or ceo makes the final status rejected', function (string $role) {
+test('rejection by head of hr or ceo makes the final status rejected', function (string $actor) {
     leaveCompanySettings();
     [, $employee] = leaveEmployeeUser();
     $leave = makeLeave($employee);
 
-    $approver = User::factory()->create([
-        'email' => "{$role}.rejector@example.com",
-    ]);
-    $approver->assignRole($role);
-    $token = $approver->createToken("{$role}-device")->plainTextToken;
+    $approver = $actor === 'hr_head'
+        ? leaveHrHeadUser(['email' => 'hr.head.rejector@example.com'])
+        : tap(User::factory()->create(['email' => 'ceo.rejector@example.com']), fn (User $user) => $user->assignRole('ceo'));
+    $token = $approver->createToken("{$actor}-device")->plainTextToken;
 
     $this->withToken($token)
         ->postJson("/api/leaves/{$leave->id}/reject", [
@@ -639,7 +671,27 @@ test('rejection by hr or ceo makes the final status rejected', function (string 
         ->assertSuccessful()
         ->assertJsonPath('data.status', 'rejected')
         ->assertJsonPath('data.rejection_reason', 'Insufficient coverage for requested dates.');
-})->with(['hr', 'ceo']);
+})->with(['hr_head', 'ceo']);
+
+test('regular hr cannot approve or reject leave requests', function () {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+    $leave = makeLeave($employee);
+
+    $hr = User::factory()->create(['email' => 'hr.viewer@example.com']);
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson("/api/leaves/{$leave->id}/approve")
+        ->assertForbidden();
+
+    $this->withToken($token)
+        ->postJson("/api/leaves/{$leave->id}/reject", [
+            'rejection_reason' => 'Not allowed',
+        ])
+        ->assertForbidden();
+});
 
 test('employee cannot approve or reject leave requests', function () {
     leaveCompanySettings();
@@ -685,8 +737,7 @@ test('approving an already cancelled leave should fail', function () {
         'cancelled_at' => now(),
     ]);
 
-    $hr = User::factory()->create();
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser();
     $token = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($token)
@@ -706,8 +757,7 @@ test('rejecting an already approved leave should fail', function () {
         'ceo_approved_at' => now(),
     ]);
 
-    $hr = User::factory()->create();
-    $hr->assignRole('hr');
+    $hr = leaveHrHeadUser();
     $token = $hr->createToken('hr-device')->plainTextToken;
 
     $this->withToken($token)

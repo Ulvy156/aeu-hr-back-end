@@ -19,6 +19,7 @@ class PositionResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'job_level' => $this->job_level,
             'status' => $this->status,
             'department' => $this->whenLoaded('department', fn () => $this->department
                 ? [

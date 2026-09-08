@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Employee;
 
 use App\Enums\EmploymentStatus;
-use App\Models\Employee;
 use App\Models\Position;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -126,21 +125,6 @@ class StoreEmployeeRequest extends FormRequest
 
                 if ($position->department_id && $this->filled('department_id') && $position->department_id !== $this->integer('department_id')) {
                     $validator->errors()->add('position_id', 'The selected position does not belong to the selected department.');
-                }
-            },
-            function (Validator $validator): void {
-                if (! $this->filled('manager_id') || ! $this->filled('department_id')) {
-                    return;
-                }
-
-                $manager = Employee::query()->with('user')->find($this->integer('manager_id'));
-
-                if (! $manager || $manager->department_id === null) {
-                    return;
-                }
-
-                if ($manager->department_id !== $this->integer('department_id') && ! $manager->user?->hasRole('ceo')) {
-                    $validator->errors()->add('manager_id', 'The selected manager must belong to the same department, unless they hold the CEO role.');
                 }
             },
         ];

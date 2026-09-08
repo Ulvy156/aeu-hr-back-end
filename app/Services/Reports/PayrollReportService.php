@@ -2,22 +2,30 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\PayrollViewScope;
 use App\Exports\ArrayReportExport;
 use App\Models\Employee;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
+use App\Models\User;
+use App\Support\PayrollVisibility;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 
 class PayrollReportService
 {
+    public function __construct(
+        protected PayrollVisibility $payrollVisibility,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
-    public function report(array $filters): array
+    public function report(array $filters, User $viewer): array
     {
+        $filters = $this->withViewerScope($filters, $viewer);
         $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'employee_list');
 
@@ -32,8 +40,9 @@ class PayrollReportService
      * @param  array<string, mixed>  $filters
      * @return array{file_name: string, export: ArrayReportExport}
      */
-    public function export(array $filters): array
+    public function export(array $filters, User $viewer): array
     {
+        $filters = $this->withViewerScope($filters, $viewer);
         $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $reportType = (string) ($filters['report_type'] ?? 'employee_list');
 
@@ -272,6 +281,10 @@ class PayrollReportService
                 'payrollBatch:id,month,year,status,generated_at,submitted_at,approved_at,rejected_at',
             ])
             ->when($filters['employee_id'] ?? null, fn (Builder $q, int $v) => $q->where('payroll_items.employee_id', $v))
+            ->when($filters['department_id'] ?? null, fn (Builder $q, int $v) => $q->whereHas(
+                'employee',
+                fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $v),
+            ))
             ->when($filters['month'] ?? null, fn (Builder $q, int $v) => $q->where('payroll_batches.month', $v))
             ->when($filters['year'] ?? null, fn (Builder $q, int $v) => $q->where('payroll_batches.year', $v))
             ->when($filters['status'] ?? null, fn (Builder $q, string $v) => $q->where('payroll_batches.status', $v))
@@ -286,11 +299,31 @@ class PayrollReportService
     protected function monthlySummaryQuery(array $filters): Builder
     {
         return PayrollBatch::query()
-            ->withCount('items')
-            ->withSum('items as total_gross_salary', 'gross_salary')
-            ->withSum('items as total_tax_amount', 'tax_amount')
-            ->withSum('items as total_nssf_deduction', 'nssf_deduction')
-            ->withSum('items as total_net_salary', 'net_salary')
+            ->when(
+                $filters['department_id'] ?? null,
+                function (Builder $query, int $departmentId) {
+                    $constraint = fn (Builder $itemQuery) => $itemQuery->whereHas(
+                        'employee',
+                        fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId),
+                    );
+
+                    $query
+                        ->whereHas('items.employee', fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId))
+                        ->withCount(['items' => $constraint])
+                        ->withSum(['items as total_gross_salary' => $constraint], 'gross_salary')
+                        ->withSum(['items as total_tax_amount' => $constraint], 'tax_amount')
+                        ->withSum(['items as total_nssf_deduction' => $constraint], 'nssf_deduction')
+                        ->withSum(['items as total_net_salary' => $constraint], 'net_salary');
+                },
+                function (Builder $query) {
+                    $query
+                        ->withCount('items')
+                        ->withSum('items as total_gross_salary', 'gross_salary')
+                        ->withSum('items as total_tax_amount', 'tax_amount')
+                        ->withSum('items as total_nssf_deduction', 'nssf_deduction')
+                        ->withSum('items as total_net_salary', 'net_salary');
+                },
+            )
             ->with([
                 'generatedBy:id,name,email',
                 'submittedBy:id,name,email',
@@ -322,6 +355,10 @@ class PayrollReportService
             ->when($filters['year'] ?? null, fn ($q, int $v) => $q->where('payroll_batches.year', $v))
             ->when($filters['status'] ?? null, fn ($q, string $v) => $q->where('payroll_batches.status', $v))
             ->when($filters['employee_id'] ?? null, fn ($q, int $v) => $q->where('payroll_items.employee_id', $v))
+            ->when($filters['department_id'] ?? null, function ($q, int $v) {
+                $q->join('employees as report_employees', 'report_employees.id', '=', 'payroll_items.employee_id')
+                    ->where('report_employees.department_id', $v);
+            })
             ->groupBy('payroll_batches.status')
             ->orderBy('payroll_batches.status')
             ->pluck('payroll_batches.status');
@@ -334,6 +371,10 @@ class PayrollReportService
                 ->when($filters['month'] ?? null, fn ($q, int $v) => $q->where('payroll_batches.month', $v))
                 ->when($filters['year'] ?? null, fn ($q, int $v) => $q->where('payroll_batches.year', $v))
                 ->when($filters['employee_id'] ?? null, fn ($q, int $v) => $q->where('payroll_items.employee_id', $v))
+                ->when($filters['department_id'] ?? null, function ($q, int $v) {
+                    $q->join('employees as report_employees', 'report_employees.id', '=', 'payroll_items.employee_id')
+                        ->where('report_employees.department_id', $v);
+                })
                 ->selectRaw('COUNT(DISTINCT payroll_batches.id) as batch_count')
                 ->selectRaw('COUNT(payroll_items.id) as item_count')
                 ->selectRaw('COALESCE(SUM(payroll_items.gross_salary), 0) as gross_salary')
@@ -360,6 +401,21 @@ class PayrollReportService
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    protected function withViewerScope(array $filters, User $viewer): array
+    {
+        $scope = $this->payrollVisibility->scope($viewer, 'payrolls.view_any', 'payrolls.view_own');
+
+        if ($scope === PayrollViewScope::Department) {
+            $filters['department_id'] = $this->payrollVisibility->departmentId($viewer);
+        }
+
+        return $filters;
+    }
 
     protected function formatMoney(float $value): string
     {

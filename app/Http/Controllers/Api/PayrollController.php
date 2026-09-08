@@ -62,7 +62,7 @@ class PayrollController extends Controller
     {
         $this->authorize('view', $payroll);
 
-        $payroll = $this->payrollService->loadBatchRelations($payroll);
+        $payroll = $this->payrollService->loadBatchRelations($payroll, request()->user());
 
         return ApiResponse::success(
             data: PayrollBatchResource::make($payroll)->resolve(request()),

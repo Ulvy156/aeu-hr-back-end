@@ -30,6 +30,7 @@ test('authenticated users can view their own profile with a linked employee reco
     $position = Position::query()->create([
         'name' => 'Developer',
         'department_id' => $department->id,
+        'job_level' => 'manager',
         'status' => 'active',
     ]);
 
@@ -79,6 +80,8 @@ test('authenticated users can view their own profile with a linked employee reco
         ->assertJsonPath('data.employee.full_name', 'John Doe')
         ->assertJsonPath('data.employee.department.name', 'IT')
         ->assertJsonPath('data.employee.position.name', 'Developer')
+        ->assertJsonPath('data.employee.position.job_level', 'manager')
+        ->assertJsonPath('data.job_level', 'manager')
         ->assertJsonPath('data.employee.join_date', '2024-01-01')
         ->assertJsonPath('data.employee.last_working_date', null)
         ->assertJsonPath('data.employee.employment_status', 'full-time')
@@ -111,6 +114,7 @@ test('users without an employee profile still receive their own account profile'
         ->assertJsonPath('data.email', 'hr@example.com')
         ->assertJsonPath('data.roles.0', 'hr')
         ->assertJsonPath('data.employee', null)
+        ->assertJsonPath('data.job_level', null)
         ->assertJsonMissingPath('data.password')
         ->assertJsonMissingPath('data.remember_token')
         ->assertJsonMissingPath('data.tokens');

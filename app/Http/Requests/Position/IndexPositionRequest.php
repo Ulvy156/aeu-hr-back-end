@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Position;
 
+use App\Enums\JobLevel;
 use App\Enums\Status;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -22,6 +23,7 @@ class IndexPositionRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:255'],
             'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'job_level' => ['nullable', Rule::enum(JobLevel::class)],
             'status' => ['nullable', Rule::enum(Status::class)],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JobLevel;
 use App\Enums\Status;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,10 +11,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['department_id', 'name', 'status'])]
+#[Fillable(['department_id', 'name', 'job_level', 'status'])]
 class Position extends Model
 {
     use HasFactory, SoftDeletes;
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'job_level' => JobLevel::Junior->value,
+    ];
 
     /**
      * Get the attributes that should be cast.
@@ -24,6 +32,7 @@ class Position extends Model
     {
         return [
             'status' => Status::class,
+            'job_level' => JobLevel::class,
         ];
     }
 

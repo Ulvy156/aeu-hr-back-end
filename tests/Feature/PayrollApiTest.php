@@ -75,6 +75,17 @@ function payrollManagerUser(string $role, array $overrides = []): User
     return $user;
 }
 
+function payrollHrHeadUser(array $overrides = []): User
+{
+    $user = User::factory()->create(array_merge([
+        'status' => 'active',
+    ], $overrides));
+    $user->assignRole('hr');
+    $user->givePermissionTo(array_values(array_filter((array) config('hr.job_levels.hr_head_permissions'))));
+
+    return $user->fresh();
+}
+
 function makeAttendance(Employee $employee, string $date, string $status = 'present'): Attendance
 {
     return Attendance::query()->create([
@@ -105,10 +116,10 @@ function makeApprovedLeave(Employee $employee, array $overrides = []): LeaveRequ
     ], $overrides));
 }
 
-test('hr can generate payroll with proration deductions and configured tax brackets', function () {
+test('head of hr can generate payroll with proration deductions and configured tax brackets', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr@example.com',
     ]);
     Sanctum::actingAs($hr);
@@ -206,7 +217,7 @@ test('hr can generate payroll with proration deductions and configured tax brack
 test('hr can review submit and ceo can approve payroll while approved batches remain locked', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.review@example.com',
     ]);
     $ceo = payrollManagerUser('ceo', [
@@ -299,7 +310,7 @@ test('hr can review submit and ceo can approve payroll while approved batches re
 test('rejection requires a reason and rejected payroll can be revised back to draft', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.reject@example.com',
     ]);
     $ceo = payrollManagerUser('ceo', [
@@ -378,7 +389,7 @@ test('rejection requires a reason and rejected payroll can be revised back to dr
 test('tax snapshot remains stable after config changes and payslip reads stored values', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.snapshot@example.com',
     ]);
     $ceo = payrollManagerUser('ceo', [
@@ -447,14 +458,11 @@ test('employees can view and download only their own approved payslips while man
         'company_logo' => 'company-logos/test-logo.png',
     ]);
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.payslip@example.com',
     ]);
     $ceo = payrollManagerUser('ceo', [
         'email' => 'ceo.payslip@example.com',
-    ]);
-    $admin = payrollManagerUser('admin', [
-        'email' => 'admin.payslip@example.com',
     ]);
 
     [$employeeUser, $employee] = payrollEmployeeUser('employee', [
@@ -557,7 +565,7 @@ test('employees can view and download only their own approved payslips while man
         ->assertSuccessful()
         ->assertJsonPath('data.id', $approvedOtherPayslip->id);
 
-    Sanctum::actingAs($admin);
+    Sanctum::actingAs($hr);
 
     $this->getJson("/api/payslips/{$draftOwnPayslip->id}")
         ->assertSuccessful()
@@ -567,7 +575,7 @@ test('employees can view and download only their own approved payslips while man
 test('maternity leave deducts 50% of daily rate for employees with at least 1 year of service', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.maternity@example.com',
     ]);
     Sanctum::actingAs($hr);
@@ -619,7 +627,7 @@ test('maternity leave deducts 50% of daily rate for employees with at least 1 ye
 test('maternity leave is fully deducted for employees with less than 1 year of service', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.maternity-junior@example.com',
     ]);
     Sanctum::actingAs($hr);
@@ -668,7 +676,7 @@ test('maternity leave is fully deducted for employees with less than 1 year of s
 test('nssf deduction uses lower threshold for low salary payroll items', function () {
     payrollCompanySettings();
 
-    $hr = payrollManagerUser('hr', [
+    $hr = payrollHrHeadUser([
         'email' => 'hr.nssf@example.com',
     ]);
     Sanctum::actingAs($hr);
@@ -700,4 +708,55 @@ test('nssf deduction uses lower threshold for low salary payroll items', functio
         ->and($item->tax_amount)->toBe('0.00')
         ->and($item->nssf_deduction)->toBe('4.00')
         ->and($item->net_salary)->toBe('196.00');
+});
+
+test('head of hr can generate and approve payroll while regular hr can only view', function () {
+    payrollCompanySettings();
+
+    $hr = payrollManagerUser('hr', [
+        'email' => 'hr.payroll.viewer@example.com',
+    ]);
+    $hrHead = payrollHrHeadUser([
+        'email' => 'hr.head.payroll@example.com',
+    ]);
+
+    [, $employee] = payrollEmployeeUser('employee', [
+        'email' => 'payroll.head.employee@example.com',
+    ], [
+        'employee_id' => 'EMP-80002',
+    ]);
+
+    foreach (range(1, 30) as $day) {
+        makeAttendance($employee, sprintf('2026-04-%02d', $day));
+    }
+
+    Sanctum::actingAs($hr);
+
+    $this->postJson('/api/payrolls', [
+        'month' => 4,
+        'year' => 2026,
+    ])->assertForbidden();
+
+    Sanctum::actingAs($hrHead);
+
+    $batchId = $this->postJson('/api/payrolls', [
+        'month' => 4,
+        'year' => 2026,
+    ])
+        ->assertCreated()
+        ->json('data.id');
+
+    $this->postJson("/api/payrolls/{$batchId}/submit")->assertSuccessful();
+
+    Sanctum::actingAs($hr);
+
+    $this->getJson('/api/payrolls')->assertSuccessful();
+    $this->postJson("/api/payrolls/{$batchId}/submit")->assertForbidden();
+    $this->postJson("/api/payrolls/{$batchId}/approve")->assertForbidden();
+
+    Sanctum::actingAs($hrHead);
+
+    $this->postJson("/api/payrolls/{$batchId}/approve")
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'approved');
 });

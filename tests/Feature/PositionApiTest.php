@@ -47,12 +47,14 @@ test('hr can filter create view update and delete positions', function () {
     $createResponse = $this->withToken($token)->postJson('/api/positions', [
         'name' => 'HR Officer',
         'department_id' => $hrDepartment->id,
+        'job_level' => 'junior',
         'status' => 'active',
     ]);
 
     $createResponse
         ->assertCreated()
-        ->assertJsonPath('data.department.id', $hrDepartment->id);
+        ->assertJsonPath('data.department.id', $hrDepartment->id)
+        ->assertJsonPath('data.job_level', 'junior');
 
     $positionId = $createResponse->json('data.id');
 
@@ -65,10 +67,12 @@ test('hr can filter create view update and delete positions', function () {
         ->putJson("/api/positions/{$positionId}", [
             'name' => 'Senior HR Officer',
             'department_id' => $hrDepartment->id,
+            'job_level' => 'senior',
             'status' => 'inactive',
         ])
         ->assertSuccessful()
         ->assertJsonPath('data.name', 'Senior HR Officer')
+        ->assertJsonPath('data.job_level', 'senior')
         ->assertJsonPath('data.status', 'inactive');
 
     $this->withToken($token)
@@ -91,6 +95,7 @@ test('position create fails when department_id is missing', function () {
     $this->withToken($token)
         ->postJson('/api/positions', [
             'name' => 'No Department Position',
+            'job_level' => 'junior',
             'status' => 'active',
         ])
         ->assertUnprocessable()
@@ -119,6 +124,7 @@ test('position update fails when department_id is missing', function () {
     $this->withToken($token)
         ->putJson("/api/positions/{$position->id}", [
             'name' => 'Operations Officer',
+            'job_level' => 'junior',
             'status' => 'active',
         ])
         ->assertUnprocessable()
@@ -170,4 +176,60 @@ test('employees cannot manage positions', function () {
     $this->withToken($token)
         ->getJson('/api/positions')
         ->assertForbidden();
+});
+
+test('hr can filter positions by job_level', function () {
+    $this->seed(RoleSeeder::class);
+
+    $department = Department::query()->create([
+        'name' => 'Commercial',
+        'status' => 'active',
+    ]);
+
+    Position::query()->create([
+        'name' => 'Sales Executive',
+        'department_id' => $department->id,
+        'job_level' => 'junior',
+        'status' => 'active',
+    ]);
+
+    Position::query()->create([
+        'name' => 'Sales Supervisor',
+        'department_id' => $department->id,
+        'job_level' => 'supervisor',
+        'status' => 'active',
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/positions?job_level=supervisor')
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.name', 'Sales Supervisor')
+        ->assertJsonPath('data.0.job_level', 'supervisor');
+});
+
+test('position create fails when job_level is missing', function () {
+    $this->seed(RoleSeeder::class);
+
+    $department = Department::query()->create([
+        'name' => 'Operations',
+        'status' => 'active',
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->postJson('/api/positions', [
+            'name' => 'Operations Officer',
+            'department_id' => $department->id,
+            'status' => 'active',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('job_level');
 });

@@ -50,7 +50,7 @@ function hierarchyEmployee(array $overrides = []): Employee
 test('hierarchy endpoint returns the nested org chart for any authenticated user', function () {
     [$department, $position] = (function () {
         $department = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
-        $position = Position::query()->create(['name' => 'CEO', 'department_id' => $department->id, 'status' => 'active']);
+        $position = Position::query()->create(['name' => 'CEO', 'department_id' => $department->id, 'job_level' => 'ceo', 'status' => 'active']);
 
         return [$department, $position];
     })();
@@ -78,7 +78,7 @@ test('hierarchy endpoint returns the nested org chart for any authenticated user
         ->and($root['full_name'])->toBe('Top CEO')
         ->and($root)->toHaveKey('profile_photo_url')
         ->and($root['department'])->toBe(['id' => $department->id, 'name' => 'Executive'])
-        ->and($root['position'])->toBe(['id' => $position->id, 'name' => 'CEO'])
+        ->and($root['position'])->toBe(['id' => $position->id, 'name' => 'CEO', 'job_level' => 'ceo'])
         ->and($root['children'])->toHaveCount(1);
 
     $managerNode = $root['children'][0];

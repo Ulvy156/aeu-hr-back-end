@@ -21,7 +21,7 @@ class PayrollReportController extends Controller
 
     public function index(IndexPayrollReportRequest $request)
     {
-        $report = $this->payrollReportService->report($request->validated());
+        $report = $this->payrollReportService->report($request->validated(), $request->user());
 
         if (! $report['paginated']) {
             return ApiResponse::success(
@@ -66,7 +66,7 @@ class PayrollReportController extends Controller
 
     public function export(IndexPayrollReportRequest $request): BinaryFileResponse
     {
-        $export = $this->payrollReportService->export($request->validated());
+        $export = $this->payrollReportService->export($request->validated(), $request->user());
 
         return Excel::download($export['export'], $export['file_name']);
     }

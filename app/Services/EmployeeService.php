@@ -21,6 +21,7 @@ class EmployeeService
 {
     public function __construct(
         protected AuditLogService $auditLogService,
+        protected JobLevelRoleService $jobLevelRoleService,
     ) {}
 
     /**
@@ -53,6 +54,10 @@ class EmployeeService
                 }
             })
             ->when($filters['position_id'] ?? null, fn (Builder $query, $positionId) => $query->where('position_id', $positionId))
+            ->when($filters['job_level'] ?? null, fn (Builder $query, $jobLevel) => $query->whereHas(
+                'position',
+                fn (Builder $positionQuery) => $positionQuery->where('job_level', $jobLevel),
+            ))
             ->when($filters['employment_status'] ?? null, fn (Builder $query, $status) => $query->where('employment_status', $status))
             ->orderByDesc('created_at')
             ->paginate($perPage);
@@ -90,6 +95,61 @@ class EmployeeService
     }
 
     /**
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, array{
+     *     id: int,
+     *     employee_id: string,
+     *     full_name: string,
+     *     department: array{id: int, name: string}|null,
+     *     position: array{id: int, name: string, job_level: string}|null
+     * }>
+     */
+    public function lineManagers(array $filters): Collection
+    {
+        $term = trim((string) ($filters['q'] ?? ''));
+
+        if ($term === '') {
+            return collect();
+        }
+
+        $normalizedTerm = '%'.Str::lower($term).'%';
+        $limit = (int) ($filters['per_page'] ?? 15);
+        $excludeId = isset($filters['exclude_id']) ? (int) $filters['exclude_id'] : null;
+
+        return Employee::query()
+            ->select(['id', 'employee_id', 'full_name', 'department_id', 'position_id'])
+            ->with(['department:id,name', 'position:id,name,job_level'])
+            ->when($excludeId, fn (Builder $query) => $query->whereKeyNot($excludeId))
+            ->where(function (Builder $query) use ($normalizedTerm): void {
+                $query
+                    ->whereRaw('LOWER(full_name) LIKE ?', [$normalizedTerm])
+                    ->orWhereRaw('LOWER(employee_id) LIKE ?', [$normalizedTerm]);
+            })
+            ->orderBy('full_name')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Employee $employee): array => [
+                'id' => $employee->id,
+                'employee_id' => $employee->employee_id,
+                'full_name' => $employee->full_name,
+                'department' => $employee->department
+                    ? [
+                        'id' => $employee->department->id,
+                        'name' => $employee->department->name,
+                    ]
+                    : null,
+                'position' => $employee->position
+                    ? [
+                        'id' => $employee->position->id,
+                        'name' => $employee->position->name,
+                        'job_level' => $employee->position->job_level?->value,
+                    ]
+                    : null,
+            ])
+            ->values();
+    }
+
+    /**
      * Build the full reporting-line org chart as a tree of root employees
      * (those with no manager), each with a `children` relation populated
      * recursively.
@@ -100,7 +160,7 @@ class EmployeeService
     {
         $employees = Employee::query()
             ->select(['id', 'employee_id', 'full_name', 'manager_id', 'department_id', 'position_id', 'profile_photo'])
-            ->with(['department:id,name', 'position:id,name'])
+            ->with(['department:id,name', 'position:id,name,job_level'])
             ->orderBy('full_name')
             ->get();
 
@@ -186,6 +246,7 @@ class EmployeeService
                     ]);
 
                     $employee->load(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
+                    $this->jobLevelRoleService->syncForEmployee($employee);
 
                     $this->auditLogService->log(
                         action: 'create',
@@ -222,6 +283,8 @@ class EmployeeService
     ): Employee {
         return DB::transaction(function () use ($employee, $data, $profilePhoto, $documentFiles, $removeDocuments, $actor, $ipAddress, $userAgent): Employee {
             $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
+            $previousPositionId = $employee->position_id;
+            $previousDepartmentId = $employee->department_id;
             $oldValues = $this->auditAttributes($employee);
 
             $userStatus = $this->userStatusFromEmploymentStatus($data['employment_status']);
@@ -270,6 +333,10 @@ class EmployeeService
 
             $employee->update($attributes);
             $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
+
+            if ($employee->position_id !== $previousPositionId || $employee->department_id !== $previousDepartmentId) {
+                $this->jobLevelRoleService->syncForEmployee($employee);
+            }
 
             $this->auditLogService->log(
                 action: 'update',
@@ -419,7 +486,17 @@ class EmployeeService
             ]);
         }
 
+        $previousPositionId = $employee->position_id;
+        $previousDepartmentId = $employee->department_id;
         $employee->update($attributes);
+
+        if (
+            (array_key_exists('position_id', $changes) && (int) $employee->position_id !== (int) $previousPositionId)
+            || (array_key_exists('department_id', $changes) && (int) $employee->department_id !== (int) $previousDepartmentId)
+        ) {
+            $employee->load(['position', 'department']);
+            $this->jobLevelRoleService->syncForEmployee($employee);
+        }
 
         if (array_key_exists('employment_status', $changes) && $employee->user) {
             $userStatus = $this->userStatusFromEmploymentStatus($changes['employment_status']);

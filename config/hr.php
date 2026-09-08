@@ -45,6 +45,31 @@ return [
         ],
     ],
     'auth' => [],
+    'hr_department_name' => 'HR & Admin',
+    'job_levels' => [
+        'default_roles' => [
+            'junior' => 'employee',
+            'senior' => 'employee',
+            'supervisor' => 'employee',
+            'manager' => 'manager',
+            'head' => 'head',
+            'gm' => 'gm',
+            'ceo' => 'ceo',
+        ],
+        'protected_roles' => [
+            'admin',
+            'hr',
+        ],
+        'hr_head_permissions' => [
+            'leaves.approve_hr',
+            'leaves.reject_hr',
+            'payrolls.generate',
+            'payrolls.update',
+            'payrolls.submit',
+            'payrolls.approve',
+            'payrolls.reject',
+        ],
+    ],
     'payroll' => [
         'tax_brackets' => [
             ['up_to' => 375.00, 'rate' => 0.00],

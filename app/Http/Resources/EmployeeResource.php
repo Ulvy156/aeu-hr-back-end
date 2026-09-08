@@ -45,6 +45,7 @@ class EmployeeResource extends JsonResource
                     'name' => $this->user->name,
                     'email' => $this->user->email,
                     'status' => $this->user->status,
+                    'is_ceo' => $this->user->hasRole('ceo'),
                 ]
                 : null),
             'department' => $this->whenLoaded('department', fn () => $this->department
@@ -58,6 +59,7 @@ class EmployeeResource extends JsonResource
                 ? [
                     'id' => $this->position->id,
                     'name' => $this->position->name,
+                    'job_level' => $this->position->job_level,
                     'status' => $this->position->status,
                 ]
                 : null),

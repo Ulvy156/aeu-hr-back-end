@@ -28,6 +28,10 @@ Payroll endpoints:
 - `payslips.download_any`
 - `payslips.download_own`
 
+Department heads (`head` role / `job_level: head`) can use `payrolls.view_any` and `payslips.view_any`, but records are limited to their department. Head of `HR & Admin` sees all payroll. Totals on a payroll batch for a non-HR head only include that department's items.
+
+Head of `HR & Admin` receives `payrolls.generate`, `payrolls.update`, `payrolls.submit`, `payrolls.approve`, and `payrolls.reject` through job-level inheritance. Other HR users can view payroll and payslips only. `ceo` still has payroll approve/reject.
+
 ## Endpoint List
 
 ### Payroll Batches

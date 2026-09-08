@@ -39,7 +39,7 @@ Return the full org chart as a list of root nodes (employees with no `manager_id
       "full_name": "Torn Punleu",
       "profile_photo_url": "https://files.example.com/employee-profile-photos/ceo.jpg",
       "department": { "id": 1, "name": "Executive" },
-      "position": { "id": 1, "name": "CEO" },
+      "position": { "id": 1, "name": "CEO", "job_level": "ceo" },
       "children": [
         {
           "id": 2,
@@ -47,7 +47,7 @@ Return the full org chart as a list of root nodes (employees with no `manager_id
           "full_name": "Sreng Davy",
           "profile_photo_url": "https://files.example.com/employee-profile-photos/deputy.jpg",
           "department": { "id": 1, "name": "Executive" },
-          "position": { "id": 2, "name": "Deputy Director" },
+          "position": { "id": 2, "name": "Deputy Director", "job_level": "gm" },
           "children": [
             {
               "id": 3,
@@ -55,7 +55,7 @@ Return the full org chart as a list of root nodes (employees with no `manager_id
               "full_name": "Staff Member",
               "profile_photo_url": null,
               "department": { "id": 2, "name": "Operations" },
-              "position": { "id": 5, "name": "Operations Staff" },
+              "position": { "id": 5, "name": "Operations Staff", "job_level": "junior" },
               "children": []
             }
           ]

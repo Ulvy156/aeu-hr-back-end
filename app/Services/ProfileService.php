@@ -21,7 +21,7 @@ class ProfileService
     {
         $user->loadMissing([
             'employee.department:id,name,status',
-            'employee.position:id,name,status',
+            'employee.position:id,name,job_level,status',
             'roles:id,name',
         ]);
 

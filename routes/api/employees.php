@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/employees/search', [EmployeeController::class, 'search']);
+    Route::get('/employees/managers', [EmployeeController::class, 'managers']);
     Route::get('/employees/hierarchy', [EmployeeController::class, 'hierarchy']);
     Route::get('/employees/{employee}/employment-history', [EmploymentHistoryController::class, 'index']);
     Route::apiResource('employees', EmployeeController::class);

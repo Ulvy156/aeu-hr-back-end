@@ -60,8 +60,7 @@ class LeavePolicy
 
     protected function canApproveAsHr(User $user): bool
     {
-        return $user->hasRole('hr')
-            && ($user->hasPermissionTo('leaves.approve_hr') || $user->hasPermissionTo('leaves.approve'));
+        return $user->hasPermissionTo('leaves.approve_hr') || $user->hasPermissionTo('leaves.approve');
     }
 
     protected function canApproveAsCeo(User $user): bool
@@ -72,8 +71,7 @@ class LeavePolicy
 
     protected function canRejectAsHr(User $user): bool
     {
-        return $user->hasRole('hr')
-            && ($user->hasPermissionTo('leaves.reject_hr') || $user->hasPermissionTo('leaves.reject'));
+        return $user->hasPermissionTo('leaves.reject_hr') || $user->hasPermissionTo('leaves.reject');
     }
 
     protected function canRejectAsCeo(User $user): bool

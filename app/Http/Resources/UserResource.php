@@ -60,6 +60,7 @@ class UserResource extends JsonResource
                             ? [
                                 'id' => $this->employee->position->id,
                                 'name' => $this->employee->position->name,
+                                'job_level' => $this->employee->position->job_level,
                             ]
                             : null)
                         : null,

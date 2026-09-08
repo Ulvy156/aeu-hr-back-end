@@ -4,10 +4,15 @@ namespace App\Services;
 
 use App\Models\Position;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PositionService
 {
+    public function __construct(
+        protected JobLevelRoleService $jobLevelRoleService,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $filters
      */
@@ -19,6 +24,7 @@ class PositionService
             ->with(['department'])
             ->withCount('employees')
             ->when($filters['department_id'] ?? null, fn ($query, $departmentId) => $query->where('department_id', $departmentId))
+            ->when($filters['job_level'] ?? null, fn ($query, $jobLevel) => $query->where('job_level', $jobLevel))
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where('name', 'like', '%'.$search.'%');
@@ -40,9 +46,17 @@ class PositionService
      */
     public function update(Position $position, array $data): Position
     {
-        $position->update($data);
+        return DB::transaction(function () use ($position, $data): Position {
+            $previousJobLevel = $position->job_level;
+            $previousDepartmentId = $position->department_id;
+            $position->update($data);
 
-        return $position->fresh(['department']);
+            if ($position->job_level !== $previousJobLevel || $position->department_id !== $previousDepartmentId) {
+                $this->jobLevelRoleService->syncForPosition($position);
+            }
+
+            return $position->fresh(['department']);
+        });
     }
 
     public function delete(Position $position): void

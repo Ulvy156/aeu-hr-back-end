@@ -35,6 +35,7 @@ HR and Admin can manage employees with the current seeded role setup. CEO can ad
 
 - `GET /api/employees`
 - `GET /api/employees/search`
+- `GET /api/employees/managers`
 - `POST /api/employees`
 - `GET /api/employees/{employee}`
 - `PUT /api/employees/{employee}`
@@ -86,6 +87,62 @@ This endpoint is not paginated and returns at most `15` results.
 
 ---
 
+## GET /api/employees/managers
+
+Return a lightweight employee list for the line-manager picker.
+
+This endpoint is not paginated. It searches **all departments** (no `department_id` filter) and returns at most `per_page` results (default `15`, max `100`).
+
+Use this endpoint for the employee create/update Manager field and for upgrade-request `manager_id` proposals. Do **not** use `GET /api/employees?department_id=&include_ceo=1` for that field.
+
+### Query Parameters
+
+- `q`: optional string; when blank or missing, the endpoint returns `{ "success": true, "data": [] }`
+- `exclude_id`: optional integer, must exist in `employees.id` — omit this employee from results (the record being edited)
+- `per_page`: optional integer, `1` to `100`, default `15`
+
+### Search Behavior
+
+- Case-insensitive `LIKE %q%`
+- Searches `employees.full_name`
+- Searches `employees.employee_id`
+- Orders by `full_name` ascending
+- Does not filter by department or job level
+
+### Authorization
+
+- Same as search: `employees.search` via `authorize('search', Employee::class)`
+- Allowed roles in the current backend setup: `admin`, `hr`, `ceo`, plus `gm`, `head`, and `manager`
+- `employee` users receive `403 Forbidden`
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "message": "Managers fetched successfully.",
+  "data": [
+    {
+      "id": 3,
+      "employee_id": "EMP-00003",
+      "full_name": "Sim Sea",
+      "department": { "id": 1, "name": "Executive" },
+      "position": { "id": 2, "name": "General Manager", "job_level": "gm" }
+    }
+  ]
+}
+```
+
+`id` is the numeric primary key to post as `manager_id`.
+
+### Frontend Notes
+
+- Empty queries return `data: []`.
+- No-result queries return `data: []`.
+- Pass `exclude_id` on edit so an employee cannot pick themselves.
+
+---
+
 ## GET /api/employees
 
 Return a paginated employee list.
@@ -96,8 +153,9 @@ Soft-deleted employees are excluded from the default list.
 
 - `search`: optional string, searches `employee_id`, `full_name`, and the linked user's `email`
 - `department_id`: optional integer, filters by department
-- `include_ceo`: optional boolean, only takes effect together with `department_id` — when true, the `department_id` filter becomes an OR: employees in that department, plus any employee whose linked user holds the `ceo` role (regardless of their own department). Used by the frontend's manager picker so the CEO always appears as a valid fallback manager.
+- `include_ceo`: optional boolean, only takes effect together with `department_id` — when true, the `department_id` filter becomes an OR: employees in that department, plus any employee whose linked user holds the `ceo` role (regardless of their own department). Kept for other screens; the Manager field uses `GET /api/employees/managers` instead.
 - `position_id`: optional integer, filters by position
+- `job_level`: optional enum, `junior`, `senior`, `supervisor`, `manager`, `head`, `gm`, or `ceo` — filters employees by their assigned position's job level
 - `employment_status`: optional enum, `full-time`, `probation`, `intern`, `resigned`, or `terminated`
 - `per_page`: optional integer, `1` to `100`
 
@@ -137,7 +195,7 @@ Soft-deleted employees are excluded from the default list.
         "name": "Admin User",
         "email": "admin.employee@example.com",
         "status": "active",
-        "roles": ["employee"]
+        "is_ceo": false
       },
       "department": {
         "id": 1,
@@ -147,6 +205,7 @@ Soft-deleted employees are excluded from the default list.
       "position": {
         "id": 2,
         "name": "Accountant",
+        "job_level": "junior",
         "status": "active"
       },
       "manager": {
@@ -201,7 +260,7 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
 - `address`: optional string
 - `department_id`: required integer, must exist in `departments`. Required for every employee, including the CEO (seeded into the "Executive" department).
 - `position_id`: optional integer, must exist in `positions`
-- `manager_id`: integer, must exist in `employees.id` (non-soft-deleted). **Required for every employee except the CEO** (the user account linked via `user_id` holds the `ceo` role) — the CEO sits at the top of the reporting hierarchy and has no manager.
+- `manager_id`: integer, must exist in `employees.id` (non-soft-deleted). **Required for every employee except the CEO** (the user account linked via `user_id` holds the `ceo` role). The CEO may omit it or set a manager in any department.
 - `join_date`: required date
 - `last_working_date`: optional date
 - `base_salary`: required numeric, minimum `0`
@@ -218,8 +277,8 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
 - `user_id` is required.
 - The selected `user_id` must point to an existing user that does not already have an employee profile.
 - `employees.user_id` is unique.
-- `manager_id` is required unless the linked user (`user_id`) holds the `ceo` role. Only the CEO can be created without a manager.
-- The selected manager must belong to the same `department_id` as the employee being created, unless the manager holds the `ceo` role. Skipped if either `department_id` is not set.
+- `manager_id` is required unless the linked user (`user_id`) holds the `ceo` role. The CEO may be created without a manager, or with a manager in any department.
+- The selected manager may belong to any department.
 - `employee_id` is generated by the backend and must not be sent by the frontend on create.
 - `password` is not accepted by this endpoint because the linked user must already exist.
 - `profile_photo` is optional.
@@ -279,6 +338,7 @@ Use `multipart/form-data` when sending `profile_photo` or `documents`.
     "position": {
       "id": 2,
       "name": "Accountant",
+      "job_level": "junior",
       "status": "active"
     },
     "manager": {
@@ -357,9 +417,9 @@ Use `multipart/form-data` when replacing `profile_photo` or uploading/replacing 
 - `intern_end_date` must be on or after `join_date`. See create endpoint notes for default behavior when `employment_status` is `intern`.
 - `department_id`: required integer, must exist in `departments`. Required for every employee, including the CEO.
 - If `position_id` belongs to a department, it must match `department_id`.
-- `manager_id`: integer, must exist in `employees.id` (non-soft-deleted). **Required for every employee except the CEO** (the employee's linked user account holds the `ceo` role).
+- `manager_id`: integer, must exist in `employees.id` (non-soft-deleted). **Required for every employee except the CEO** (the employee's linked user account holds the `ceo` role). The CEO may omit it or set a manager in any department.
 - An employee cannot be set as their own manager, and a `manager_id` change that would create a circular reporting relationship is rejected.
-- The selected manager must belong to the same `department_id` as the employee, unless the manager's linked user holds the `ceo` role (the CEO is always a valid fallback manager for any department, e.g. one that doesn't have its own manager yet). Skipped if either the employee's or the manager's `department_id` is not set. Rejected on `manager_id` with `"The selected manager must belong to the same department, unless they hold the CEO role."`
+- The selected manager may belong to any department.
 - Changing `base_salary` is protected by the additional `employees.update_salary` permission.
 - `employee_id` is read-only and cannot be changed on update.
 - `user_id` is immutable after employee creation and is rejected on update.
@@ -412,3 +472,4 @@ Soft delete an employee.
 - Do not send existing document paths or URLs back as `documents` entries.
 - An employee may have at most `5` documents, with a total combined size of `20 MB`.
 - `PUT /api/employees/{employee}` does not create `employment_histories` rows. See `.claude/api/EMPLOYMENT_HISTORY_API.md`. For changes that require approval and an audit trail (transfers, promotions, salary changes, status changes), use `.claude/api/EMPLOYEE_UPGRADE_REQUEST_API.md` instead.
+- Creating an employee, or updating `position_id`, assigns the default Spatie role for that position's `job_level` unless the user already has `hr` or `admin`. Updating other employee fields does not change roles. See `.claude/api/POSITION_API.md` and `.claude/api/ROLE_PERMISSION_API.md`.

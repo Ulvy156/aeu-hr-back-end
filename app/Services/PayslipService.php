@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Enums\PayrollViewScope;
 use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\PayrollItem;
 use App\Models\User;
 use App\Support\FileStorage;
+use App\Support\PayrollVisibility;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,6 +19,7 @@ class PayslipService
 {
     public function __construct(
         protected CompanySettingService $companySettingService,
+        protected PayrollVisibility $payrollVisibility,
     ) {}
 
     /**
@@ -44,6 +47,21 @@ class PayslipService
             ->orderByDesc('payroll_items.id');
 
         if ($viewer->hasPermissionTo('payslips.view_any')) {
+            $scope = $this->payrollVisibility->scope($viewer, 'payslips.view_any', 'payslips.view_own');
+
+            if ($scope === PayrollViewScope::Department) {
+                $departmentId = $this->payrollVisibility->departmentId($viewer);
+
+                if (! $departmentId) {
+                    throw ApiException::forbidden('No employee profile is linked to this user account.');
+                }
+
+                $query->whereHas(
+                    'employee',
+                    fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId),
+                );
+            }
+
             return $query->paginate($perPage);
         }
 
