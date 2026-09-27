@@ -967,7 +967,8 @@ class PayrollService
 
             while ($cursor->lte($segmentEnd)) {
                 if ($this->isWorkingPayrollDate($cursor, $settings, $holidayDates)) {
-                    $dayCounter++;
+                    $leaveDayFraction = $leave->duration_type === 'half_day' ? 0.5 : 1.0;
+                    $dayCounter += $leaveDayFraction;
 
                     $deductionRate = 1.0;
                     foreach ($tiers as $tier) {
@@ -977,7 +978,7 @@ class PayrollService
                         }
                     }
 
-                    $totalDeductionWeighted += $deductionRate;
+                    $totalDeductionWeighted += $deductionRate * $leaveDayFraction;
                 }
 
                 $cursor->addDay();

@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
 use App\Models\User;
+use App\Services\PayrollService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Database\QueryException;
@@ -708,6 +709,37 @@ test('nssf deduction uses lower threshold for low salary payroll items', functio
         ->and($item->tax_amount)->toBe('0.00')
         ->and($item->nssf_deduction)->toBe('4.00')
         ->and($item->net_salary)->toBe('196.00');
+});
+
+test('half-day special sick leave receives a half-day deduction', function () {
+    config()->set('hr.leave.special_sick.tiers', [
+        ['up_to_day' => 30, 'pay_rate' => 0.50],
+        ['up_to_day' => 90, 'pay_rate' => 0.40],
+        ['up_to_day' => 180, 'pay_rate' => 0.20],
+    ]);
+
+    $leave = new LeaveRequest([
+        'leave_type' => 'special_sick',
+        'start_date' => Carbon::parse('2026-04-01'),
+        'end_date' => Carbon::parse('2026-04-01'),
+        'duration_type' => 'half_day',
+    ]);
+    $settings = new CompanySetting([
+        'working_days' => ['wednesday'],
+    ]);
+    $method = new ReflectionMethod(PayrollService::class, 'specialSickTieredDeduction');
+    $method->setAccessible(true);
+
+    $weightedDeduction = $method->invoke(
+        app(PayrollService::class),
+        collect([$leave]),
+        Carbon::parse('2026-04-01'),
+        Carbon::parse('2026-04-01'),
+        $settings,
+        [],
+    );
+
+    expect($weightedDeduction)->toBe(0.25);
 });
 
 test('head of hr can generate and approve payroll while regular hr can only view', function () {
