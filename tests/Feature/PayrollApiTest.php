@@ -623,6 +623,22 @@ test('maternity leave deducts 50% of daily rate for employees with at least 1 ye
         ->and($item->tax_rate)->toBe('0.0900')
         ->and($item->nssf_deduction)->toBe('6.00')
         ->and($item->net_salary)->toBe('2269.00');
+
+    $item->update([
+        'special_sick_deduction' => '25.00',
+        'net_salary' => '2244.00',
+    ]);
+
+    $this->getJson('/api/payrolls?month=4&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.totals.maternity_deduction', '2500.00')
+        ->assertJsonPath('data.0.totals.special_sick_deduction', '25.00');
+
+    $this->getJson("/api/payrolls/{$batchId}")
+        ->assertSuccessful()
+        ->assertJsonPath('data.totals.maternity_deduction', '2500.00')
+        ->assertJsonPath('data.totals.special_sick_deduction', '25.00')
+        ->assertJsonPath('data.items.0.maternity_deduction', '2500.00');
 });
 
 test('maternity leave is fully deducted for employees with less than 1 year of service', function () {

@@ -328,6 +328,45 @@ test('hr dashboard includes unrecorded absences after the workday ends', functio
     expect(Attendance::query()->count())->toBe(0);
 });
 
+test('hr dashboard counts employees without attendance after work starts and updates when they clock in', function () {
+    Carbon::setTestNow('2026-10-02 07:59:00');
+    dashboardCompanySettings();
+    $hr = dashboardManagerUser('hr');
+    [, $clockedEmployee] = dashboardEmployeeUser();
+    [, $unclockedEmployee] = dashboardEmployeeUser();
+    [, $onLeaveEmployee] = dashboardEmployeeUser();
+    dashboardEmployeeUser('employee', [], ['join_date' => '2026-10-03']);
+
+    dashboardAttendance($clockedEmployee, '2026-10-02', 'present');
+    dashboardLeave($onLeaveEmployee, [
+        'start_date' => '2026-10-02',
+        'end_date' => '2026-10-02',
+        'status' => 'approved',
+    ]);
+
+    Sanctum::actingAs($hr);
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.total_records', 1)
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 0);
+
+    Carbon::setTestNow('2026-10-02 10:00:00');
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.total_records', 2)
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 1);
+
+    dashboardAttendance($unclockedEmployee, '2026-10-02', 'late');
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.total_records', 2)
+        ->assertJsonPath('data.today_attendance_summary.late_count', 1)
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 0);
+});
+
 test('ceo dashboard returns pending ceo leave approvals and payroll approval summary', function () {
     dashboardCompanySettings();
     $ceo = dashboardManagerUser('ceo', [

@@ -432,6 +432,7 @@ class PayrollService
             ->loadSum($itemConstraint ? ['items as total_gross_salary' => $itemConstraint] : 'items as total_gross_salary', 'gross_salary')
             ->loadSum($itemConstraint ? ['items as total_unpaid_deduction' => $itemConstraint] : 'items as total_unpaid_deduction', 'unpaid_deduction')
             ->loadSum($itemConstraint ? ['items as total_absence_deduction' => $itemConstraint] : 'items as total_absence_deduction', 'absence_deduction')
+            ->loadSum($itemConstraint ? ['items as total_maternity_deduction' => $itemConstraint] : 'items as total_maternity_deduction', 'maternity_deduction')
             ->loadSum($itemConstraint ? ['items as total_special_sick_deduction' => $itemConstraint] : 'items as total_special_sick_deduction', 'special_sick_deduction')
             ->loadSum($itemConstraint ? ['items as total_tax_amount' => $itemConstraint] : 'items as total_tax_amount', 'tax_amount')
             ->loadSum($itemConstraint ? ['items as total_nssf_deduction' => $itemConstraint] : 'items as total_nssf_deduction', 'nssf_deduction')
@@ -450,6 +451,8 @@ class PayrollService
                 ->withSum(['items as total_gross_salary' => $itemConstraint], 'gross_salary')
                 ->withSum(['items as total_unpaid_deduction' => $itemConstraint], 'unpaid_deduction')
                 ->withSum(['items as total_absence_deduction' => $itemConstraint], 'absence_deduction')
+                ->withSum(['items as total_maternity_deduction' => $itemConstraint], 'maternity_deduction')
+                ->withSum(['items as total_special_sick_deduction' => $itemConstraint], 'special_sick_deduction')
                 ->withSum(['items as total_tax_amount' => $itemConstraint], 'tax_amount')
                 ->withSum(['items as total_nssf_deduction' => $itemConstraint], 'nssf_deduction')
                 ->withSum(['items as total_net_salary' => $itemConstraint], 'net_salary');
@@ -462,6 +465,8 @@ class PayrollService
             ->withSum('items as total_gross_salary', 'gross_salary')
             ->withSum('items as total_unpaid_deduction', 'unpaid_deduction')
             ->withSum('items as total_absence_deduction', 'absence_deduction')
+            ->withSum('items as total_maternity_deduction', 'maternity_deduction')
+            ->withSum('items as total_special_sick_deduction', 'special_sick_deduction')
             ->withSum('items as total_tax_amount', 'tax_amount')
             ->withSum('items as total_nssf_deduction', 'nssf_deduction')
             ->withSum('items as total_net_salary', 'net_salary');

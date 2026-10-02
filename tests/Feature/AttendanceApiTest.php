@@ -387,6 +387,29 @@ test('attendance list allows hr to filter by employee and status', function () {
         ->assertJsonPath('data.0.employee.id', $otherEmployee->id);
 });
 
+test('late attendance filter includes late records with missing clock-out', function () {
+    attendanceCompanySettings();
+    [, $employee] = attendanceEmployeeUser();
+
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:15:00',
+        'status' => 'missing_clock_out',
+        'is_late' => true,
+    ]);
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+
+    $this->withToken($hr->createToken('hr-device')->plainTextToken)
+        ->getJson("/api/attendance?employee_id={$employee->employee_id}&status=late")
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.status', 'missing_clock_out')
+        ->assertJsonPath('data.0.is_late', true);
+});
+
 test('hr can switch between own and team attendance without exposing another employee in own scope', function () {
     [$hr, $hrEmployee] = attendanceEmployeeUser('hr', [], ['full_name' => 'HR Employee']);
     [, $otherEmployee] = attendanceEmployeeUser('employee', [], ['full_name' => 'Other Employee']);
@@ -641,6 +664,37 @@ test('attendance correction recalculates is_late from corrected clock in time', 
         ->assertJsonPath('data.is_late', true);
 
     expect($attendance->fresh()->is_late)->toBeTrue();
+});
+
+test('manual late correction remains late after a missing clock out', function () {
+    Carbon::setTestNow('2026-10-02 10:00:00');
+    attendanceCompanySettings();
+
+    [, $employee] = attendanceEmployeeUser();
+    $attendance = Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-10-02',
+        'clock_in_time' => '2026-10-02 07:59:22',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->putJson("/api/attendance/{$attendance->id}/correction", [
+            'status' => 'late',
+            'correction_reason' => 'Manual late decision.',
+        ])
+        ->assertSuccessful()
+        ->assertJsonPath('data.is_late', true);
+
+    Carbon::setTestNow('2026-10-02 20:00:00');
+    $this->artisan('attendance:mark-missing-clock-out')->assertSuccessful();
+
+    expect($attendance->fresh()->status)->toBe('missing_clock_out')
+        ->and($attendance->fresh()->is_late)->toBeTrue();
 });
 
 test('mark absent uses today when no attendance date is provided', function () {

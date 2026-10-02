@@ -52,7 +52,7 @@ class HrDashboardService
             ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
             ->first();
 
-        $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today);
+        $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today, includeCurrentDayAfterStart: true);
 
         return [
             'total_records' => (int) ($summary?->total_records ?? 0) + $unrecordedAbsences,

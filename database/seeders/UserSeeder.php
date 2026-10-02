@@ -29,11 +29,12 @@ class UserSeeder extends Seeder
         $seniorSalesSupervisorPos = Position::where('name', 'Senior Sales Supervisor')->first();
         $salesSupervisorPos = Position::where('name', 'Sales Supervisor')->first();
         $salesExecutivePos = Position::where('name', 'Sales Executive')->first();
-        $hrAdminPos = Position::where('name', 'HR Admin')->where('department_id', $hrAdminDept?->id)->first();
+        $hrHeadPos = Position::where('name', 'Head of HR')->where('department_id', $hrAdminDept?->id)->first();
 
         $joinDate = now()->toDateString();
         $fullTime = EmploymentStatus::FullTime->value;
 
+        // Illustrative monthly gross base salaries in USD for Phnom Penh; sales commission is not included.
         // Occupied org-chart seats only. Vacant boxes are positions without users.
         $users = [
             [
@@ -46,7 +47,7 @@ class UserSeeder extends Seeder
                     'position_id' => $ceoPos?->id,
                     'manager_email' => null,
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 3200.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -60,7 +61,7 @@ class UserSeeder extends Seeder
                     'position_id' => $generalManagerPos?->id,
                     'manager_email' => 'tum.punleu@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 2200.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -74,7 +75,7 @@ class UserSeeder extends Seeder
                     'position_id' => $seniorSalesSupervisorPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 900.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -95,7 +96,7 @@ class UserSeeder extends Seeder
                     'position_id' => $salesSupervisorPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 650.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -114,7 +115,7 @@ class UserSeeder extends Seeder
                     'position_id' => $salesSupervisorPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 650.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -133,7 +134,7 @@ class UserSeeder extends Seeder
                     'position_id' => $marketingSupervisorPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 700.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -147,7 +148,7 @@ class UserSeeder extends Seeder
                     'position_id' => $designPos?->id,
                     'manager_email' => 'roth.narak@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 450.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -161,7 +162,7 @@ class UserSeeder extends Seeder
                     'position_id' => $accountStockPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 500.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -173,10 +174,10 @@ class UserSeeder extends Seeder
                     'full_name' => 'Kean Da',
                     'gender' => null,
                     'department_id' => $hrAdminDept?->id,
-                    'position_id' => $hrAdminPos?->id,
+                    'position_id' => $hrHeadPos?->id,
                     'manager_email' => 'sim.sea@gmail.com',
                     'join_date' => $joinDate,
-                    'base_salary' => 0.00,
+                    'base_salary' => 1100.00,
                     'employment_status' => $fullTime,
                 ],
             ],
@@ -213,6 +214,15 @@ class UserSeeder extends Seeder
             if ($employee === null) {
                 $employeeData['employee_id'] = $this->availableEmployeeId($employeeData['employee_id']);
                 $employee = Employee::query()->create(array_merge($employeeData, ['user_id' => $user->id]));
+            } elseif ($user->email === 'hr@gmail.com' && $employee->position_id !== $hrHeadPos?->id) {
+                $employee->update([
+                    'department_id' => $hrAdminDept?->id,
+                    'position_id' => $hrHeadPos?->id,
+                ]);
+            }
+
+            if (! $employee->wasRecentlyCreated && ! $employee->trashed() && (float) $employee->base_salary === 0.0) {
+                $employee->update(['base_salary' => $employeeData['base_salary']]);
             }
 
             $employeesByEmail[$user->email] = [
@@ -221,7 +231,7 @@ class UserSeeder extends Seeder
                 'just_created' => $employee->wasRecentlyCreated,
             ];
 
-            if ($employee->wasRecentlyCreated) {
+            if ($employee->wasRecentlyCreated || $user->email === 'hr@gmail.com') {
                 $syncRoleFor[] = $employee;
             }
         }
@@ -259,7 +269,7 @@ class UserSeeder extends Seeder
                 'position_id' => $positionId,
                 'manager_email' => $managerEmail,
                 'join_date' => $joinDate,
-                'base_salary' => 0.00,
+                'base_salary' => 350.00,
                 'employment_status' => $employmentStatus,
             ],
         ], $people);

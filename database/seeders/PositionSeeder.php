@@ -33,6 +33,7 @@ class PositionSeeder extends Seeder
             ],
             'HR & Admin' => [
                 ['name' => 'HR Admin', 'job_level' => JobLevel::Junior],
+                ['name' => 'Head of HR', 'job_level' => JobLevel::Head],
             ],
         ];
 

@@ -40,7 +40,9 @@ class AttendanceService
             ->when($filters['attendance_date'] ?? null, fn (Builder $query, string $attendanceDate) => $query->whereDate('attendance_date', $attendanceDate))
             ->when($filters['date_from'] ?? null, fn (Builder $query, string $dateFrom) => $query->whereDate('attendance_date', '>=', $dateFrom))
             ->when($filters['date_to'] ?? null, fn (Builder $query, string $dateTo) => $query->whereDate('attendance_date', '<=', $dateTo))
-            ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
+            ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $status === 'late'
+                ? $query->where(fn (Builder $lateQuery) => $lateQuery->where('status', 'late')->orWhere('is_late', true))
+                : $query->where('status', $status))
             ->orderByDesc('attendance_date')
             ->orderByDesc('id');
 
@@ -192,7 +194,8 @@ class AttendanceService
                 : $attendance->clock_in_time;
             $finalStatus = (string) ($attributes['status'] ?? $attendance->status);
 
-            $attributes['is_late'] = $this->isLateForTime($finalClockInTime, $finalStatus, $settings);
+            $attributes['is_late'] = $finalStatus === 'late'
+                || $this->isLateForTime($finalClockInTime, $finalStatus, $settings);
 
             $attendance->update($attributes);
             $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
@@ -307,7 +310,10 @@ class AttendanceService
                     continue;
                 }
 
-                $attendance->update(['status' => 'missing_clock_out']);
+                $attendance->update([
+                    'status' => 'missing_clock_out',
+                    'is_late' => $attendance->is_late || $attendance->status === 'late',
+                ]);
                 $updated++;
             }
 
@@ -542,15 +548,20 @@ class AttendanceService
         ];
     }
 
-    public function countUnrecordedAbsences(CarbonInterface $from, CarbonInterface $to, ?int $employeeId = null): int
-    {
+    public function countUnrecordedAbsences(
+        CarbonInterface $from,
+        CarbonInterface $to,
+        ?int $employeeId = null,
+        bool $includeCurrentDayAfterStart = false,
+    ): int {
         $settings = $this->companySettingService->current();
         $count = 0;
         $date = Carbon::parse($from->toDateString())->startOfDay();
 
         while ($date->lte($to)) {
+            $todayThreshold = $includeCurrentDayAfterStart ? $settings->working_start_time : $settings->working_end_time;
             $isCompleted = $date->lt(today())
-                || ($date->isToday() && now()->greaterThan(Carbon::parse($date->toDateString().' '.$settings->working_end_time)));
+                || ($date->isToday() && now()->greaterThanOrEqualTo(Carbon::parse($date->toDateString().' '.$todayThreshold)));
 
             if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
                 $day = $date->toDateString();
@@ -905,7 +916,10 @@ class AttendanceService
             ->get()
             ->each(function (Attendance $attendance) use ($settings, $graceHours): void {
                 if ($this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
-                    $attendance->update(['status' => 'missing_clock_out']);
+                    $attendance->update([
+                        'status' => 'missing_clock_out',
+                        'is_late' => $attendance->is_late || $attendance->status === 'late',
+                    ]);
                 }
             });
     }

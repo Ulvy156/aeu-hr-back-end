@@ -87,7 +87,7 @@ class EmployeeService
             ->limit(15)
             ->get()
             ->map(fn (Employee $employee): array => [
-                'employee_id' => $employee->id,
+                'employee_id' => $employee->employee_id,
                 'full_name' => $employee->full_name,
                 'display' => "{$employee->employee_id} - {$employee->full_name}",
             ])
