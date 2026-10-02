@@ -582,6 +582,7 @@ class AttendanceService
                 throw ApiException::unprocessable('Today is not a working day.');
             }
 
+            $this->assertOfficeGpsConfigured($settings);
             $this->assertWithinAllowedLocation($latitude, $longitude, $settings, 'QR scan');
 
             $attendance = Attendance::query()

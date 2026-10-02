@@ -746,17 +746,20 @@ Hard-delete a QR token. Use this when the printed QR is lost, stolen, or needs t
 
 ### POST /api/attendance/qr/scan
 
-Employee submits the scanned QR token. The backend automatically determines whether to clock in or clock out based on the employee's attendance state today. **No GPS is required** — scanning the office QR proves physical presence.
+Employee submits the scanned QR token and the phone's current GPS coordinates. The backend checks that the location is within the office's configured radius, then automatically determines whether to clock in or clock out based on the employee's attendance state today. QR clock-in and clock-out coordinates are stored on the attendance record.
 
 **Permission:** `attendance.clock_in`
 
 **Request body:**
 ```json
-{ "token": "64-char-random-string" }
+{ "token": "64-char-random-string", "latitude": 11.5564, "longitude": 104.9282 }
 ```
 
 **Validation:**
 - `token`: required, string, exactly 64 characters
+- `latitude`: required, numeric, between -90 and 90
+- `longitude`: required, numeric, between -180 and 180
+- The coordinates must be within the office radius configured in company settings.
 
 **Clock-in response 201:**
 ```json
@@ -786,6 +789,9 @@ Employee submits the scanned QR token. The backend automatically determines whet
 | Status | Message |
 |---|---|
 | 422 | `Invalid QR code.` — token does not exist in DB |
+| 422 | `Validation failed` — latitude or longitude is missing or invalid |
+| 422 | `You are outside the allowed QR scan location.` |
+| 422 | `Office GPS settings are not configured.` |
 | 422 | `You are on approved leave today and cannot use QR attendance.` |
 | 422 | `Today is a public holiday and attendance is not required.` |
 | 422 | `Today is not a working day.` |
@@ -799,15 +805,15 @@ Employee submits the scanned QR token. The backend automatically determines whet
 The full entry flow when the phone camera opens `scan_url`:
 
 1. **Check auth state** (read stored token / session).
-2. **Not authenticated** → save the full current URL (`/attendance/scan?token=...`) into `sessionStorage` (e.g. key `redirectAfterLogin`), then redirect to `/login`.
-3. **Login page** — after a successful login, check `sessionStorage.redirectAfterLogin`. If it exists, clear the key and navigate to that URL instead of the default home.
-4. **Authenticated** (either directly or after the login redirect) → the `/attendance/scan` page reads `token` from the URL query params and automatically calls `POST /api/attendance/qr/scan` without any user interaction.
+2. **Not authenticated** → redirect to `/login` with the full scan URL in the `redirect` query parameter.
+3. **Login page** — after a successful login, navigate to that `redirect` URL.
+4. **Authenticated** (either directly or after the login redirect) → the `/attendance/scan` page reads `token` from the URL, requests the phone's current location, and automatically calls `POST /api/attendance/qr/scan` with the token and coordinates.
 5. Display a full-screen result:
    - **Clock-in success** — "Clock-in recorded at HH:MM"
    - **Clock-out success** — "Clock-out recorded at HH:MM"
-   - **Error** — show the `message` from the response (e.g. "Already completed", "Invalid QR code")
+   - **Error** — show the location error or API `message` (e.g. "Already completed", "Invalid QR code")
 
-No submit button is needed — the API call fires automatically on page load once the user is authenticated.
+No submit button is needed — location access and the API call start automatically on page load once the user is authenticated. If location permission is denied or unavailable, show an error without submitting the scan.
 
 - The QR code encodes `scan_url` from the generate response. Use `useQRCode()` from `@vueuse/core` to render it in the HR dashboard, or use the `/download` endpoint to get a printable SVG (vector — prints at any size without pixelation).
 - `qr_clock_in` / `qr_clock_out` booleans on the attendance record can be shown as a badge (e.g. "Via QR") in the attendance list.

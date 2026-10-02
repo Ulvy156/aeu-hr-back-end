@@ -179,6 +179,7 @@ return [
                 'public_holidays.view',
                 'attendance.view_any',
                 'attendance.view_correction',
+                'attendance.generate_qr',
                 'leaves.view_any',
                 'leaves.view',
                 'leave_balances.view_any',
