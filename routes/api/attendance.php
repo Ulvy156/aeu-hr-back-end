@@ -7,6 +7,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('attendance')->group(function () {
         Route::get('/', [AttendanceController::class, 'index']);
         Route::get('/summary', [AttendanceController::class, 'summary']);
+        Route::get('/team-summary', [AttendanceController::class, 'teamSummary']);
         Route::post('/clock-in', [AttendanceController::class, 'clockIn']);
         Route::post('/clock-out', [AttendanceController::class, 'clockOut']);
         Route::post('/proxy-clock-in', [AttendanceController::class, 'proxyClockIn']);

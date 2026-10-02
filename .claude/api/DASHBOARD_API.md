@@ -121,6 +121,8 @@ Return the authenticated employee dashboard summary.
 
 Return summary data for the HR dashboard.
 
+Today's `late_count` includes rows with `status = late` or `is_late = true`. A manual late status counts even when the clock-in time was before the configured start, and a late arrival remains counted if its status later becomes `missing_clock_out`. After the workday ends, `absent_count` and `total_records` also include eligible employees without an attendance record. Approved leave, holidays, and non-working days are excluded. The scheduled absence command persists those records the following day.
+
 ### Permission Required
 
 - `dashboards.hr_view`

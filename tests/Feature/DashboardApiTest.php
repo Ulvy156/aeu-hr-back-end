@@ -283,6 +283,51 @@ test('hr dashboard returns attendance summary pending hr leave requests and payr
         ->assertJsonPath('data.payroll_status.latest_pending_approval_batch.id', $pendingApprovalBatch->id);
 });
 
+test('hr dashboard still counts a late arrival after its status becomes missing clock out', function () {
+    dashboardCompanySettings();
+    $hr = dashboardManagerUser('hr');
+    [, $employee] = dashboardEmployeeUser();
+    dashboardAttendance($employee, '2026-05-05', 'missing_clock_out')->update(['is_late' => true]);
+
+    Sanctum::actingAs($hr);
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.late_count', 1)
+        ->assertJsonPath('data.today_attendance_summary.missing_clock_out_count', 1);
+});
+
+test('hr dashboard counts a manually marked late status with a false time-based flag', function () {
+    dashboardCompanySettings();
+    $hr = dashboardManagerUser('hr');
+    [, $employee] = dashboardEmployeeUser();
+    dashboardAttendance($employee, '2026-05-05', 'late')->update(['is_late' => false]);
+
+    Sanctum::actingAs($hr);
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.total_records', 1)
+        ->assertJsonPath('data.today_attendance_summary.present_count', 0)
+        ->assertJsonPath('data.today_attendance_summary.late_count', 1);
+});
+
+test('hr dashboard includes unrecorded absences after the workday ends', function () {
+    Carbon::setTestNow('2026-05-05 18:00:00');
+    dashboardCompanySettings();
+    $hr = dashboardManagerUser('hr');
+    dashboardEmployeeUser();
+
+    Sanctum::actingAs($hr);
+
+    $this->getJson('/api/dashboard/hr')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 1)
+        ->assertJsonPath('data.today_attendance_summary.total_records', 1);
+
+    expect(Attendance::query()->count())->toBe(0);
+});
+
 test('ceo dashboard returns pending ceo leave approvals and payroll approval summary', function () {
     dashboardCompanySettings();
     $ceo = dashboardManagerUser('ceo', [

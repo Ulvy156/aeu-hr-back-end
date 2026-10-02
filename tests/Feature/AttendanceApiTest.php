@@ -2,6 +2,7 @@
 
 use App\Models\Attendance;
 use App\Models\CompanySetting;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PublicHoliday;
@@ -386,6 +387,100 @@ test('attendance list allows hr to filter by employee and status', function () {
         ->assertJsonPath('data.0.employee.id', $otherEmployee->id);
 });
 
+test('hr can switch between own and team attendance without exposing another employee in own scope', function () {
+    [$hr, $hrEmployee] = attendanceEmployeeUser('hr', [], ['full_name' => 'HR Employee']);
+    [, $otherEmployee] = attendanceEmployeeUser('employee', [], ['full_name' => 'Other Employee']);
+
+    foreach ([$hrEmployee, $otherEmployee] as $employee) {
+        Attendance::query()->create([
+            'employee_id' => $employee->id,
+            'attendance_date' => '2026-10-01',
+            'status' => 'present',
+            'is_late' => false,
+        ]);
+    }
+
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance?scope=own')
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.employee.id', $hrEmployee->id);
+
+    $this->withToken($token)
+        ->getJson("/api/attendance?scope=own&employee_id={$otherEmployee->employee_id}&employee_name=Other")
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.employee.id', $hrEmployee->id);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance?scope=team')
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 2);
+
+    $employeeToken = $otherEmployee->user->createToken('employee-device')->plainTextToken;
+    auth()->forgetGuards();
+    $this->withToken($employeeToken)
+        ->getJson('/api/attendance?scope=team')
+        ->assertForbidden();
+
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $adminToken = $admin->createToken('admin-device')->plainTextToken;
+    auth()->forgetGuards();
+    $this->withToken($adminToken)
+        ->getJson('/api/attendance?scope=own')
+        ->assertForbidden();
+});
+
+test('attendance list filters by employee name and department together', function () {
+    $engineering = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $finance = Department::query()->create(['name' => 'Finance', 'status' => 'active']);
+
+    [, $alexEngineering] = attendanceEmployeeUser('employee', [], [
+        'full_name' => 'Alex Kim',
+        'department_id' => $engineering->id,
+    ]);
+    [, $alexFinance] = attendanceEmployeeUser('employee', [], [
+        'full_name' => 'Alex Lee',
+        'department_id' => $finance->id,
+    ]);
+    [, $mariaEngineering] = attendanceEmployeeUser('employee', [], [
+        'full_name' => 'Maria Chen',
+        'department_id' => $engineering->id,
+    ]);
+
+    foreach ([$alexEngineering, $alexFinance, $mariaEngineering] as $employee) {
+        Attendance::query()->create([
+            'employee_id' => $employee->id,
+            'attendance_date' => '2026-10-01',
+            'status' => 'present',
+            'is_late' => false,
+        ]);
+    }
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance?employee_name=aLeX')
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 2);
+
+    $this->withToken($token)
+        ->getJson("/api/attendance?department_id={$engineering->id}")
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 2);
+
+    $this->withToken($token)
+        ->getJson("/api/attendance?employee_name=alex&department_id={$engineering->id}&per_page=1")
+        ->assertSuccessful()
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.0.employee.id', $alexEngineering->id);
+});
+
 test('clock in and clock out return 403 when no employee profile is linked to the user account', function () {
     attendanceCompanySettings();
 
@@ -444,6 +539,44 @@ test('attendance correction allows only the supported fields and writes an audit
     expect($attendance->fresh()->corrected_by)->toBe($hr->id)
         ->and($attendance->fresh()->correction_reason)->toBe('Approved manual correction.')
         ->and($activity)->not->toBeNull();
+});
+
+test('hr cannot correct their own attendance but can correct another employee', function () {
+    attendanceCompanySettings();
+
+    [$hr, $hrEmployee] = attendanceEmployeeUser('hr');
+    [, $otherEmployee] = attendanceEmployeeUser();
+
+    $ownAttendance = Attendance::query()->create([
+        'employee_id' => $hrEmployee->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+    $otherAttendance = Attendance::query()->create([
+        'employee_id' => $otherEmployee->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'present',
+        'is_late' => false,
+    ]);
+
+    $token = $hr->createToken('hr-device')->plainTextToken;
+    $correction = [
+        'status' => 'absent',
+        'correction_reason' => 'Verified attendance record.',
+    ];
+
+    $this->withToken($token)
+        ->putJson("/api/attendance/{$ownAttendance->id}/correction", $correction)
+        ->assertForbidden();
+
+    expect($ownAttendance->fresh()->status)->toBe('present')
+        ->and($ownAttendance->fresh()->corrected_by)->toBeNull();
+
+    $this->withToken($token)
+        ->putJson("/api/attendance/{$otherAttendance->id}/correction", $correction)
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'absent');
 });
 
 test('attendance correction rejects gps fields and direct is_late input', function () {
@@ -536,6 +669,21 @@ test('mark absent uses today when no attendance date is provided', function () {
         ->assertJsonPath('data.created_count', 2);
 
     expect(Attendance::query()->whereDate('attendance_date', '2026-05-04')->count())->toBe(2);
+});
+
+test('scheduled absence command marks the previous workday and is idempotent', function () {
+    Carbon::setTestNow('2026-10-02 00:10:00');
+    attendanceCompanySettings();
+    [, $employee] = attendanceEmployeeUser();
+
+    $this->artisan('attendance:mark-absent')->assertSuccessful();
+
+    $absence = Attendance::query()->where('employee_id', $employee->id)->sole();
+    expect($absence->attendance_date->toDateString())->toBe('2026-10-01')
+        ->and($absence->status)->toBe('absent');
+
+    $this->artisan('attendance:mark-absent')->assertSuccessful();
+    expect(Attendance::query()->where('employee_id', $employee->id)->count())->toBe(1);
 });
 
 test('mark absent supports a provided attendance date', function () {
@@ -706,7 +854,7 @@ test('mark absent respects employee join date and last working date', function (
         ->and(Attendance::query()->where('employee_id', $lastDayEmployee->id)->exists())->toBeTrue();
 });
 
-test('attendance summary counts absent by status and late by is_late', function () {
+test('attendance summary counts recorded and unrecorded absences and late by is_late', function () {
     Carbon::setTestNow('2026-05-08 10:00:00');
     attendanceCompanySettings();
 
@@ -747,9 +895,172 @@ test('attendance summary counts absent by status and late by is_late', function 
         ->assertSuccessful()
         ->assertJsonPath('data.summary.present', 1)
         ->assertJsonPath('data.summary.late', 1)
-        ->assertJsonPath('data.summary.absent', 2)
+        ->assertJsonPath('data.summary.absent', 3)
         ->assertJsonPath('data.summary.missing_clock_out', 0)
         ->assertJsonPath('data.summary.attended_days', 2);
+});
+
+test('hr personal summary counts october 1 as absent without an attendance row', function () {
+    Carbon::setTestNow('2026-10-02 10:00:00');
+    attendanceCompanySettings();
+
+    [$hr, $employee] = attendanceEmployeeUser('hr', [], [
+        'join_date' => '2026-09-08',
+    ]);
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.absent', 1)
+        ->assertJsonPath('data.summary.working_days_in_period', 2)
+        ->assertJsonPath('data.today', null);
+
+    expect(Attendance::query()->where('employee_id', $employee->id)->exists())->toBeFalse();
+
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-10-01',
+        'end_date' => '2026-10-01',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.absent', 0);
+});
+
+test('personal and team summaries count a manually marked late record', function () {
+    Carbon::setTestNow('2026-10-02 10:00:00');
+    attendanceCompanySettings();
+
+    [$hr, $employee] = attendanceEmployeeUser('hr', [], ['join_date' => '2026-10-02']);
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-10-02',
+        'clock_in_time' => '2026-10-02 07:59:22',
+        'status' => 'late',
+        'is_late' => false,
+    ]);
+
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.late', 1);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/team-summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.late', 1);
+});
+
+test('october 2026 summary includes a qr scan and caps working days at today', function () {
+    Carbon::setTestNow('2026-10-02 08:30:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+    $qrTokenValue = $this->withToken($hrToken)->postJson('/api/attendance/qr/generate')->json('data.token');
+
+    [$user, $employee] = attendanceEmployeeUser();
+    $empToken = $user->createToken('employee-device')->plainTextToken;
+    auth()->forgetGuards();
+
+    $this->withToken($empToken)
+        ->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue, ...ATTENDANCE_VALID_GPS])
+        ->assertCreated();
+
+    $this->withToken($empToken)
+        ->getJson('/api/attendance/summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.employee.id', $employee->id)
+        ->assertJsonPath('data.period.from', '2026-10-01')
+        ->assertJsonPath('data.period.to', '2026-10-31')
+        ->assertJsonPath('data.summary.present', 0)
+        ->assertJsonPath('data.summary.late', 1)
+        ->assertJsonPath('data.summary.absent', 1)
+        ->assertJsonPath('data.summary.attended_days', 1)
+        ->assertJsonPath('data.summary.working_days_in_period', 2)
+        ->assertJsonPath('data.summary.attendance_rate', '50.00')
+        ->assertJsonPath('data.today.status', 'late')
+        ->assertJsonPath('data.today.is_late', true);
+});
+
+test('team summary counts all employee records, including late missing clock outs', function () {
+    Carbon::setTestNow('2026-10-02 10:00:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+
+    [$employeeUser, $firstEmployee] = attendanceEmployeeUser();
+    [, $secondEmployee] = attendanceEmployeeUser();
+    [, $unrecordedEmployee] = attendanceEmployeeUser();
+    [, $onLeaveEmployee] = attendanceEmployeeUser();
+
+    LeaveRequest::query()->create([
+        'employee_id' => $onLeaveEmployee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-10-01',
+        'end_date' => '2026-10-01',
+        'duration_type' => 'full_day',
+        'total_days' => 1,
+        'reason' => 'Approved leave',
+        'status' => 'approved',
+    ]);
+
+    Attendance::query()->create([
+        'employee_id' => $firstEmployee->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'missing_clock_out',
+        'is_late' => true,
+        'clock_in_time' => '2026-10-01 08:30:00',
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $secondEmployee->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $firstEmployee->id,
+        'attendance_date' => '2026-10-02',
+        'status' => 'present',
+        'is_late' => false,
+        'clock_in_time' => '2026-10-02 07:55:00',
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $secondEmployee->id,
+        'attendance_date' => '2026-10-03',
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+
+    $this->withToken($hrToken)
+        ->getJson('/api/attendance/team-summary?month=10&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.total_records', 4)
+        ->assertJsonPath('data.summary.present', 1)
+        ->assertJsonPath('data.summary.late', 1)
+        ->assertJsonPath('data.summary.absent', 2)
+        ->assertJsonPath('data.summary.missing_clock_out', 1);
+
+    expect(Attendance::query()->where('employee_id', $unrecordedEmployee->id)->exists())->toBeFalse();
+
+    $employeeToken = $employeeUser->createToken('employee-device')->plainTextToken;
+    auth()->forgetGuards();
+    $this->withToken($employeeToken)
+        ->getJson('/api/attendance/team-summary?month=10&year=2026')
+        ->assertForbidden();
 });
 
 test('attendance summary auto-marks forgotten clock-out after grace hours and counts it', function () {

@@ -11,3 +11,8 @@ Artisan::command('inspire', function () {
 Schedule::command('attendance:mark-missing-clock-out')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
+
+Schedule::command('attendance:mark-absent')
+    ->dailyAt('00:10')
+    ->onOneServer()
+    ->withoutOverlapping();

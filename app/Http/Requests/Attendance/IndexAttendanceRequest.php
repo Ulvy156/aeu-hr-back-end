@@ -19,7 +19,10 @@ class IndexAttendanceRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'scope' => ['nullable', Rule::in(['own', 'team'])],
             'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
+            'employee_name' => ['nullable', 'string', 'max:255'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'attendance_date' => ['nullable', 'date'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],

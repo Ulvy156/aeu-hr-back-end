@@ -30,6 +30,7 @@ All attendance endpoints require a Sanctum bearer token.
 ## Endpoint List
 
 - `GET /api/attendance/summary`
+- `GET /api/attendance/team-summary`
 - `POST /api/attendance/clock-in`
 - `POST /api/attendance/clock-out`
 - `POST /api/attendance/proxy-clock-in`
@@ -49,6 +50,8 @@ All attendance endpoints require a Sanctum bearer token.
 ## GET /api/attendance/summary
 
 Return the authenticated employee's own attendance summary for a given month.
+
+For team-wide monthly totals, use `GET /api/attendance/team-summary`.
 
 ### Permission
 
@@ -70,8 +73,8 @@ Return the authenticated employee's own attendance summary for a given month.
 ### Summary Calculation Rules
 
 - `present` — count of attendance records with `status = present`.
-- `late` — count of attendance records with `is_late = true` (time-based vs company `working_start_time`; kept even if status later becomes `missing_clock_out`).
-- `absent` — count of attendance records with `status = absent` (from `mark-absent` or correction). Days with no attendance row are not counted until marked.
+- `late` — count of attendance records with `status = late` or `is_late = true`. This includes manually marked late records and late arrivals later marked `missing_clock_out`.
+- `absent` — count of records with `status = absent`, plus completed working days without a record for this employee. Approved leave, public holidays, days before joining, and days after the last working date are excluded. Unrecorded absences are counted without creating attendance records.
 - `missing_clock_out` — count of records with `status = missing_clock_out`. Open clock-ins past `working_end_time + grace hours` (default 2, config `hr.attendance.missing_clock_out_grace_hours`) are auto-flipped before summary is calculated, and also via scheduled/manual mark-missing-clock-out.
 - `attended_days` — unique records with `status` in `present`, `late`, or `missing_clock_out`.
 - `working_days_in_period` — count of configured company working days in the period, excluding active public holidays and capped at today for the current month.
@@ -321,6 +324,14 @@ Clock out on behalf of a remote or system-impaired employee. Restricted to Admin
 
 ---
 
+## GET /api/attendance/team-summary
+
+Return monthly attendance totals across employees. Requires `attendance.view_any`; employees with only `attendance.view_own` cannot access it. Accepts the same optional `month` and `year` parameters as the personal summary. Counts stop at today for the current month.
+
+The `summary` contains `total_records`, `present`, `late`, `absent`, and `missing_clock_out`. `late` counts records with `status = late` or `is_late = true`, including manually marked late records and late arrivals later marked `missing_clock_out`. `absent` includes recorded absences and eligible employees without a record on completed workdays; approved leave, holidays, and non-working days are excluded. `total_records` includes these inferred absences. The scheduled absence command persists records for future completed days, but the summary can count past unrecorded days without changing attendance records. These are attendance-day totals across employees, so one employee may contribute more than one day.
+
+---
+
 ## POST /api/attendance/clock-in
 
 Clock in the authenticated employee using backend GPS validation.
@@ -437,7 +448,10 @@ Return a paginated attendance list.
 
 ### Query Parameters
 
-- `employee_id`: optional integer filter, only effective for users with `attendance.view_any`
+- `scope`: optional `own` or `team`. Use `own` for My Attendance and `team` for Employee Attendance.
+- `employee_id`: optional employee code filter, only effective for users with `attendance.view_any`
+- `employee_name`: optional case-insensitive partial name filter, only effective for users with `attendance.view_any`
+- `department_id`: optional department ID filter, only effective for users with `attendance.view_any`
 - `attendance_date`: optional exact date filter
 - `date_from`: optional start date filter
 - `date_to`: optional end date filter
@@ -446,7 +460,8 @@ Return a paginated attendance list.
 
 ### Access Rules
 
-- Users with `attendance.view_any` can list all attendance records.
+- Users with `attendance.view_any` can list all attendance records with `scope=team` (or no scope).
+- `scope=own` requires `attendance.view_own` and always limits results to the authenticated employee, even if the user also has `attendance.view_any`.
 - Users with `attendance.view_own` are automatically scoped to their own employee attendance only.
 - If a user only has own-attendance access but has no linked employee profile, the API returns `403`.
 
@@ -494,6 +509,7 @@ Only these fields are accepted:
 - Backend recalculates `is_late` from corrected `clock_in_time`, company `working_start_time`, and final attendance status.
 - GPS fields cannot be corrected from the frontend.
 - Employees cannot correct attendance.
+- Users with correction permission cannot correct their own attendance, including through the team list or correction queue.
 - Successful corrections are audited.
 
 ---
@@ -526,6 +542,8 @@ Create absent attendance records for a date.
 - Backend respects employee `join_date`.
 - Backend respects `last_working_date`.
 - Backend does not create duplicate attendance rows.
+- The scheduler runs `attendance:mark-absent` at 00:10 in the application timezone to mark the previous completed workday. The Render web container runs `schedule:work` under Supervisor.
+- For an earlier date that was not processed, run `php artisan attendance:mark-absent --date=YYYY-MM-DD` or use this API endpoint. The scheduled command does not backfill historical dates automatically.
 
 ### Success Example
 

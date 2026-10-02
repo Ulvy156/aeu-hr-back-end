@@ -44,9 +44,21 @@ class AttendanceService
             ->orderByDesc('attendance_date')
             ->orderByDesc('id');
 
-        if ($viewer->hasPermissionTo('attendance.view_any')) {
+        if (($filters['scope'] ?? null) === 'own') {
+            if (! $viewer->hasPermissionTo('attendance.view_own')) {
+                throw ApiException::forbidden();
+            }
+
+            $query->whereBelongsTo($this->employeeForUserOrFail($viewer));
+        } elseif ($viewer->hasPermissionTo('attendance.view_any')) {
             $query->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId));
+            $query->when($filters['employee_name'] ?? null, fn (Builder $query, string $name) => $query->whereHas('employee', fn (Builder $employeeQuery) => $employeeQuery->whereRaw('LOWER(full_name) LIKE ?', ['%'.mb_strtolower(trim($name)).'%'])));
+            $query->when($filters['department_id'] ?? null, fn (Builder $query, int $departmentId) => $query->whereHas('employee', fn (Builder $employeeQuery) => $employeeQuery->where('department_id', $departmentId)));
         } elseif ($viewer->hasPermissionTo('attendance.view_own')) {
+            if (($filters['scope'] ?? null) === 'team') {
+                throw ApiException::forbidden();
+            }
+
             $employee = $this->employeeForUserOrFail($viewer);
 
             $query->whereBelongsTo($employee);
@@ -433,9 +445,10 @@ class AttendanceService
             ->get(['attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
 
         $present = $records->where('status', 'present')->count();
-        // Late is time-based (clock-in vs working_start_time), kept on is_late even after status changes.
-        $late = $records->where('is_late', true)->count();
-        $absent = $records->where('status', 'absent')->count();
+        // A manual late status and a time-based late flag both count as late.
+        $late = $records->filter(fn (Attendance $record) => $record->status === 'late' || $record->is_late)->count();
+        $absent = $records->where('status', 'absent')->count()
+            + $this->countUnrecordedAbsences($periodStart, $effectiveTo, $employee->id);
         $missingClockOut = $records->where('status', 'missing_clock_out')->count();
         $attendedDays = $records
             ->filter(fn (Attendance $record) => in_array($record->status, ['present', 'late', 'missing_clock_out'], true))
@@ -486,6 +499,81 @@ class AttendanceService
             ],
             'today' => $todayData,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function teamSummary(array $filters = []): array
+    {
+        $month = (int) ($filters['month'] ?? now()->month);
+        $year = (int) ($filters['year'] ?? now()->year);
+        $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
+
+        $counts = Attendance::query()
+            ->whereDate('attendance_date', '>=', $periodStart->toDateString())
+            ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
+            ->selectRaw('COUNT(*) as total_records')
+            ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present")
+            ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late")
+            ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent")
+            ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out")
+            ->first();
+
+        $unrecordedAbsences = $this->countUnrecordedAbsences($periodStart, $effectiveTo);
+
+        return [
+            'period' => [
+                'month' => $month,
+                'year' => $year,
+                'from' => $periodStart->toDateString(),
+                'to' => $periodEnd->toDateString(),
+            ],
+            'summary' => [
+                'total_records' => (int) ($counts?->total_records ?? 0) + $unrecordedAbsences,
+                'present' => (int) ($counts?->present ?? 0),
+                'late' => (int) ($counts?->late ?? 0),
+                'absent' => (int) ($counts?->absent ?? 0) + $unrecordedAbsences,
+                'missing_clock_out' => (int) ($counts?->missing_clock_out ?? 0),
+            ],
+        ];
+    }
+
+    public function countUnrecordedAbsences(CarbonInterface $from, CarbonInterface $to, ?int $employeeId = null): int
+    {
+        $settings = $this->companySettingService->current();
+        $count = 0;
+        $date = Carbon::parse($from->toDateString())->startOfDay();
+
+        while ($date->lte($to)) {
+            $isCompleted = $date->lt(today())
+                || ($date->isToday() && now()->greaterThan(Carbon::parse($date->toDateString().' '.$settings->working_end_time)));
+
+            if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
+                $day = $date->toDateString();
+                $count += Employee::query()
+                    ->when($employeeId !== null, fn (Builder $query) => $query->whereKey($employeeId))
+                    ->whereDate('join_date', '<=', $day)
+                    ->where(function (Builder $query) use ($day): void {
+                        $query->whereNull('last_working_date')
+                            ->orWhereDate('last_working_date', '>=', $day);
+                    })
+                    ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('attendance_date', $day))
+                    ->whereDoesntHave('leaveRequests', function (Builder $query) use ($day): void {
+                        $query->where('status', 'approved')
+                            ->whereDate('start_date', '<=', $day)
+                            ->whereDate('end_date', '>=', $day);
+                    })
+                    ->count();
+            }
+
+            $date->addDay();
+        }
+
+        return $count;
     }
 
     public function generateQrToken(User $actor): AttendanceQrToken

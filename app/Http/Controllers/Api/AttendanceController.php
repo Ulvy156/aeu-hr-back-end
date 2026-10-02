@@ -111,6 +111,16 @@ class AttendanceController extends Controller
         );
     }
 
+    public function teamSummary(IndexAttendanceSummaryRequest $request): JsonResponse
+    {
+        $this->authorize('viewAny', Attendance::class);
+
+        return ApiResponse::success(
+            data: $this->attendanceService->teamSummary($request->validated()),
+            message: 'Team attendance summary fetched successfully.',
+        );
+    }
+
     public function proxyClockIn(ProxyClockInRequest $request): JsonResponse
     {
         $this->authorize('proxyClock', Attendance::class);
