@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -23,6 +24,8 @@ class RoleSeeder extends Seeder
         $permissionDescriptions = $this->permissionDescriptions($groups);
         $permissionModules = $this->permissionModules($groups);
         $allPermissions = $permissionDescriptions->keys();
+
+        $this->removeRetiredAnnouncementPermissions($guard);
 
         $permissionDescriptions->each(function (?string $description, string $permissionName) use ($guard, $permissionModules): void {
             Permission::query()->updateOrCreate(
@@ -51,6 +54,26 @@ class RoleSeeder extends Seeder
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    protected function removeRetiredAnnouncementPermissions(string $guard): void
+    {
+        $ids = Permission::query()
+            ->where('guard_name', $guard)
+            ->whereIn('name', [
+                'announcements.submit',
+                'announcements.cancel_submission',
+                'announcements.approve',
+            ])
+            ->pluck('id');
+
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        DB::table('role_has_permissions')->whereIn('permission_id', $ids)->delete();
+        DB::table('model_has_permissions')->whereIn('permission_id', $ids)->delete();
+        Permission::query()->whereIn('id', $ids)->delete();
     }
 
     /**

@@ -2,7 +2,7 @@
 
 return [
     'company_settings' => [
-        'company_name' => env('HR_COMPANY_NAME', env('APP_NAME', 'HR Management System')),
+        'company_name' => env('HR_COMPANY_NAME', env('APP_NAME', 'PDM CARE')),
         'company_logo' => null,
         'company_address' => null,
         'company_phone' => null,
@@ -65,13 +65,17 @@ return [
             'hr',
         ],
         'hr_head_permissions' => [
+            'announcements.create',
+            'announcements.update',
+            'announcements.publish',
+            'payrolls.view_own',
             'leaves.approve_hr',
             'leaves.reject_hr',
             'payrolls.generate',
             'payrolls.update',
             'payrolls.submit',
-            'payrolls.approve',
-            'payrolls.reject',
+            'payrolls.delete',
+            'payrolls.export',
         ],
     ],
     'payroll' => [

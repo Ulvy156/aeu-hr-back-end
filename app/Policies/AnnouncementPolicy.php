@@ -34,34 +34,13 @@ class AnnouncementPolicy
     public function update(User $user, Announcement $announcement): bool
     {
         return $user->hasPermissionTo('announcements.update')
-            && in_array($announcement->status, ['draft', 'rejected'], true);
+            && in_array($announcement->status, ['draft', 'pending_approval', 'rejected'], true);
     }
 
-    public function submit(User $user, Announcement $announcement): bool
+    public function publish(User $user, Announcement $announcement): bool
     {
-        return $user->hasPermissionTo('announcements.submit')
-            && in_array($announcement->status, ['draft', 'rejected'], true);
-    }
-
-    public function cancelSubmission(User $user, Announcement $announcement): bool
-    {
-        return $user->hasPermissionTo('announcements.cancel_submission')
-            && $announcement->status === 'pending_approval'
-            && $announcement->created_by === $user->id;
-    }
-
-    public function approve(User $user, Announcement $announcement): bool
-    {
-        return $user->hasPermissionTo('announcements.approve')
-            && $announcement->status === 'pending_approval'
-            && $announcement->created_by !== $user->id;
-    }
-
-    public function reject(User $user, Announcement $announcement): bool
-    {
-        return $user->hasPermissionTo('announcements.approve')
-            && $announcement->status === 'pending_approval'
-            && $announcement->created_by !== $user->id;
+        return $user->hasPermissionTo('announcements.publish')
+            && in_array($announcement->status, ['draft', 'pending_approval', 'rejected'], true);
     }
 
     public function archive(User $user, Announcement $announcement): bool

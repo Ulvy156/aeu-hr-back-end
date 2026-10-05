@@ -1,11 +1,15 @@
 <?php
 
+use App\Enums\JobLevel;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
+use App\Models\Position;
+use App\Models\PublicHoliday;
 use App\Models\User;
 use App\Services\PayrollService;
 use Carbon\Carbon;
@@ -117,6 +121,96 @@ function makeApprovedLeave(Employee $employee, array $overrides = []): LeaveRequ
     ], $overrides));
 }
 
+test('generated paid days use the monthly rate while absences use scheduled dates', function (
+    int $month,
+    string $partialJoinDate,
+    string $holidayDate,
+    string $missedDate,
+    string $expectedPartialDays,
+    string $expectedPartialGross,
+) {
+    payrollCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+        'payroll_day_rate' => 26,
+    ]);
+
+    PublicHoliday::query()->create([
+        'holiday_date' => $holidayDate,
+        'name' => 'Payroll test holiday',
+        'status' => 'active',
+    ]);
+
+    $hr = payrollHrHeadUser();
+    Sanctum::actingAs($hr);
+
+    [, $fullMonthEmployee] = payrollEmployeeUser('employee', [], [
+        'employee_id' => 'EMP-90001',
+        'join_date' => '2025-01-01',
+    ]);
+    [, $partialMonthEmployee] = payrollEmployeeUser('employee', [], [
+        'employee_id' => 'EMP-90002',
+        'join_date' => $partialJoinDate,
+    ]);
+
+    $periodStart = Carbon::create(2026, $month, 1)->startOfDay();
+    $periodEnd = $periodStart->copy()->endOfMonth();
+
+    for ($date = $periodStart->copy(); $date->lte($periodEnd); $date->addDay()) {
+        if (! $date->isWeekday() || in_array($date->toDateString(), [$holidayDate, $missedDate], true)) {
+            continue;
+        }
+
+        makeAttendance($fullMonthEmployee, $date->toDateString());
+
+        if ($date->toDateString() >= $partialJoinDate) {
+            makeAttendance($partialMonthEmployee, $date->toDateString());
+        }
+    }
+
+    $this->postJson('/api/payrolls', ['month' => $month, 'year' => 2026])->assertCreated();
+
+    $fullItem = PayrollItem::query()->where('employee_id', $fullMonthEmployee->id)->sole();
+    $partialItem = PayrollItem::query()->where('employee_id', $partialMonthEmployee->id)->sole();
+
+    expect($fullItem->working_days)->toBe('26.00')
+        ->and($fullItem->gross_salary)->toBe('3000.00')
+        ->and($fullItem->absent_days)->toBe('1.00')
+        ->and($partialItem->working_days)->toBe($expectedPartialDays)
+        ->and($partialItem->gross_salary)->toBe($expectedPartialGross)
+        ->and($partialItem->absent_days)->toBe('1.00');
+})->with([
+    '28-day February' => [2, '2026-02-15', '2026-02-11', '2026-02-16', '13.00', '1500.00'],
+    '30-day September' => [9, '2026-09-08', '2026-09-16', '2026-09-10', '20.00', '2307.69'],
+]);
+
+test('an employee leaving in a 31-day month receives a calendar-proportional salary', function () {
+    payrollCompanySettings([
+        'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+        'payroll_day_rate' => 26,
+    ]);
+
+    Sanctum::actingAs(payrollHrHeadUser());
+
+    [, $employee] = payrollEmployeeUser('employee', [], [
+        'join_date' => '2025-01-01',
+        'last_working_date' => '2026-01-16',
+    ]);
+
+    for ($date = Carbon::parse('2026-01-01'); $date->lte(Carbon::parse('2026-01-16')); $date->addDay()) {
+        if ($date->isWeekday()) {
+            makeAttendance($employee, $date->toDateString());
+        }
+    }
+
+    $this->postJson('/api/payrolls', ['month' => 1, 'year' => 2026])->assertCreated();
+
+    $item = PayrollItem::query()->where('employee_id', $employee->id)->sole();
+
+    expect($item->working_days)->toBe('13.50')
+        ->and($item->gross_salary)->toBe('1557.69')
+        ->and($item->absent_days)->toBe('0.00');
+});
+
 test('head of hr can generate payroll with proration deductions and configured tax brackets', function () {
     payrollCompanySettings();
 
@@ -215,6 +309,66 @@ test('head of hr can generate payroll with proration deductions and configured t
     ]))->toThrow(QueryException::class);
 });
 
+test('payroll updates reject base salary changes and preserve the salary snapshot', function () {
+    payrollCompanySettings();
+
+    $hr = payrollHrHeadUser();
+    Sanctum::actingAs($hr);
+
+    [, $employee] = payrollEmployeeUser();
+
+    $batchId = $this->postJson('/api/payrolls', [
+        'month' => 4,
+        'year' => 2026,
+    ])->assertCreated()->json('data.id');
+
+    $item = PayrollItem::query()->where('employee_id', $employee->id)->firstOrFail();
+    $originalSalary = $item->base_salary;
+
+    $this->putJson("/api/payrolls/{$batchId}", [
+        'items' => [[
+            'id' => $item->id,
+            'base_salary' => 5000,
+            'absent_days' => 1,
+        ]],
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors('items.0.base_salary');
+
+    expect($item->fresh()->base_salary)->toBe($originalSalary)
+        ->and($item->fresh()->absent_days)->toBe($item->absent_days);
+
+    $this->putJson("/api/payrolls/{$batchId}", [
+        'items' => [[
+            'id' => $item->id,
+            'absent_days' => 1,
+        ]],
+    ])->assertSuccessful();
+
+    expect($item->fresh()->base_salary)->toBe($originalSalary)
+        ->and($item->fresh()->absent_days)->toBe('1.00');
+});
+
+test('manual working-day adjustments accept whole and half days only', function () {
+    payrollCompanySettings(['payroll_day_rate' => 26]);
+    Sanctum::actingAs(payrollHrHeadUser());
+
+    [, $employee] = payrollEmployeeUser();
+    $batchId = $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])
+        ->assertCreated()->json('data.id');
+    $item = PayrollItem::query()->where('employee_id', $employee->id)->sole();
+
+    $this->putJson("/api/payrolls/{$batchId}", [
+        'items' => [['id' => $item->id, 'working_days' => 19.93]],
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors('items.0.working_days');
+
+    $this->putJson("/api/payrolls/{$batchId}", [
+        'items' => [['id' => $item->id, 'working_days' => 19.5]],
+    ])->assertSuccessful();
+
+    expect($item->fresh()->working_days)->toBe('19.50');
+});
+
 test('hr can review submit and ceo can approve payroll while approved batches remain locked', function () {
     payrollCompanySettings();
 
@@ -276,6 +430,11 @@ test('hr can review submit and ceo can approve payroll while approved batches re
         ->assertSuccessful()
         ->assertJsonPath('message', 'Payroll submitted successfully.')
         ->assertJsonPath('data.status', 'pending_approval');
+
+    $this->putJson("/api/payrolls/{$batchId}", [
+        'items' => [['id' => $itemId, 'absent_days' => 1]],
+    ])->assertUnprocessable()
+        ->assertJsonPath('message', 'Payroll pending CEO approval cannot be edited.');
 
     Sanctum::actingAs($ceo);
 
@@ -758,7 +917,7 @@ test('half-day special sick leave receives a half-day deduction', function () {
     expect($weightedDeduction)->toBe(0.25);
 });
 
-test('head of hr can generate and approve payroll while regular hr can only view', function () {
+test('head of hr can generate and submit payroll while only ceo can approve or reject', function () {
     payrollCompanySettings();
 
     $hr = payrollManagerUser('hr', [
@@ -767,6 +926,7 @@ test('head of hr can generate and approve payroll while regular hr can only view
     $hrHead = payrollHrHeadUser([
         'email' => 'hr.head.payroll@example.com',
     ]);
+    $ceo = payrollManagerUser('ceo', ['email' => 'ceo.head.payroll@example.com']);
 
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'payroll.head.employee@example.com',
@@ -796,15 +956,77 @@ test('head of hr can generate and approve payroll while regular hr can only view
 
     $this->postJson("/api/payrolls/{$batchId}/submit")->assertSuccessful();
 
+    $hrHead->givePermissionTo(['payrolls.approve', 'payrolls.reject']);
+    $this->postJson("/api/payrolls/{$batchId}/approve")->assertForbidden();
+    $this->postJson("/api/payrolls/{$batchId}/reject", ['rejection_reason' => 'Check figures.'])->assertForbidden();
+
     Sanctum::actingAs($hr);
 
     $this->getJson('/api/payrolls')->assertSuccessful();
     $this->postJson("/api/payrolls/{$batchId}/submit")->assertForbidden();
     $this->postJson("/api/payrolls/{$batchId}/approve")->assertForbidden();
 
-    Sanctum::actingAs($hrHead);
+    Sanctum::actingAs($ceo);
 
     $this->postJson("/api/payrolls/{$batchId}/approve")
         ->assertSuccessful()
         ->assertJsonPath('data.status', 'approved');
+});
+
+test('only head of hr can hard delete a draft payroll and its items', function () {
+    payrollCompanySettings();
+
+    $hrHead = payrollHrHeadUser(['email' => 'hr.delete@example.com']);
+    $regularHr = payrollManagerUser('hr', ['email' => 'hr.viewer.delete@example.com']);
+    $ceo = payrollManagerUser('ceo', ['email' => 'ceo.delete@example.com']);
+    $department = Department::query()->create(['name' => 'HR & Admin', 'status' => 'active']);
+    $position = Position::query()->create([
+        'name' => 'Head of HR',
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Head->value,
+        'status' => 'active',
+    ]);
+    Employee::query()->create([
+        'user_id' => $hrHead->id,
+        'employee_id' => 'EMP-80010',
+        'full_name' => $hrHead->name,
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => 1100,
+        'employment_status' => 'full-time',
+    ]);
+    payrollEmployeeUser('employee', ['email' => 'delete.employee@example.com'], ['employee_id' => 'EMP-80011']);
+
+    Sanctum::actingAs($hrHead);
+    $draftId = $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])
+        ->assertCreated()->json('data.id');
+    expect(PayrollItem::query()->where('payroll_batch_id', $draftId)->count())->toBe(1);
+
+    Sanctum::actingAs($regularHr);
+    $this->deleteJson("/api/payrolls/{$draftId}")->assertForbidden();
+    Sanctum::actingAs($ceo);
+    $this->deleteJson("/api/payrolls/{$draftId}")->assertForbidden();
+
+    Sanctum::actingAs($hrHead);
+    foreach (['pending_approval', 'rejected', 'approved'] as $index => $status) {
+        $batch = PayrollBatch::query()->create([
+            'month' => $index + 1,
+            'year' => 2026,
+            'status' => $status,
+        ]);
+        $this->deleteJson("/api/payrolls/{$batch->id}")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Only draft payroll batches can be deleted.');
+        expect($batch->fresh())->not->toBeNull();
+    }
+
+    $this->deleteJson("/api/payrolls/{$draftId}")
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'Draft payroll deleted successfully.');
+    expect(PayrollBatch::query()->find($draftId))->toBeNull()
+        ->and(PayrollItem::query()->where('payroll_batch_id', $draftId)->count())->toBe(0)
+        ->and(Activity::query()->where('log_name', 'payrolls')->where('description', 'delete')->exists())->toBeTrue();
+
+    $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])->assertCreated();
 });

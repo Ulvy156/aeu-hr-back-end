@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'submitted_at',
     'approved_by',
     'approved_at',
+    'published_by',
+    'published_at',
     'rejected_by',
     'rejected_at',
     'rejection_reason',
@@ -50,6 +52,11 @@ class Announcement extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
+    public function publisher(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'published_by');
+    }
+
     public function rejector(): BelongsTo
     {
         return $this->belongsTo(User::class, 'rejected_by');
@@ -76,6 +83,7 @@ class Announcement extends Model
             'attachment_size' => 'integer',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
+            'published_at' => 'datetime',
             'rejected_at' => 'datetime',
         ];
     }

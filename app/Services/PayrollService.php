@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\PayrollViewScope;
 use App\Enums\Status;
 use App\Exceptions\ApiException;
+use App\Exports\ArrayReportExport;
 use App\Models\Attendance;
 use App\Models\CompanySetting;
 use App\Models\Employee;
@@ -95,6 +96,39 @@ class PayrollService
         }
 
         return $query->paginate($perPage);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function paginateOwn(array $filters, User $viewer): LengthAwarePaginator
+    {
+        $employee = $viewer->loadMissing('employee')->employee;
+
+        if (! $employee) {
+            throw ApiException::forbidden('No employee profile is linked to this user account.');
+        }
+
+        $perPage = (int) ($filters['per_page'] ?? 15);
+        $itemConstraint = fn (Builder $query) => $query->where('employee_id', $employee->id);
+        $query = PayrollBatch::query()
+            ->where('status', 'approved')
+            ->when($filters['month'] ?? null, fn (Builder $query, int $month) => $query->where('month', $month))
+            ->when($filters['year'] ?? null, fn (Builder $query, int $year) => $query->where('year', $year))
+            ->whereHas('items', $itemConstraint)
+            ->orderByDesc('year')
+            ->orderByDesc('month')
+            ->orderByDesc('id');
+
+        $this->addItemAggregates($query, $itemConstraint);
+        $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->each(fn (PayrollBatch $batch) => $batch->load([
+            'items' => fn ($items) => $items
+                ->where('employee_id', $employee->id)
+                ->with('employee:id,user_id,employee_id,full_name'),
+        ]));
+
+        return $paginator;
     }
 
     public function generate(
@@ -212,6 +246,10 @@ class PayrollService
                 throw ApiException::unprocessable('Approved payroll batches cannot be edited.');
             }
 
+            if ($payrollBatch->status === 'pending_approval') {
+                throw ApiException::unprocessable('Payroll pending CEO approval cannot be edited.');
+            }
+
             $oldValues = $this->auditBatchAttributes($this->loadBatchRelations($payrollBatch));
             $itemsById = $payrollBatch->items->keyBy('id');
             $periodEnd = Carbon::create($payrollBatch->year, $payrollBatch->month, 1)->endOfMonth()->startOfDay();
@@ -261,6 +299,34 @@ class PayrollService
             );
 
             return $payrollBatch;
+        });
+    }
+
+    public function delete(
+        PayrollBatch $payrollBatch,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+    ): void {
+        DB::transaction(function () use ($payrollBatch, $actor, $ipAddress, $userAgent): void {
+            $payrollBatch = PayrollBatch::query()->whereKey($payrollBatch->id)->lockForUpdate()->firstOrFail();
+
+            if ($payrollBatch->status !== 'draft') {
+                throw ApiException::unprocessable('Only draft payroll batches can be deleted.');
+            }
+
+            $oldValues = $this->auditBatchAttributes($this->loadBatchRelations($payrollBatch));
+            $payrollBatch->delete(); // Payroll items cascade through the database foreign key.
+
+            $this->auditLogService->log(
+                action: 'delete',
+                module: 'payrolls',
+                user: $actor,
+                subject: $payrollBatch,
+                oldValues: $oldValues,
+                ipAddress: $ipAddress,
+                userAgent: $userAgent,
+            );
         });
     }
 
@@ -440,6 +506,81 @@ class PayrollService
     }
 
     /**
+     * @return array{file_name: string, export: ArrayReportExport}
+     */
+    public function exportBatch(PayrollBatch $payrollBatch, User $viewer): array
+    {
+        $payrollBatch = $this->loadBatchRelations($payrollBatch, $viewer);
+        $rows = $payrollBatch->items->map(fn (PayrollItem $item): array => [
+            $payrollBatch->month,
+            $payrollBatch->year,
+            $payrollBatch->status,
+            $item->employee?->employee_id,
+            $item->employee?->full_name,
+            (float) $item->base_salary,
+            (float) $item->working_days,
+            (float) $item->present_days,
+            (float) $item->absent_days,
+            (float) $item->unpaid_leave_days,
+            (float) $item->maternity_leave_days,
+            (float) $item->special_sick_leave_days,
+            (float) $item->gross_salary,
+            (float) $item->unpaid_deduction,
+            (float) $item->absence_deduction,
+            (float) $item->maternity_deduction,
+            (float) $item->special_sick_deduction,
+            (float) $item->taxable_salary,
+            (float) $item->tax_rate,
+            (float) $item->tax_amount,
+            (float) $item->nssf_deduction,
+            (float) $item->net_salary,
+            $item->status,
+        ])->all();
+
+        $totals = [
+            'gross_salary' => (float) $payrollBatch->items->sum('gross_salary'),
+            'unpaid_deduction' => (float) $payrollBatch->items->sum('unpaid_deduction'),
+            'absence_deduction' => (float) $payrollBatch->items->sum('absence_deduction'),
+            'maternity_deduction' => (float) $payrollBatch->items->sum('maternity_deduction'),
+            'special_sick_deduction' => (float) $payrollBatch->items->sum('special_sick_deduction'),
+            'taxable_salary' => (float) $payrollBatch->items->sum('taxable_salary'),
+            'tax_amount' => (float) $payrollBatch->items->sum('tax_amount'),
+            'nssf_deduction' => (float) $payrollBatch->items->sum('nssf_deduction'),
+            'net_salary' => (float) $payrollBatch->items->sum('net_salary'),
+        ];
+        $rows[] = [
+            null, null, null, 'TOTAL', null, null, null, null, null, null, null, null,
+            $totals['gross_salary'],
+            $totals['unpaid_deduction'],
+            $totals['absence_deduction'],
+            $totals['maternity_deduction'],
+            $totals['special_sick_deduction'],
+            $totals['taxable_salary'],
+            null,
+            $totals['tax_amount'],
+            $totals['nssf_deduction'],
+            $totals['net_salary'],
+            null,
+        ];
+
+        $period = sprintf('%04d-%02d', $payrollBatch->year, $payrollBatch->month);
+
+        return [
+            'file_name' => "payroll-{$period}.xlsx",
+            'export' => new ArrayReportExport(
+                headings: [
+                    'Month', 'Year', 'Batch Status', 'Employee ID', 'Employee Name', 'Base Salary',
+                    'Paid Days', 'Present Days', 'Absent Days', 'Unpaid Leave Days', 'Maternity Leave Days',
+                    'Special Sick Leave Days', 'Gross Salary', 'Unpaid Deduction', 'Absence Deduction',
+                    'Maternity Deduction', 'Special Sick Deduction', 'Taxable Salary', 'Tax Rate',
+                    'Tax Amount', 'NSSF Deduction', 'Net Salary', 'Item Status',
+                ],
+                rows: $rows,
+            ),
+        ];
+    }
+
+    /**
      * @param  Builder<PayrollBatch>  $query
      * @param  (\Closure(Builder<PayrollItem>): mixed)|null  $itemConstraint
      */
@@ -515,7 +656,11 @@ class PayrollService
             );
         }
 
-        $workingDays = $this->countWorkingDays(
+        $calendarDaysInMonth = $periodStart->daysInMonth;
+        $employedCalendarDays = $activeRange['start']->diffInDays($activeRange['end']) + 1;
+        $proportionalDays = (int) $settings->payroll_day_rate * $employedCalendarDays / $calendarDaysInMonth;
+        $workingDays = round($proportionalDays * 2) / 2;
+        $scheduledDays = $this->countWorkingDays(
             $activeRange['start'],
             $activeRange['end'],
             $settings,
@@ -542,7 +687,7 @@ class PayrollService
             $settings,
             $holidayDates,
         );
-        $absentDays = max(0, $workingDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days'] - $leaveBreakdown['special_sick_leave_days']);
+        $absentDays = max(0, $scheduledDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days'] - $leaveBreakdown['special_sick_leave_days']);
 
         return $this->calculatedItemPayload(
             baseSalary: (float) $employee->base_salary,
@@ -569,12 +714,12 @@ class PayrollService
         CarbonInterface $periodEnd,
     ): array {
         $specialSickLeaveDays = (float) ($overrides['special_sick_leave_days'] ?? $currentItem->special_sick_leave_days);
-        $dailyRate = (float) ($overrides['base_salary'] ?? $currentItem->base_salary) / max(1, (int) $settings->payroll_day_rate);
+        $dailyRate = (float) $currentItem->base_salary / max(1, (int) $settings->payroll_day_rate);
         $specialSickDeduction = (float) ($overrides['special_sick_deduction'] ?? $currentItem->special_sick_deduction);
         $specialSickDeductionWeighted = $dailyRate > 0 ? $specialSickDeduction / $dailyRate : 0.0;
 
         return $this->calculatedItemPayload(
-            baseSalary: (float) ($overrides['base_salary'] ?? $currentItem->base_salary),
+            baseSalary: (float) $currentItem->base_salary,
             workingDays: (float) ($overrides['working_days'] ?? $currentItem->working_days),
             presentDays: (float) ($overrides['present_days'] ?? $currentItem->present_days),
             absentDays: (float) ($overrides['absent_days'] ?? $currentItem->absent_days),

@@ -148,8 +148,10 @@ test('creating an employee on a manager position does not overwrite the hr role'
         ->and($linkedUser->fresh()->hasRole('head'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.reject_hr'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.reject'))->toBeTrue();
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.submit'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.delete'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.reject'))->toBeFalse();
 });
 
 test('changing a position job_level syncs assigned users except protected roles', function () {
@@ -459,7 +461,7 @@ test('updating an employee without changing position_id does not overwrite the c
         ->and($linkedUser->fresh()->hasRole('manager'))->toBeFalse();
 });
 
-test('head of hr inherits leave and payroll approve permissions', function () {
+test('head of hr inherits leave and payroll preparation permissions', function () {
     $department = jobLevelDepartment('HR & Admin');
     $position = jobLevelPosition($department, 'Head of HR Inherit', JobLevel::Head);
     $manager = jobLevelEmployee(jobLevelUser('employee', ['email' => 'hrhead.root@example.com']));
@@ -484,7 +486,9 @@ test('head of hr inherits leave and payroll approve permissions', function () {
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.update'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.submit'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeTrue();
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.delete'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.reject'))->toBeFalse();
 });
 
 test('commercial head does not inherit hr leave or payroll approve permissions', function () {

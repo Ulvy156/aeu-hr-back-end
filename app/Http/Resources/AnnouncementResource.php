@@ -51,6 +51,11 @@ class AnnouncementResource extends JsonResource
                 'name' => $this->approver->name,
             ] : null),
             'approved_at' => $this->approved_at?->toISOString(),
+            'published_by_user' => $this->whenLoaded('publisher', fn () => $this->publisher ? [
+                'id' => $this->publisher->id,
+                'name' => $this->publisher->name,
+            ] : null),
+            'published_at' => $this->published_at?->toISOString(),
             'rejected_by_user' => $this->whenLoaded('rejector', fn () => $this->rejector ? [
                 'id' => $this->rejector->id,
                 'name' => $this->rejector->name,

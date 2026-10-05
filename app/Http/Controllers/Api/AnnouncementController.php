@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Announcement\IndexAnnouncementRequest;
-use App\Http\Requests\Announcement\RejectAnnouncementRequest;
 use App\Http\Requests\Announcement\StoreAnnouncementRequest;
 use App\Http\Requests\Announcement\UpdateAnnouncementRequest;
 use App\Http\Resources\AnnouncementResource;
@@ -116,11 +115,11 @@ class AnnouncementController extends Controller
         );
     }
 
-    public function submit(Announcement $announcement): JsonResponse
+    public function publish(Announcement $announcement): JsonResponse
     {
-        $this->authorize('submit', $announcement);
+        $this->authorize('publish', $announcement);
 
-        $announcement = $this->announcementService->submit(
+        $announcement = $this->announcementService->publish(
             announcement: $announcement,
             actor: request()->user(),
             ipAddress: request()->ip(),
@@ -129,59 +128,7 @@ class AnnouncementController extends Controller
 
         return ApiResponse::success(
             data: AnnouncementResource::make($announcement)->resolve(request()),
-            message: 'Announcement submitted for approval.',
-        );
-    }
-
-    public function cancelSubmission(Announcement $announcement): JsonResponse
-    {
-        $this->authorize('cancelSubmission', $announcement);
-
-        $announcement = $this->announcementService->cancelSubmission(
-            announcement: $announcement,
-            actor: request()->user(),
-            ipAddress: request()->ip(),
-            userAgent: request()->userAgent(),
-        );
-
-        return ApiResponse::success(
-            data: AnnouncementResource::make($announcement)->resolve(request()),
-            message: 'Announcement submission cancelled.',
-        );
-    }
-
-    public function approve(Announcement $announcement): JsonResponse
-    {
-        $this->authorize('approve', $announcement);
-
-        $announcement = $this->announcementService->approve(
-            announcement: $announcement,
-            actor: request()->user(),
-            ipAddress: request()->ip(),
-            userAgent: request()->userAgent(),
-        );
-
-        return ApiResponse::success(
-            data: AnnouncementResource::make($announcement)->resolve(request()),
-            message: 'Announcement approved and published.',
-        );
-    }
-
-    public function reject(RejectAnnouncementRequest $request, Announcement $announcement): JsonResponse
-    {
-        $this->authorize('reject', $announcement);
-
-        $announcement = $this->announcementService->reject(
-            announcement: $announcement,
-            rejectionReason: $request->validated('rejection_reason'),
-            actor: $request->user(),
-            ipAddress: $request->ip(),
-            userAgent: $request->userAgent(),
-        );
-
-        return ApiResponse::success(
-            data: AnnouncementResource::make($announcement)->resolve($request),
-            message: 'Announcement rejected.',
+            message: 'Announcement published.',
         );
     }
 

@@ -100,7 +100,8 @@ class PayslipService
         $pdf = Pdf::loadView('payslips.pdf', [
             'companySetting' => $companySetting,
             'payslip' => $payrollItem,
-            'companyLogoDataUri' => $this->companyLogoDataUri($companySetting->company_logo),
+            'companyLogoDataUri' => $this->companyLogoDataUri($companySetting->company_logo)
+                ?? $this->defaultCompanyLogoDataUri(),
         ])->setPaper('a4');
 
         return $pdf->download($fileName);
@@ -125,5 +126,18 @@ class PayslipService
         $mimeType = FileStorage::disk()->mimeType($companyLogoPath) ?: 'image/png';
 
         return 'data:'.$mimeType.';base64,'.base64_encode($contents);
+    }
+
+    protected function defaultCompanyLogoDataUri(): ?string
+    {
+        $logoPath = public_path('pdm-care-logo.png');
+
+        if (! is_file($logoPath)) {
+            return null;
+        }
+
+        $contents = file_get_contents($logoPath);
+
+        return $contents === false ? null : 'data:image/png;base64,'.base64_encode($contents);
     }
 }

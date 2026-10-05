@@ -9,7 +9,7 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: APP_NAME
-        value: "HR Management System"
+        value: "PDM CARE"
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
@@ -66,7 +66,7 @@ services:
     dockerCommand: php artisan queue:work --sleep=3 --tries=3 --timeout=90
     envVars:
       - key: APP_NAME
-        value: "HR Management System"
+        value: "PDM CARE"
       - key: APP_ENV
         value: production
       - key: APP_DEBUG

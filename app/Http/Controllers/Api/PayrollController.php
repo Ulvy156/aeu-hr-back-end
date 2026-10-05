@@ -13,6 +13,8 @@ use App\Http\Resources\PayrollBatchResource;
 use App\Models\PayrollBatch;
 use App\Services\PayrollService;
 use App\Support\ApiResponse;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Http\JsonResponse;
 
 class PayrollController extends Controller
@@ -36,6 +38,22 @@ class PayrollController extends Controller
             paginator: $paginator,
             data: $paginator->items(),
             message: 'Payrolls fetched successfully.',
+        );
+    }
+
+    public function mine(IndexPayrollRequest $request): JsonResponse
+    {
+        $paginator = $this->payrollService->paginateOwn(
+            filters: $request->validated(),
+            viewer: $request->user(),
+        );
+
+        $paginator->through(fn (PayrollBatch $payrollBatch) => PayrollBatchResource::make($payrollBatch)->resolve($request));
+
+        return ApiResponse::paginated(
+            paginator: $paginator,
+            data: $paginator->items(),
+            message: 'Your payroll records fetched successfully.',
         );
     }
 
@@ -70,6 +88,15 @@ class PayrollController extends Controller
         );
     }
 
+    public function export(PayrollBatch $payroll): BinaryFileResponse
+    {
+        $this->authorize('view', $payroll);
+
+        $export = $this->payrollService->exportBatch($payroll, request()->user());
+
+        return Excel::download($export['export'], $export['file_name']);
+    }
+
     public function update(UpdatePayrollRequest $request, PayrollBatch $payroll): JsonResponse
     {
         $this->authorize('update', $payroll);
@@ -86,6 +113,20 @@ class PayrollController extends Controller
             data: PayrollBatchResource::make($payroll)->resolve($request),
             message: 'Payroll updated successfully.',
         );
+    }
+
+    public function destroy(PayrollBatch $payroll): JsonResponse
+    {
+        $this->authorize('delete', $payroll);
+
+        $this->payrollService->delete(
+            payrollBatch: $payroll,
+            actor: request()->user(),
+            ipAddress: request()->ip(),
+            userAgent: request()->userAgent(),
+        );
+
+        return ApiResponse::success(message: 'Draft payroll deleted successfully.');
     }
 
     public function submit(SubmitPayrollRequest $request, PayrollBatch $payroll): JsonResponse

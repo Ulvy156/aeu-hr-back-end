@@ -25,7 +25,8 @@
 
         .logo-cell {
             width: 120px;
-            padding-right: 16px;
+            padding-left: 16px;
+            text-align: right;
         }
 
         .logo {
@@ -82,11 +83,6 @@
     <div class="header">
         <table class="header-table">
             <tr>
-                @if (! empty($companyLogoDataUri))
-                    <td class="logo-cell">
-                        <img src="{{ $companyLogoDataUri }}" alt="Company Logo" class="logo">
-                    </td>
-                @endif
                 <td>
                     <div class="title">{{ $companySetting->company_name }}</div>
                     <div class="muted">Payslip for {{ $payPeriod }}</div>
@@ -97,6 +93,11 @@
                         <div>{{ $companySetting->company_email }}</div>
                     @endif
                 </td>
+                @if (! empty($companyLogoDataUri))
+                    <td class="logo-cell">
+                        <img src="{{ $companyLogoDataUri }}" alt="Company Logo" class="logo">
+                    </td>
+                @endif
             </tr>
         </table>
     </div>

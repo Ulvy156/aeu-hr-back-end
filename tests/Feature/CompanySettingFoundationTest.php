@@ -14,7 +14,7 @@ test('company setting seeder creates the default singleton row', function () {
     $setting = CompanySetting::query()->sole();
 
     expect(CompanySetting::query()->count())->toBe(1)
-        ->and($setting->company_name)->toBe('Laravel')
+        ->and($setting->company_name)->toBe('PDM CARE')
         ->and($setting->working_start_time)->toBe('08:00:00')
         ->and($setting->working_end_time)->toBe('17:00:00')
         ->and($setting->working_days)->toBe([
@@ -35,7 +35,7 @@ test('company setting service creates defaults when no settings row exists', fun
 
     expect($setting->exists)->toBeTrue()
         ->and(CompanySetting::query()->count())->toBe(1)
-        ->and($setting->company_name)->toBe('Laravel');
+        ->and($setting->company_name)->toBe('PDM CARE');
 });
 
 test('company setting service enforces a single row when updating settings', function () {

@@ -18,7 +18,27 @@ class JobLevelRoleService
         }
 
         $this->syncForUser($employee->user, $employee->position?->job_level);
+        $this->syncDepartmentHeadAnnouncementPermissions($employee);
         $this->syncHrHeadDecisionPermissions($employee);
+    }
+
+    protected function syncDepartmentHeadAnnouncementPermissions(Employee $employee): void
+    {
+        $user = $employee->user;
+
+        if ($user === null) {
+            return;
+        }
+
+        $permissions = ['announcements.create', 'announcements.update', 'announcements.publish'];
+
+        if ($employee->position?->job_level === JobLevel::Head) {
+            $user->givePermissionTo($permissions);
+
+            return;
+        }
+
+        $user->revokePermissionTo($permissions);
     }
 
     public function syncForPosition(Position $position): void
@@ -61,6 +81,8 @@ class JobLevelRoleService
         }
 
         if ($this->isHrDepartmentHead($employee)) {
+            // Remove grants issued by the previous workflow when syncing existing HR heads.
+            $user->revokePermissionTo(['payrolls.approve', 'payrolls.reject']);
             $user->givePermissionTo($permissions);
 
             return;
@@ -91,13 +113,14 @@ class JobLevelRoleService
     protected function hrHeadPermissions(): array
     {
         return array_values(array_filter((array) config('hr.job_levels.hr_head_permissions', [
+            'payrolls.view_own',
             'leaves.approve_hr',
             'leaves.reject_hr',
             'payrolls.generate',
             'payrolls.update',
             'payrolls.submit',
-            'payrolls.approve',
-            'payrolls.reject',
+            'payrolls.delete',
+            'payrolls.export',
         ])));
     }
 

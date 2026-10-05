@@ -38,6 +38,10 @@ test('org chart seeders create occupied seats with job levels and reporting', fu
         ->and($hr->employee->position->name)->toBe('Head of HR')
         ->and($hr->employee->position->job_level)->toBe(JobLevel::Head)
         ->and($hr->hasDirectPermission('payrolls.generate'))->toBeTrue()
+        ->and($hr->hasDirectPermission('payrolls.submit'))->toBeTrue()
+        ->and($hr->hasDirectPermission('payrolls.delete'))->toBeTrue()
+        ->and($hr->hasPermissionTo('payrolls.approve'))->toBeFalse()
+        ->and($hr->hasPermissionTo('payrolls.reject'))->toBeFalse()
         ->and($hr->employee->manager_id)->toBe($gm->employee->id)
         ->and($admin)->not->toBeNull()
         ->and($admin->hasRole('admin'))->toBeTrue()
@@ -48,6 +52,7 @@ test('org chart seeders create occupied seats with job levels and reporting', fu
 
 test('rerunning user seeder promotes an existing HR employee to head', function () {
     $hr = User::query()->where('email', 'hr@gmail.com')->firstOrFail();
+    $hr->givePermissionTo(['payrolls.approve', 'payrolls.reject']);
     $juniorPosition = Position::query()->where('name', 'HR Admin')->firstOrFail();
     $hr->employee->update(['position_id' => $juniorPosition->id]);
 
@@ -55,7 +60,10 @@ test('rerunning user seeder promotes an existing HR employee to head', function 
 
     $hr->refresh();
     expect($hr->employee->position->name)->toBe('Head of HR')
-        ->and($hr->hasDirectPermission('payrolls.generate'))->toBeTrue();
+        ->and($hr->hasDirectPermission('payrolls.generate'))->toBeTrue()
+        ->and($hr->hasDirectPermission('payrolls.delete'))->toBeTrue()
+        ->and($hr->hasDirectPermission('payrolls.approve'))->toBeFalse()
+        ->and($hr->hasDirectPermission('payrolls.reject'))->toBeFalse();
 });
 
 test('regular HR does not inherit the head payroll permission', function () {

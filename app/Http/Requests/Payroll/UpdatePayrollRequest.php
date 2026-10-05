@@ -23,8 +23,8 @@ class UpdatePayrollRequest extends FormRequest
         return [
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['required', 'integer', 'distinct', Rule::exists('payroll_items', 'id')],
-            'items.*.base_salary' => ['sometimes', 'numeric', 'min:0'],
-            'items.*.working_days' => ['sometimes', 'numeric', 'min:0'],
+            'items.*.base_salary' => ['prohibited'],
+            'items.*.working_days' => ['sometimes', 'numeric', 'min:0', 'multiple_of:0.5'],
             'items.*.present_days' => ['sometimes', 'numeric', 'min:0'],
             'items.*.absent_days' => ['sometimes', 'numeric', 'min:0'],
             'items.*.unpaid_leave_days' => ['sometimes', 'numeric', 'min:0'],

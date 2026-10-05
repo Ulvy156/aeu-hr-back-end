@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\JobLevel;
 use App\Enums\PayrollViewScope;
 use App\Models\PayrollBatch;
 use App\Models\User;
@@ -48,12 +49,19 @@ class PayrollBatchPolicy
 
     public function approve(User $user, PayrollBatch $payrollBatch): bool
     {
-        return $user->hasPermissionTo('payrolls.approve');
+        return $user->hasRole('ceo') && $user->hasPermissionTo('payrolls.approve');
     }
 
     public function reject(User $user, PayrollBatch $payrollBatch): bool
     {
-        return $user->hasPermissionTo('payrolls.reject');
+        return $user->hasRole('ceo') && $user->hasPermissionTo('payrolls.reject');
+    }
+
+    public function delete(User $user, PayrollBatch $payrollBatch): bool
+    {
+        return $user->hasPermissionTo('payrolls.delete')
+            && $user->employee?->position?->job_level === JobLevel::Head
+            && strcasecmp($user->employee?->department?->name ?? '', (string) config('hr.hr_department_name', 'HR & Admin')) === 0;
     }
 
     protected function batchHasDepartmentItems(PayrollBatch $payrollBatch, ?int $departmentId): bool

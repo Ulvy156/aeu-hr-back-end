@@ -152,8 +152,8 @@ class AnnouncementService
         return DB::transaction(function () use ($announcement, $data, $targets, $attachment, $removeAttachment, $actor, $ipAddress, $userAgent): Announcement {
             $announcement = Announcement::query()->whereKey($announcement->id)->lockForUpdate()->firstOrFail();
 
-            if (! in_array($announcement->status, ['draft', 'rejected'], true)) {
-                throw ApiException::unprocessable('Only draft or rejected announcements can be edited.');
+            if (! in_array($announcement->status, ['draft', 'pending_approval', 'rejected'], true)) {
+                throw ApiException::unprocessable('Only draft announcements can be edited.');
             }
 
             $oldValues = $this->auditAttributes($announcement);
@@ -199,7 +199,7 @@ class AnnouncementService
         });
     }
 
-    public function submit(
+    public function publish(
         Announcement $announcement,
         User $actor,
         ?string $ipAddress = null,
@@ -208,103 +208,18 @@ class AnnouncementService
         return DB::transaction(function () use ($announcement, $actor, $ipAddress, $userAgent): Announcement {
             $announcement = Announcement::query()->whereKey($announcement->id)->lockForUpdate()->firstOrFail();
 
-            if (! in_array($announcement->status, ['draft', 'rejected'], true)) {
-                throw ApiException::unprocessable('Only draft or rejected announcements can be submitted for approval.');
-            }
-
-            $oldValues = $this->auditAttributes($announcement);
-
-            $announcement->forceFill([
-                'status' => 'pending_approval',
-                'submitted_by' => $actor->id,
-                'submitted_at' => now(),
-                'rejected_by' => null,
-                'rejected_at' => null,
-                'rejection_reason' => null,
-            ])->save();
-
-            $announcement = $this->loadRelations($announcement->fresh());
-
-            $this->auditLogService->log(
-                action: 'submit',
-                module: 'announcements',
-                user: $actor,
-                subject: $announcement,
-                oldValues: $oldValues,
-                newValues: $this->auditAttributes($announcement),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
-
-            return $announcement;
-        });
-    }
-
-    public function cancelSubmission(
-        Announcement $announcement,
-        User $actor,
-        ?string $ipAddress = null,
-        ?string $userAgent = null,
-    ): Announcement {
-        return DB::transaction(function () use ($announcement, $actor, $ipAddress, $userAgent): Announcement {
-            $announcement = Announcement::query()->whereKey($announcement->id)->lockForUpdate()->firstOrFail();
-
-            if ($announcement->status !== 'pending_approval') {
-                throw ApiException::unprocessable('Only announcements pending approval can have their submission cancelled.');
-            }
-
-            if ($announcement->created_by !== $actor->id) {
-                throw ApiException::forbidden('Only the creator can cancel this submission.');
-            }
-
-            $oldValues = $this->auditAttributes($announcement);
-
-            $announcement->forceFill([
-                'status' => 'draft',
-                'submitted_by' => null,
-                'submitted_at' => null,
-            ])->save();
-
-            $announcement = $this->loadRelations($announcement->fresh());
-
-            $this->auditLogService->log(
-                action: 'cancel_submission',
-                module: 'announcements',
-                user: $actor,
-                subject: $announcement,
-                oldValues: $oldValues,
-                newValues: $this->auditAttributes($announcement),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
-
-            return $announcement;
-        });
-    }
-
-    public function approve(
-        Announcement $announcement,
-        User $actor,
-        ?string $ipAddress = null,
-        ?string $userAgent = null,
-    ): Announcement {
-        return DB::transaction(function () use ($announcement, $actor, $ipAddress, $userAgent): Announcement {
-            $announcement = Announcement::query()->whereKey($announcement->id)->lockForUpdate()->firstOrFail();
-
-            if ($announcement->status !== 'pending_approval') {
-                throw ApiException::unprocessable('Only announcements pending approval can be approved.');
-            }
-
-            if ($announcement->created_by === $actor->id) {
-                throw ApiException::forbidden('You cannot approve your own announcement.');
+            if (! in_array($announcement->status, ['draft', 'pending_approval', 'rejected'], true)) {
+                throw ApiException::unprocessable('Only unpublished announcements can be published.');
             }
 
             $oldValues = $this->auditAttributes($announcement);
 
             $announcement->forceFill([
                 'status' => 'published',
-                'approved_by' => $actor->id,
-                'approved_at' => now(),
+                'published_by' => $actor->id,
+                'published_at' => now(),
+                'submitted_by' => null,
+                'submitted_at' => null,
                 'rejected_by' => null,
                 'rejected_at' => null,
                 'rejection_reason' => null,
@@ -313,51 +228,7 @@ class AnnouncementService
             $announcement = $this->loadRelations($announcement->fresh());
 
             $this->auditLogService->log(
-                action: 'approve',
-                module: 'announcements',
-                user: $actor,
-                subject: $announcement,
-                oldValues: $oldValues,
-                newValues: $this->auditAttributes($announcement),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
-
-            return $announcement;
-        });
-    }
-
-    public function reject(
-        Announcement $announcement,
-        string $rejectionReason,
-        User $actor,
-        ?string $ipAddress = null,
-        ?string $userAgent = null,
-    ): Announcement {
-        return DB::transaction(function () use ($announcement, $rejectionReason, $actor, $ipAddress, $userAgent): Announcement {
-            $announcement = Announcement::query()->whereKey($announcement->id)->lockForUpdate()->firstOrFail();
-
-            if ($announcement->status !== 'pending_approval') {
-                throw ApiException::unprocessable('Only announcements pending approval can be rejected.');
-            }
-
-            if ($announcement->created_by === $actor->id) {
-                throw ApiException::forbidden('You cannot reject your own announcement.');
-            }
-
-            $oldValues = $this->auditAttributes($announcement);
-
-            $announcement->forceFill([
-                'status' => 'rejected',
-                'rejected_by' => $actor->id,
-                'rejected_at' => now(),
-                'rejection_reason' => $rejectionReason,
-            ])->save();
-
-            $announcement = $this->loadRelations($announcement->fresh());
-
-            $this->auditLogService->log(
-                action: 'reject',
+                action: 'publish',
                 module: 'announcements',
                 user: $actor,
                 subject: $announcement,
@@ -566,6 +437,7 @@ class AnnouncementService
             'creator:id,name',
             'submitter:id,name',
             'approver:id,name',
+            'publisher:id,name',
             'rejector:id,name',
             'targets',
         ]);
@@ -586,6 +458,8 @@ class AnnouncementService
             'submitted_at' => $announcement->submitted_at?->toISOString(),
             'approved_by' => $announcement->approved_by,
             'approved_at' => $announcement->approved_at?->toISOString(),
+            'published_by' => $announcement->published_by,
+            'published_at' => $announcement->published_at?->toISOString(),
             'rejected_by' => $announcement->rejected_by,
             'rejected_at' => $announcement->rejected_at?->toISOString(),
             'rejection_reason' => $announcement->rejection_reason,
