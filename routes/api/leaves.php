@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/leave-balances', [LeaveController::class, 'balances']);
+    Route::get('/leaves/mine', [LeaveController::class, 'mine']);
     Route::apiResource('leaves', LeaveController::class)
         ->parameters(['leaves' => 'leave'])
         ->only(['index', 'store', 'show']);

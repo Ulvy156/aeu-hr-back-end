@@ -13,6 +13,11 @@ class LeavePolicy
         return $user->hasPermissionTo('leaves.view_any') || $user->hasPermissionTo('leaves.view_own');
     }
 
+    public function viewOwn(User $user): bool
+    {
+        return $user->hasPermissionTo('leaves.view_own');
+    }
+
     public function viewBalanceAny(User $user): bool
     {
         return $user->hasPermissionTo('leave_balances.view_any');

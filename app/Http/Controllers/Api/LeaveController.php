@@ -42,6 +42,24 @@ class LeaveController extends Controller
         );
     }
 
+    public function mine(IndexLeaveRequest $request): JsonResponse
+    {
+        $this->authorize('viewOwn', LeaveRequest::class);
+
+        $paginator = $this->leaveService->paginateOwn(
+            filters: $request->validated(),
+            viewer: $request->user(),
+        );
+
+        $paginator->through(fn (LeaveRequest $leave) => LeaveResource::make($leave)->resolve($request));
+
+        return ApiResponse::paginated(
+            paginator: $paginator,
+            data: $paginator->items(),
+            message: 'Your leave requests fetched successfully.',
+        );
+    }
+
     public function store(StoreLeaveRequest $request): JsonResponse
     {
         $this->authorize('create', LeaveRequest::class);

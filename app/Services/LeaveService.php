@@ -28,7 +28,36 @@ class LeaveService
     {
         $filters['employee_id'] = Employee::resolveId($filters['employee_id'] ?? null);
         $perPage = (int) ($filters['per_page'] ?? 15);
+        $query = $this->leaveListQuery($filters);
 
+        if ($this->canViewAllLeaves($viewer)) {
+            $query->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId));
+        } elseif ($this->canViewOwnLeaves($viewer)) {
+            $query->whereBelongsTo($this->employeeForUserOrFail($viewer));
+        } else {
+            throw ApiException::forbidden();
+        }
+
+        return $query->paginate($perPage);
+    }
+
+    /** @param array<string, mixed> $filters */
+    public function paginateOwn(array $filters, User $viewer): LengthAwarePaginator
+    {
+        if (! $this->canViewOwnLeaves($viewer)) {
+            throw ApiException::forbidden();
+        }
+
+        $perPage = (int) ($filters['per_page'] ?? 15);
+
+        return $this->leaveListQuery($filters)
+            ->whereBelongsTo($this->employeeForUserOrFail($viewer))
+            ->paginate($perPage);
+    }
+
+    /** @param array<string, mixed> $filters */
+    protected function leaveListQuery(array $filters): Builder
+    {
         $query = LeaveRequest::query()
             ->with([
                 'employee:id,user_id,employee_id,full_name',
@@ -48,15 +77,7 @@ class LeaveService
             $query->whereDate('start_date', '<=', (string) $filters['date_to']);
         }
 
-        if ($this->canViewAllLeaves($viewer)) {
-            $query->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId));
-        } elseif ($this->canViewOwnLeaves($viewer)) {
-            $query->whereBelongsTo($this->employeeForUserOrFail($viewer));
-        } else {
-            throw ApiException::forbidden();
-        }
-
-        return $query->paginate($perPage);
+        return $query;
     }
 
     /**
