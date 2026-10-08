@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'start_date',
     'end_date',
     'duration_type',
+    'half_day_period',
     'total_days',
     'reason',
     'status',

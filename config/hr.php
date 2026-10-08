@@ -28,6 +28,10 @@ return [
         'intern_period_months' => 3,
     ],
     'leave' => [
+        'half_day_schedule' => [
+            'morning_end_time' => '12:00:00',
+            'afternoon_start_time' => '13:00:00',
+        ],
         'entitlements' => [
             'annual' => 18.0,
             'sick' => 7.0,

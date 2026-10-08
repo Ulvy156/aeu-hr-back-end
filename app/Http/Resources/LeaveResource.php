@@ -22,6 +22,7 @@ class LeaveResource extends JsonResource
             'start_date' => $this->start_date?->toDateString(),
             'end_date' => $this->end_date?->toDateString(),
             'duration_type' => $this->duration_type,
+            'half_day_period' => $this->half_day_period,
             'total_days' => (string) $this->total_days,
             'reason' => $this->reason,
             'status' => $this->status,

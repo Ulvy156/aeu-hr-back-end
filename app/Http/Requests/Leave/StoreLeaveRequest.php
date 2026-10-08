@@ -24,6 +24,7 @@ class StoreLeaveRequest extends FormRequest
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'duration_type' => ['required', Rule::in(['full_day', 'half_day'])],
+            'half_day_period' => ['nullable', Rule::in(['morning', 'afternoon'])],
             'reason' => ['required', 'string'],
             'employee_id' => ['prohibited'],
             'total_days' => ['prohibited'],
@@ -51,6 +52,14 @@ class StoreLeaveRequest extends FormRequest
                     && $this->string('start_date')->value() !== $this->string('end_date')->value()
                 ) {
                     $validator->errors()->add('duration_type', 'Half-day leave must start and end on the same date.');
+                }
+
+                if ($this->input('duration_type') === 'half_day' && ! $this->filled('half_day_period')) {
+                    $validator->errors()->add('half_day_period', 'Choose Half Day Morning or Half Day Afternoon.');
+                }
+
+                if ($this->input('duration_type') === 'full_day' && $this->filled('half_day_period')) {
+                    $validator->errors()->add('half_day_period', 'A half-day period can only be set for half-day leave.');
                 }
             },
         ];

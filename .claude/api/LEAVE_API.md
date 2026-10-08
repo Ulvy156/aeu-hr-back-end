@@ -65,6 +65,7 @@ Create a leave request for the authenticated employee profile.
   "start_date": "2026-05-04",
   "end_date": "2026-05-06",
   "duration_type": "full_day",
+  "half_day_period": null,
   "reason": "Family event"
 }
 ```
@@ -84,6 +85,11 @@ Create a leave request for the authenticated employee profile.
   - `full_day`
   - `half_day`
 - `half_day` must use the same `start_date` and `end_date`.
+- Half-day requests must set `half_day_period` to `morning` or `afternoon`; full-day requests must set it to `null` or omit it.
+- The UI offers `Full Day`, `Half Day Morning`, and `Half Day Afternoon` without displaying times in the option labels.
+- Half-day attendance uses fixed boundaries: morning leave ends at 12:00 and afternoon work starts at 13:00. Existing company working-time settings are unchanged.
+- Morning leave blocks clock-in before 13:00 and compares lateness to 13:00. Afternoon leave allows clock-in through the morning period and blocks clock-out after 12:00. GPS, QR, and HR proxy clock actions follow these rules.
+- Blocked clock actions return a message naming the approved half-day leave and the allowed clock time. Existing half-day records with a null period retain their previous whole-day restriction.
 - Public holidays are excluded.
 - Non-working days from company settings are excluded.
 - If all selected dates are excluded, the request is rejected.
@@ -105,6 +111,7 @@ Create a leave request for the authenticated employee profile.
     "start_date": "2026-05-04",
     "end_date": "2026-05-06",
     "duration_type": "full_day",
+    "half_day_period": null,
     "total_days": "3.00",
     "reason": "Family event",
     "status": "pending",

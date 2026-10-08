@@ -82,9 +82,7 @@ class AttendanceService
         $clockInAt = now();
         $attendanceDate = $clockInAt->toDateString();
 
-        if ($this->isOnApprovedLeave($employee, $attendanceDate)) {
-            throw ApiException::unprocessable('You are on approved leave today and cannot clock in.');
-        }
+        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_in', $clockInAt, 'You are on approved leave today and cannot clock in.');
 
         if ($this->isPublicHoliday($clockInAt)) {
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
@@ -104,8 +102,8 @@ class AttendanceService
             'clock_in_time' => $clockInAt,
             'clock_in_latitude' => $latitude,
             'clock_in_longitude' => $longitude,
-            'status' => $this->isLateForTime($clockInAt, 'present', $settings) ? 'late' : 'present',
-            'is_late' => $this->isLateForTime($clockInAt, 'present', $settings),
+            'status' => $this->isLateForEmployee($clockInAt, $employee, $settings) ? 'late' : 'present',
+            'is_late' => $this->isLateForEmployee($clockInAt, $employee, $settings),
         ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
     }
 
@@ -119,9 +117,8 @@ class AttendanceService
 
         $attendanceDate = now()->toDateString();
 
-        if ($this->isOnApprovedLeave($employee, $attendanceDate)) {
-            throw ApiException::unprocessable('You are on approved leave today and cannot clock out.');
-        }
+        $clockOutAt = now();
+        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_out', $clockOutAt, 'You are on approved leave today and cannot clock out.');
 
         if ($this->isPublicHoliday(now())) {
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
@@ -145,7 +142,7 @@ class AttendanceService
         }
 
         $attendance->update([
-            'clock_out_time' => now(),
+            'clock_out_time' => $clockOutAt,
             'clock_out_latitude' => $latitude,
             'clock_out_longitude' => $longitude,
             'status' => $attendance->status === 'missing_clock_out'
@@ -337,11 +334,11 @@ class AttendanceService
         $settings = $this->companySettingService->current();
 
         $date = Carbon::parse($attendanceDate)->startOfDay();
-        $clockInTime = Carbon::parse($date->toDateString().' '.$settings->working_start_time);
-
-        if ($this->isOnApprovedLeave($employee, $date->toDateString())) {
-            throw ApiException::unprocessable('This employee is on approved leave on the selected date and cannot be clocked in.');
-        }
+        $approvedLeave = $this->approvedLeaveForDate($employee, $date->toDateString());
+        $clockInTime = $approvedLeave?->duration_type === 'half_day' && $approvedLeave->half_day_period === 'morning'
+            ? $this->halfDayAfternoonStart($date)
+            : Carbon::parse($date->toDateString().' '.$settings->working_start_time);
+        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_in', $clockInTime, 'This employee is on approved leave on the selected date and cannot be clocked in.');
 
         if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date->toDateString())->exists()) {
             throw ApiException::unprocessable('An attendance record already exists for this employee on the selected date.');
@@ -382,9 +379,11 @@ class AttendanceService
 
         $date = Carbon::parse($attendanceDate)->startOfDay();
 
-        if ($this->isOnApprovedLeave($employee, $date->toDateString())) {
-            throw ApiException::unprocessable('This employee is on approved leave on the selected date and cannot be clocked out.');
-        }
+        $approvedLeave = $this->approvedLeaveForDate($employee, $date->toDateString());
+        $clockOutTime = $approvedLeave?->duration_type === 'half_day' && $approvedLeave->half_day_period === 'afternoon'
+            ? $this->halfDayMorningEnd($date)
+            : Carbon::parse($date->toDateString().' '.$settings->working_end_time);
+        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_out', $clockOutTime, 'This employee is on approved leave on the selected date and cannot be clocked out.');
 
         $attendance = Attendance::query()
             ->whereBelongsTo($employee)
@@ -399,7 +398,6 @@ class AttendanceService
             throw ApiException::unprocessable('This employee has already clocked out on the selected date.');
         }
 
-        $clockOutTime = Carbon::parse($date->toDateString().' '.$settings->working_end_time);
         $oldValues = $this->auditAttributes($attendance);
 
         $attendance->update([
@@ -667,10 +665,6 @@ class AttendanceService
             $employee = $this->employeeForUserOrFail($user);
             $today = now()->toDateString();
 
-            if ($this->isOnApprovedLeave($employee, $today)) {
-                throw ApiException::unprocessable('You are on approved leave today and cannot use QR attendance.');
-            }
-
             if ($this->isPublicHoliday(now())) {
                 throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
             }
@@ -693,7 +687,9 @@ class AttendanceService
             if (! $attendance) {
                 $clockInAt = now();
 
-                $isLate = $this->isLateForTime($clockInAt, 'present', $settings);
+                $this->assertLeaveAllowsAttendance($employee, $today, 'clock_in', $clockInAt, 'You are on approved leave today and cannot use QR attendance.');
+
+                $isLate = $this->isLateForEmployee($clockInAt, $employee, $settings);
 
                 $attendance = Attendance::query()->create([
                     'employee_id' => $employee->id,
@@ -708,8 +704,11 @@ class AttendanceService
 
                 $action = 'qr_clock_in';
             } elseif (! $attendance->clock_out_time) {
+                $clockOutAt = now();
+                $this->assertLeaveAllowsAttendance($employee, $today, 'clock_out', $clockOutAt, 'You are on approved leave today and cannot use QR attendance.');
+
                 $attendance->update([
-                    'clock_out_time' => now(),
+                    'clock_out_time' => $clockOutAt,
                     'clock_out_latitude' => $latitude,
                     'clock_out_longitude' => $longitude,
                     'qr_clock_out' => true,
@@ -776,12 +775,74 @@ class AttendanceService
 
     protected function isOnApprovedLeave(Employee $employee, string $date): bool
     {
+        return $this->approvedLeaveForDate($employee, $date) !== null;
+    }
+
+    protected function approvedLeaveForDate(Employee $employee, string $date): ?LeaveRequest
+    {
         return LeaveRequest::query()
             ->whereBelongsTo($employee)
             ->where('status', 'approved')
             ->whereDate('start_date', '<=', $date)
             ->whereDate('end_date', '>=', $date)
-            ->exists();
+            ->first();
+    }
+
+    protected function assertLeaveAllowsAttendance(
+        Employee $employee,
+        string $date,
+        string $action,
+        CarbonInterface $actionTime,
+        string $fullDayError,
+    ): void {
+        $leave = $this->approvedLeaveForDate($employee, $date);
+
+        if (! $leave) {
+            return;
+        }
+
+        if ($leave->duration_type !== 'half_day' || ! in_array($leave->half_day_period, ['morning', 'afternoon'], true)) {
+            throw ApiException::unprocessable($fullDayError);
+        }
+
+        $morningEnd = $this->halfDayMorningEnd(Carbon::parse($date)->startOfDay());
+        $afternoonStart = $this->halfDayAfternoonStart(Carbon::parse($date)->startOfDay());
+        $message = null;
+
+        if ($leave->half_day_period === 'morning' && $action === 'clock_in' && $actionTime->lt($afternoonStart)) {
+            $message = 'You have approved Half Day Morning leave. You can clock in from '.$afternoonStart->format('g:i A').'.';
+        } elseif ($leave->half_day_period === 'morning' && $action === 'clock_out' && $actionTime->lt($afternoonStart)) {
+            $message = 'You have approved Half Day Morning leave. You can clock out after starting work from '.$afternoonStart->format('g:i A').'.';
+        } elseif ($leave->half_day_period === 'afternoon' && $action === 'clock_in' && $actionTime->gt($morningEnd)) {
+            $message = 'You have approved Half Day Afternoon leave. You can clock in during morning work hours, before '.$morningEnd->format('g:i A').'.';
+        } elseif ($leave->half_day_period === 'afternoon' && $action === 'clock_out' && $actionTime->gt($morningEnd)) {
+            $message = 'You have approved Half Day Afternoon leave. Please clock out by '.$morningEnd->format('g:i A').'.';
+        }
+
+        if ($message !== null) {
+            throw ApiException::unprocessable($message);
+        }
+    }
+
+    protected function halfDayMorningEnd(CarbonInterface $date): Carbon
+    {
+        return Carbon::parse($date->toDateString().' '.config('hr.leave.half_day_schedule.morning_end_time', '12:00:00'));
+    }
+
+    protected function halfDayAfternoonStart(CarbonInterface $date): Carbon
+    {
+        return Carbon::parse($date->toDateString().' '.config('hr.leave.half_day_schedule.afternoon_start_time', '13:00:00'));
+    }
+
+    protected function isLateForEmployee(CarbonInterface $clockInTime, Employee $employee, CompanySetting $settings): bool
+    {
+        $leave = $this->approvedLeaveForDate($employee, $clockInTime->toDateString());
+
+        if ($leave?->duration_type === 'half_day' && $leave->half_day_period === 'morning') {
+            return $clockInTime->greaterThan($this->halfDayAfternoonStart($clockInTime));
+        }
+
+        return $this->isLateForTime($clockInTime, 'present', $settings);
     }
 
     protected function employeeForUserOrFail(User $user): Employee

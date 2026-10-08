@@ -73,6 +73,7 @@ class LeaveService
             $startDate = Carbon::parse((string) $data['start_date'])->startOfDay();
             $endDate = Carbon::parse((string) $data['end_date'])->startOfDay();
             $durationType = (string) $data['duration_type'];
+            $halfDayPeriod = $data['half_day_period'] ?? null;
             $leaveType = (string) $data['leave_type'];
 
             $totalDays = $this->calculateLeaveDays($startDate, $endDate, $durationType);
@@ -89,6 +90,7 @@ class LeaveService
                 'start_date' => $startDate->toDateString(),
                 'end_date' => $endDate->toDateString(),
                 'duration_type' => $durationType,
+                'half_day_period' => $halfDayPeriod,
                 'total_days' => $totalDays,
                 'reason' => $data['reason'],
                 'status' => 'pending',
@@ -544,6 +546,7 @@ class LeaveService
             'start_date' => $leave->start_date?->toDateString(),
             'end_date' => $leave->end_date?->toDateString(),
             'duration_type' => $leave->duration_type,
+            'half_day_period' => $leave->half_day_period,
             'total_days' => (string) $leave->total_days,
             'status' => $leave->status,
             'hr_approval_status' => $leave->hr_approval_status,
