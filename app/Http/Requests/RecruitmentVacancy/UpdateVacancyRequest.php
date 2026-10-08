@@ -24,6 +24,7 @@ class UpdateVacancyRequest extends FormRequest
             'description' => ['required', 'string'],
             'required_headcount' => ['required', 'integer', 'min:1'],
             'target_hiring_date' => ['required', 'date'],
+            'close_date' => ['nullable', 'date', 'after:target_hiring_date'],
             'status' => ['prohibited'],
             'filled_headcount' => ['prohibited'],
             'created_by' => ['prohibited'],

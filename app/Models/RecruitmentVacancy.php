@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'required_headcount',
     'filled_headcount',
     'target_hiring_date',
+    'close_date',
     'status',
     'created_by',
 ])]
@@ -48,6 +49,7 @@ class RecruitmentVacancy extends Model
             'required_headcount' => 'integer',
             'filled_headcount' => 'integer',
             'target_hiring_date' => 'date',
+            'close_date' => 'date',
         ];
     }
 }

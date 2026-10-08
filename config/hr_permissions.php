@@ -242,6 +242,7 @@ return [
                 'recruitment.candidates.view',
                 'recruitment.candidates.create',
                 'recruitment.candidates.update',
+                'recruitment.candidates.hire',
                 'users.view_any',
                 'users.search',
                 'employee_upgrade_requests.view',

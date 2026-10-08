@@ -934,6 +934,7 @@ Columns:
 * required_headcount
 * filled_headcount
 * target_hiring_date
+* close_date nullable (automatic close date)
 * status
 * created_by
 * created_at
@@ -954,6 +955,7 @@ Rules:
 
 * filled_headcount default 0
 * status default open
+* Open vacancies with a close_date are closed automatically on that date.
 
 ---
 
@@ -1154,6 +1156,8 @@ Vacancy:
 * department required
 * required_headcount > 0
 * target_hiring_date required
+* target_hiring_date is the intended listing opening date
+* close_date optional; if provided, it must be after target_hiring_date
 
 Candidate:
 

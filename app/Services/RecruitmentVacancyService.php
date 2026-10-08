@@ -89,6 +89,7 @@ class RecruitmentVacancyService
                 'required_headcount' => $data['required_headcount'],
                 'filled_headcount' => 0,
                 'target_hiring_date' => $data['target_hiring_date'],
+                'close_date' => $data['close_date'] ?? null,
                 'status' => 'open',
                 'created_by' => $actor->id,
             ]);
@@ -129,6 +130,7 @@ class RecruitmentVacancyService
                 'description' => $data['description'],
                 'required_headcount' => $data['required_headcount'],
                 'target_hiring_date' => $data['target_hiring_date'],
+                'close_date' => $data['close_date'] ?? null,
             ]);
 
             $vacancy = $vacancy->fresh(['department:id,name', 'creator:id,name']);
@@ -187,6 +189,41 @@ class RecruitmentVacancyService
         return $vacancy->load(['department:id,name', 'creator:id,name']);
     }
 
+    public function closeDue(string $date): int
+    {
+        $closedCount = 0;
+
+        RecruitmentVacancy::query()
+            ->where('status', 'open')
+            ->whereNotNull('close_date')
+            ->whereDate('close_date', '<=', $date)
+            ->orderBy('id')
+            ->chunkById(100, function ($vacancies) use (&$closedCount, $date): void {
+                foreach ($vacancies as $vacancy) {
+                    DB::transaction(function () use ($vacancy, &$closedCount, $date): void {
+                        $locked = RecruitmentVacancy::query()->whereKey($vacancy->id)->lockForUpdate()->first();
+
+                        if (! $locked || $locked->status !== 'open' || $locked->close_date?->toDateString() > $date) {
+                            return;
+                        }
+
+                        $oldValues = $this->auditAttributes($locked);
+                        $locked->update(['status' => 'closed']);
+                        $this->auditLogService->log(
+                            action: 'scheduled_close',
+                            module: 'recruitment_vacancies',
+                            subject: $locked,
+                            oldValues: $oldValues,
+                            newValues: $this->auditAttributes($locked),
+                        );
+                        $closedCount++;
+                    });
+                }
+            });
+
+        return $closedCount;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -198,6 +235,7 @@ class RecruitmentVacancyService
             'required_headcount' => $vacancy->required_headcount,
             'filled_headcount' => $vacancy->filled_headcount,
             'target_hiring_date' => $vacancy->target_hiring_date?->toDateString(),
+            'close_date' => $vacancy->close_date?->toDateString(),
             'status' => $vacancy->status,
         ];
     }

@@ -35,11 +35,11 @@ Admin receives all of the above through the existing `all => true` role configur
 
 Default assignments for the other roles (configured in `config/hr_permissions.php`, synced via `RoleSeeder`):
 
-- `hr`: `recruitment.vacancies.view`, `recruitment.vacancies.create`, `recruitment.vacancies.update`, `recruitment.vacancies.close`, `recruitment.candidates.view`, `recruitment.candidates.create`, `recruitment.candidates.update`
+- `hr`: full vacancy and candidate permissions, including `recruitment.candidates.hire`
 - `ceo`: none by default
 - `employee`: none by default
 
-`hr` does not receive `recruitment.candidates.hire` by default. Grant it via the role/permission management endpoints if HR should be able to mark candidates as hired.
+HR can manage vacancies and candidates, including marking candidates as hired.
 
 ## Endpoint List
 
@@ -95,6 +95,7 @@ The frontend must display these values and must not recompute them from the pagi
       "required_headcount": 2,
       "filled_headcount": 0,
       "target_hiring_date": "2026-07-11",
+      "close_date": null,
       "status": "open",
       "creator": { "id": 1, "name": "Admin User" },
       "created_at": "2026-06-11T00:00:00.000000Z",
@@ -131,7 +132,8 @@ Create a new vacancy.
   "department_id": 1,
   "description": "Build and maintain APIs.",
   "required_headcount": 2,
-  "target_hiring_date": "2026-07-11"
+  "target_hiring_date": "2026-07-11",
+  "close_date": "2026-07-01"
 }
 ```
 
@@ -141,7 +143,8 @@ Create a new vacancy.
 - `department_id`: required integer, must reference an existing department
 - `description`: required string
 - `required_headcount`: required integer, min `1`
-- `target_hiring_date`: required date
+- `target_hiring_date`: required date for when the listing opens
+- `close_date`: optional nullable date, must be after `target_hiring_date`; when reached, the vacancy is automatically closed
 
 The frontend must not send `status`, `filled_headcount`, or `created_by` — these are backend-controlled. New vacancies are always created with `status = "open"` and `filled_headcount = 0`.
 
@@ -163,7 +166,7 @@ Update a vacancy's details.
 
 ### Request Body
 
-Same fields as `POST /api/recruitment/vacancies` (`title`, `department_id`, `description`, `required_headcount`, `target_hiring_date`). `status`, `filled_headcount`, and `created_by` remain backend-controlled and are rejected if sent.
+Same fields as `POST /api/recruitment/vacancies` (`title`, `department_id`, `description`, `required_headcount`, `target_hiring_date`, `close_date`). Send `close_date: null` to remove a scheduled closure. `status`, `filled_headcount`, and `created_by` remain backend-controlled and are rejected if sent.
 
 This endpoint does not change `status` or `filled_headcount` — use `POST /api/recruitment/vacancies/{vacancy}/close` to close a vacancy.
 
@@ -172,6 +175,8 @@ This endpoint does not change `status` or `filled_headcount` — use `POST /api/
 ## POST /api/recruitment/vacancies/{vacancy}/close
 
 Close an `open` vacancy. Sets `status` to `closed`.
+
+Open vacancies with a `close_date` are automatically closed daily at 12:05 a.m. in the application timezone (Asia/Phnom_Penh by default). Automatic closures are recorded in the audit log as `scheduled_close`.
 
 ### Rules
 
@@ -345,7 +350,7 @@ There is no enforced linear order between non-terminal statuses; any status in t
 
 All mutating actions are logged in the `recruitment_vacancies` and `recruitment_candidates` audit log modules:
 
-- `recruitment_vacancies`: `create`, `update`, `close`
+- `recruitment_vacancies`: `create`, `update`, `close`, `scheduled_close` (automatic closure)
 - `recruitment_candidates`: `create`, `update`, `status_change` (always logged on `POST /status`), plus an additional `hire` entry when the new status is `hired`
 
 File contents are never logged — only `cv_name`.

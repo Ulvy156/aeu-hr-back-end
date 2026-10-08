@@ -16,3 +16,8 @@ Schedule::command('attendance:mark-absent')
     ->dailyAt('23:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+Schedule::command('recruitment:close-due-vacancies')
+    ->dailyAt('00:05')
+    ->onOneServer()
+    ->withoutOverlapping();
