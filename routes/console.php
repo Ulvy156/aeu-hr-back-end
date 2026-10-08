@@ -13,6 +13,6 @@ Schedule::command('attendance:mark-missing-clock-out')
     ->withoutOverlapping();
 
 Schedule::command('attendance:mark-absent')
-    ->dailyAt('00:10')
+    ->dailyAt('23:00')
     ->onOneServer()
     ->withoutOverlapping();

@@ -725,19 +725,78 @@ test('mark absent uses today when no attendance date is provided', function () {
     expect(Attendance::query()->whereDate('attendance_date', '2026-05-04')->count())->toBe(2);
 });
 
-test('scheduled absence command marks the previous workday and is idempotent', function () {
-    Carbon::setTestNow('2026-10-02 00:10:00');
+test('scheduled absence command marks today and is idempotent', function () {
+    Carbon::setTestNow('2026-10-02 23:00:00');
     attendanceCompanySettings();
     [, $employee] = attendanceEmployeeUser();
 
     $this->artisan('attendance:mark-absent')->assertSuccessful();
 
     $absence = Attendance::query()->where('employee_id', $employee->id)->sole();
-    expect($absence->attendance_date->toDateString())->toBe('2026-10-01')
+    expect($absence->attendance_date->toDateString())->toBe('2026-10-02')
         ->and($absence->status)->toBe('absent');
 
     $this->artisan('attendance:mark-absent')->assertSuccessful();
     expect(Attendance::query()->where('employee_id', $employee->id)->count())->toBe(1);
+});
+
+test('missing work after approved half-day leave counts as half an absence', function (string $period) {
+    Carbon::setTestNow('2026-05-05 23:00:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser('employee', [], ['join_date' => '2026-05-05']);
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'half_day',
+        'half_day_period' => $period,
+        'total_days' => 0.5,
+        'reason' => 'Approved half-day leave',
+        'status' => 'approved',
+    ]);
+
+    $this->artisan('attendance:mark-absent')
+        ->assertSuccessful();
+
+    expect(Attendance::query()
+        ->where('employee_id', $employee->id)
+        ->whereDate('attendance_date', '2026-05-05')
+        ->value('status'))->toBe('absent');
+
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=5&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.absent', 0.5);
+})->with(['morning', 'afternoon']);
+
+test('unrecorded half-day absence is counted as half before the scheduled job runs', function () {
+    Carbon::setTestNow('2026-05-05 18:00:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser('employee', [], ['join_date' => '2026-05-05']);
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'half_day',
+        'half_day_period' => 'morning',
+        'total_days' => 0.5,
+        'reason' => 'Approved morning leave',
+        'status' => 'approved',
+    ]);
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?month=5&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.absent', 0.5);
+
+    expect(Attendance::query()->where('employee_id', $employee->id)->exists())->toBeFalse();
 });
 
 test('mark absent supports a provided attendance date', function () {

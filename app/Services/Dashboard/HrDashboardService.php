@@ -39,7 +39,7 @@ class HrDashboardService
     }
 
     /**
-     * @return array<string, int>
+     * @return array<string, int|float>
      */
     protected function todayAttendanceSummary(CarbonImmutable $today): array
     {
@@ -48,17 +48,22 @@ class HrDashboardService
             ->selectRaw('COUNT(*) as total_records')
             ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count")
             ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late_count")
-            ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
             ->first();
 
+        $absentRecords = Attendance::query()
+            ->whereDate('attendance_date', $today->toDateString())
+            ->where('status', 'absent')
+            ->get(['employee_id', 'attendance_date', 'status']);
+        $recordedAbsences = $this->attendanceService->countRecordedAbsenceDays($absentRecords);
         $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today, includeCurrentDayAfterStart: true);
+        $unrecordedAbsenceRecords = $this->attendanceService->countUnrecordedAbsenceRecords($today, $today, includeCurrentDayAfterStart: true);
 
         return [
-            'total_records' => (int) ($summary?->total_records ?? 0) + $unrecordedAbsences,
+            'total_records' => (int) ($summary?->total_records ?? 0) + $unrecordedAbsenceRecords,
             'present_count' => (int) ($summary?->present_count ?? 0),
             'late_count' => (int) ($summary?->late_count ?? 0),
-            'absent_count' => (int) ($summary?->absent_count ?? 0) + $unrecordedAbsences,
+            'absent_count' => $recordedAbsences + $unrecordedAbsences,
             'missing_clock_out_count' => (int) ($summary?->missing_clock_out_count ?? 0),
         ];
     }

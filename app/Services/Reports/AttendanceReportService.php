@@ -5,6 +5,7 @@ namespace App\Services\Reports;
 use App\Exports\ArrayReportExport;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Services\AttendanceService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -12,6 +13,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class AttendanceReportService
 {
+    public function __construct(
+        protected AttendanceService $attendanceService,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
@@ -61,10 +66,13 @@ class AttendanceReportService
             ->selectRaw('COUNT(attendances.id) as total_records')
             ->selectRaw("SUM(CASE WHEN attendances.status = 'present' THEN 1 ELSE 0 END) as present_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
-            ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
             ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count')
             ->first();
+
+        $absentRecords = (clone $query)
+            ->where('attendances.status', 'absent')
+            ->get(['attendances.employee_id', 'attendances.attendance_date', 'attendances.status']);
 
         return [
             'report_type' => $reportType,
@@ -75,7 +83,7 @@ class AttendanceReportService
                 'total_records' => (int) ($summary?->total_records ?? 0),
                 'present_count' => (int) ($summary?->present_count ?? 0),
                 'late_count' => (int) ($summary?->late_count ?? 0),
-                'absent_count' => (int) ($summary?->absent_count ?? 0),
+                'absent_count' => $this->attendanceService->countRecordedAbsenceDays($absentRecords),
                 'missing_clock_out_count' => (int) ($summary?->missing_clock_out_count ?? 0),
                 'corrected_count' => (int) ($summary?->corrected_count ?? 0),
             ],
@@ -114,18 +122,28 @@ class AttendanceReportService
             ->selectRaw('COUNT(attendances.id) as total_records')
             ->selectRaw("SUM(CASE WHEN attendances.status = 'present' THEN 1 ELSE 0 END) as present_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
-            ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
             ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count');
 
-        $summary = (clone $query)
-            ->get()
+        $absentRecords = Attendance::query()
+            ->whereDate('attendance_date', '>=', $period['start']->toDateString())
+            ->whereDate('attendance_date', '<=', $period['end']->toDateString())
+            ->where('status', 'absent')
+            ->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId))
+            ->get(['employee_id', 'attendance_date', 'status']);
+        $absentDaysByEmployee = $this->attendanceService->recordedAbsenceDaysByEmployee($absentRecords);
+        $employeeRows = (clone $query)->get();
+        $employeeRows->each(function (Employee $employee) use ($absentDaysByEmployee): void {
+            $employee->setAttribute('absent_count', $absentDaysByEmployee[$employee->id] ?? 0.0);
+        });
+
+        $summary = $employeeRows
             ->reduce(function (array $carry, Employee $employee): array {
                 $carry['employee_count']++;
                 $carry['total_records'] += (int) $employee->total_records;
                 $carry['present_count'] += (int) $employee->present_count;
                 $carry['late_count'] += (int) $employee->late_count;
-                $carry['absent_count'] += (int) $employee->absent_count;
+                $carry['absent_count'] += (float) $employee->absent_count;
                 $carry['missing_clock_out_count'] += (int) $employee->missing_clock_out_count;
                 $carry['corrected_count'] += (int) $employee->corrected_count;
 
@@ -142,6 +160,9 @@ class AttendanceReportService
 
         /** @var LengthAwarePaginator $paginator */
         $paginator = $query->paginate($perPage);
+        $paginator->getCollection()->each(function (Employee $employee) use ($absentDaysByEmployee): void {
+            $employee->setAttribute('absent_count', $absentDaysByEmployee[$employee->id] ?? 0.0);
+        });
 
         return [
             'report_type' => 'monthly_summary',
@@ -199,7 +220,7 @@ class AttendanceReportService
     protected function exportMonthlySummary(array $filters): array
     {
         $period = $this->summaryPeriod($filters);
-        $rows = Employee::query()
+        $employees = Employee::query()
             ->join('attendances', 'attendances.employee_id', '=', 'employees.id')
             ->whereDate('attendances.attendance_date', '>=', $period['start']->toDateString())
             ->whereDate('attendances.attendance_date', '<=', $period['end']->toDateString())
@@ -214,17 +235,25 @@ class AttendanceReportService
             ->selectRaw('COUNT(attendances.id) as total_records')
             ->selectRaw("SUM(CASE WHEN attendances.status = 'present' THEN 1 ELSE 0 END) as present_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'late' THEN 1 ELSE 0 END) as late_count")
-            ->selectRaw("SUM(CASE WHEN attendances.status = 'absent' THEN 1 ELSE 0 END) as absent_count")
             ->selectRaw("SUM(CASE WHEN attendances.status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
             ->selectRaw('SUM(CASE WHEN attendances.corrected_at IS NOT NULL THEN 1 ELSE 0 END) as corrected_count')
-            ->get()
-            ->map(fn (Employee $employee): array => [
+            ->get();
+
+        $absentRecords = Attendance::query()
+            ->whereDate('attendance_date', '>=', $period['start']->toDateString())
+            ->whereDate('attendance_date', '<=', $period['end']->toDateString())
+            ->where('status', 'absent')
+            ->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId))
+            ->get(['employee_id', 'attendance_date', 'status']);
+        $absentDaysByEmployee = $this->attendanceService->recordedAbsenceDaysByEmployee($absentRecords);
+
+        $rows = $employees->map(fn (Employee $employee): array => [
                 $employee->employee_id,
                 $employee->full_name,
                 (int) $employee->total_records,
                 (int) $employee->present_count,
                 (int) $employee->late_count,
-                (int) $employee->absent_count,
+                $absentDaysByEmployee[$employee->id] ?? 0.0,
                 (int) $employee->missing_clock_out_count,
                 (int) $employee->corrected_count,
             ])

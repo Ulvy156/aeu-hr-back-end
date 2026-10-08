@@ -17,6 +17,9 @@ function historyActor(string $role): array
 {
     $user = User::factory()->create();
     $user->assignRole($role);
+    if ($role === 'admin') {
+        $user->givePermissionTo('employees.view');
+    }
 
     return [$user, $user->createToken("{$role}-device")->plainTextToken];
 }

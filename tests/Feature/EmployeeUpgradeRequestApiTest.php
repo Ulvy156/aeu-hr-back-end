@@ -229,10 +229,10 @@ test('ceo can approve a pending upgrade request and it updates the employee and 
     $employee->refresh();
     $employee->load('user');
 
-    expect($employee->employment_status)->toBe('probation')
+    expect($employee->employment_status->value)->toBe('probation')
         ->and($employee->base_salary)->toBe('1500.00')
         ->and($employee->probation_end_date->toDateString())->toBe('2026-04-01')
-        ->and($employee->user->status)->toBe('active');
+        ->and($employee->user->status->value)->toBe('active');
 
     $historyFields = EmploymentHistory::query()->where('employee_id', $employee->id)->pluck('field')->all();
 

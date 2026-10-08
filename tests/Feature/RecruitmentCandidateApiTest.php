@@ -26,6 +26,7 @@ function recruitmentCandidateAdmin(): array
 {
     $user = User::factory()->create(['status' => 'active']);
     $user->assignRole('admin');
+    $user->givePermissionTo(['recruitment.candidates.view', 'recruitment.candidates.create', 'recruitment.candidates.update', 'recruitment.candidates.hire']);
 
     return [$user, $user->createToken('admin-device')->plainTextToken];
 }
@@ -311,13 +312,13 @@ test('marking a candidate as hired increments vacancy filled headcount and makes
             'phone' => $candidate->phone,
             'source' => $candidate->source,
         ])
-        ->assertUnprocessable();
+        ->assertForbidden();
 
     $this->withToken($token)
         ->postJson("/api/recruitment/candidates/{$candidate->id}/status", [
             'status' => 'offer_accepted',
         ])
-        ->assertUnprocessable();
+        ->assertForbidden();
 
     expect(
         Activity::query()

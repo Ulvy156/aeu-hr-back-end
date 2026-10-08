@@ -47,6 +47,7 @@ class ProfileService
         string $newPassword,
         ?string $ipAddress = null,
         ?string $userAgent = null,
+        ?int $currentTokenId = null,
     ): void {
         if (! Hash::check($currentPassword, $user->password)) {
             throw ValidationException::withMessages([
@@ -54,10 +55,10 @@ class ProfileService
             ]);
         }
 
-        DB::transaction(function () use ($user, $newPassword, $ipAddress, $userAgent): void {
+        DB::transaction(function () use ($user, $newPassword, $ipAddress, $userAgent, $currentTokenId): void {
             $user->update(['password' => $newPassword]);
 
-            $currentTokenId = $user->currentAccessToken()?->id;
+            $currentTokenId ??= $user->currentAccessToken()?->getKey();
 
             $user->tokens()
                 ->when($currentTokenId, fn ($query) => $query->where('id', '!=', $currentTokenId))

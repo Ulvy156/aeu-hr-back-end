@@ -38,7 +38,10 @@ class AnnouncementCategoryService
         ?string $userAgent = null,
     ): AnnouncementCategory {
         return DB::transaction(function () use ($data, $actor, $ipAddress, $userAgent): AnnouncementCategory {
-            $category = AnnouncementCategory::query()->create($data);
+            $category = AnnouncementCategory::query()->create([
+                ...$data,
+                'status' => $data['status'] ?? Status::Active,
+            ]);
 
             $this->auditLogService->log(
                 action: 'create',

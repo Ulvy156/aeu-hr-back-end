@@ -144,6 +144,7 @@ test('leave request rejects frontend controlled total days and supports half day
             'start_date' => '2026-05-04',
             'end_date' => '2026-05-04',
             'duration_type' => 'half_day',
+        'half_day_period' => 'morning',
             'reason' => 'Half-day clinic visit',
             'total_days' => 99,
         ])
@@ -156,6 +157,7 @@ test('leave request rejects frontend controlled total days and supports half day
             'start_date' => '2026-05-04',
             'end_date' => '2026-05-04',
             'duration_type' => 'half_day',
+            'half_day_period' => 'morning',
             'reason' => 'Half-day clinic visit',
         ])
         ->assertCreated()

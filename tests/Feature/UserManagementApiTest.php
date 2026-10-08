@@ -544,7 +544,7 @@ test('deleting a user soft deletes the user and linked employee without hard del
         ->and(Employee::query()->find($employee->id))->toBeNull()
         ->and(User::withTrashed()->find($targetUser->id))->not->toBeNull()
         ->and(Employee::withTrashed()->find($employee->id))->not->toBeNull()
-        ->and(User::withTrashed()->find($targetUser->id)->status)->toBe('inactive')
+        ->and(User::withTrashed()->find($targetUser->id)->status->value)->toBe('inactive')
         ->and($targetUser->tokens()->count())->toBe(0)
         ->and(Activity::query()->where('log_name', 'users')->where('description', 'delete')->exists())->toBeTrue();
 });

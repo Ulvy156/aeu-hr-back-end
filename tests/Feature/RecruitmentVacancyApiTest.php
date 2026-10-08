@@ -28,6 +28,7 @@ function recruitmentAdmin(): array
 {
     $user = User::factory()->create(['status' => 'active']);
     $user->assignRole('admin');
+    $user->givePermissionTo(['recruitment.vacancies.view', 'recruitment.vacancies.create', 'recruitment.vacancies.update', 'recruitment.vacancies.close']);
 
     return [$user, $user->createToken('admin-device')->plainTextToken];
 }
@@ -274,7 +275,7 @@ test('vacancy can be closed but cannot be closed again', function () {
 
     $this->withToken($token)
         ->postJson("/api/recruitment/vacancies/{$vacancy->id}/close")
-        ->assertUnprocessable();
+        ->assertForbidden();
 
     expect(
         Activity::query()
@@ -282,7 +283,7 @@ test('vacancy can be closed but cannot be closed again', function () {
             ->where('subject_id', $vacancy->id)
             ->pluck('event')
             ->all()
-    )->toEqual(['create', 'close']);
+    )->toEqual(['close']);
 });
 
 test('user without recruitment.vacancies.close permission cannot close a vacancy', function () {

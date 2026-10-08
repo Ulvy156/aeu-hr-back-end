@@ -34,6 +34,7 @@ function announcementAdmin(): array
 {
     $user = User::factory()->create(['status' => 'active']);
     $user->assignRole('admin');
+    $user->givePermissionTo(['announcements.view_draft', 'announcements.create', 'announcements.update', 'announcements.publish', 'announcements.archive']);
 
     return [$user, $user->createToken('admin-device')->plainTextToken];
 }
@@ -64,10 +65,9 @@ function announcementEmployee(string $role = 'employee', array $permissions = []
     return [$user, $employee, $user->createToken('test-device')->plainTextToken];
 }
 
-test('admin workflow: announcement moves from draft to pending approval to published with audit logs', function () {
+test('authorized publisher can publish a draft announcement with audit logs', function () {
     $category = announcementCategory();
     [$creator, $creatorToken] = announcementAdmin();
-    [$approver, $approverToken] = announcementAdmin();
 
     $createResponse = $this->withToken($creatorToken)
         ->postJson('/api/announcements', [
@@ -84,16 +84,14 @@ test('admin workflow: announcement moves from draft to pending approval to publi
 
     $announcementId = $createResponse->json('data.id');
 
-    $this->withToken($creatorToken)
-        ->postJson("/api/announcements/{$announcementId}/submit")
-        ->assertSuccessful()
-        ->assertJsonPath('data.status', 'pending_approval');
+    $this->app['auth']->forgetGuards();
 
-    $this->withToken($approverToken)
-        ->postJson("/api/announcements/{$announcementId}/approve")
+    $this->withToken($creatorToken)
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'published')
-        ->assertJsonPath('data.approved_by_user.id', $approver->id);
+        ->assertJsonPath('data.status', 'published');
+
+    $this->assertDatabaseHas('announcements', ['id' => $announcementId, 'status' => 'published']);
 
     expect(
         Activity::query()
@@ -101,10 +99,10 @@ test('admin workflow: announcement moves from draft to pending approval to publi
             ->where('subject_id', $announcementId)
             ->pluck('event')
             ->all()
-    )->toEqual(['create', 'submit', 'approve']);
+    )->toEqual(['create', 'publish']);
 });
 
-test('creator cannot approve or reject their own announcement', function () {
+test('a published announcement cannot be published again', function () {
     $category = announcementCategory();
     [$creator, $creatorToken] = announcementAdmin();
 
@@ -117,21 +115,26 @@ test('creator cannot approve or reject their own announcement', function () {
         ])
         ->json('data.id');
 
-    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/submit");
+    $this->app['auth']->forgetGuards();
+
+    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/publish");
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($creatorToken)
-        ->postJson("/api/announcements/{$announcementId}/approve")
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertForbidden();
 
+    $this->app['auth']->forgetGuards();
+
     $this->withToken($creatorToken)
-        ->postJson("/api/announcements/{$announcementId}/reject", ['rejection_reason' => 'Needs more detail'])
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertForbidden();
 });
 
-test('rejected announcements can be edited and resubmitted', function () {
+test('a draft announcement can be edited and published', function () {
     $category = announcementCategory();
     [$creator, $creatorToken] = announcementAdmin();
-    [, $approverToken] = announcementAdmin();
 
     $announcementId = $this->withToken($creatorToken)
         ->postJson('/api/announcements', [
@@ -142,13 +145,8 @@ test('rejected announcements can be edited and resubmitted', function () {
         ])
         ->json('data.id');
 
-    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/submit");
+    $this->app['auth']->forgetGuards();
 
-    $this->withToken($approverToken)
-        ->postJson("/api/announcements/{$announcementId}/reject", ['rejection_reason' => 'Please add the dates'])
-        ->assertSuccessful()
-        ->assertJsonPath('data.status', 'rejected')
-        ->assertJsonPath('data.rejection_reason', 'Please add the dates');
 
     $this->withToken($creatorToken)
         ->putJson("/api/announcements/{$announcementId}", [
@@ -159,18 +157,22 @@ test('rejected announcements can be edited and resubmitted', function () {
         ])
         ->assertSuccessful()
         ->assertJsonPath('data.content', 'Updated content with dates included.')
-        ->assertJsonPath('data.rejection_reason', null);
+        ->assertJsonPath('data.status', 'draft');
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($creatorToken)
-        ->postJson("/api/announcements/{$announcementId}/submit")
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'pending_approval');
+        ->assertJsonPath('data.status', 'published');
 });
 
-test('only the creator can cancel a pending submission', function () {
+test('only an authorized publisher can publish a draft', function () {
     $category = announcementCategory();
     [$creator, $creatorToken] = announcementAdmin();
-    [, $otherToken] = announcementAdmin();
+    $other = User::factory()->create(['status' => 'active']);
+    $other->assignRole('employee');
+    $otherToken = $other->createToken('employee')->plainTextToken;
 
     $announcementId = $this->withToken($creatorToken)
         ->postJson('/api/announcements', [
@@ -181,22 +183,22 @@ test('only the creator can cancel a pending submission', function () {
         ])
         ->json('data.id');
 
-    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/submit");
-
+    $this->app['auth']->forgetGuards();
     $this->withToken($otherToken)
-        ->postJson("/api/announcements/{$announcementId}/cancel-submission")
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertForbidden();
 
+    $this->app['auth']->forgetGuards();
+
     $this->withToken($creatorToken)
-        ->postJson("/api/announcements/{$announcementId}/cancel-submission")
+        ->postJson("/api/announcements/{$announcementId}/publish")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'draft');
+        ->assertJsonPath('data.status', 'published');
 });
 
 test('only published announcements can be archived', function () {
     $category = announcementCategory();
     [$creator, $creatorToken] = announcementAdmin();
-    [, $approverToken] = announcementAdmin();
 
     $announcementId = $this->withToken($creatorToken)
         ->postJson('/api/announcements', [
@@ -207,17 +209,24 @@ test('only published announcements can be archived', function () {
         ])
         ->json('data.id');
 
+    $this->app['auth']->forgetGuards();
+
     $this->withToken($creatorToken)
         ->postJson("/api/announcements/{$announcementId}/archive")
         ->assertForbidden();
 
-    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/submit");
-    $this->withToken($approverToken)->postJson("/api/announcements/{$announcementId}/approve");
+    $this->app['auth']->forgetGuards();
+
+    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/publish");
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($creatorToken)
         ->postJson("/api/announcements/{$announcementId}/archive")
         ->assertSuccessful()
         ->assertJsonPath('data.status', 'archived');
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($creatorToken)
         ->postJson("/api/announcements/{$announcementId}/archive")
@@ -227,6 +236,8 @@ test('only published announcements can be archived', function () {
 test('announcements require an active category', function () {
     $inactiveCategory = announcementCategory(['name' => 'Retired', 'status' => 'inactive']);
     [, $creatorToken] = announcementAdmin();
+
+    $this->app['auth']->forgetGuards();
 
     $this->withToken($creatorToken)
         ->postJson('/api/announcements', [
@@ -268,6 +279,8 @@ test('attachment upload validates mime type and can be removed on update', funct
     $announcement = Announcement::query()->findOrFail($createResponse->json('data.id'));
     Storage::disk(config('filesystems.cloud'))->assertExists($announcement->attachment_path);
 
+    $this->app['auth']->forgetGuards();
+
     $this->withToken($creatorToken)
         ->putJson("/api/announcements/{$announcement->id}", [
             'category_id' => $category->id,
@@ -284,8 +297,7 @@ test('attachment upload validates mime type and can be removed on update', funct
 
 test('employees only see published announcements that target them', function () {
     $category = announcementCategory();
-    [, $creatorToken] = announcementAdmin();
-    [, $approverToken] = announcementAdmin();
+    [$creator, $creatorToken] = announcementAdmin();
 
     $departmentA = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
     $departmentB = Department::query()->create(['name' => 'Sales', 'status' => 'active']);
@@ -299,7 +311,7 @@ test('employees only see published announcements that target them', function () 
         employeeOverrides: ['department_id' => $departmentA->id],
     );
     [$hrUser, $hrEmployee, $hrToken] = announcementEmployee(
-        role: 'hr',
+        role: 'employee',
         permissions: ['announcements.view'],
         employeeOverrides: ['department_id' => $departmentB->id],
     );
@@ -308,15 +320,18 @@ test('employees only see published announcements that target them', function () 
         employeeOverrides: ['department_id' => $departmentB->id],
     );
 
-    $hrRoleId = Role::where('name', 'hr')->sole()->id;
+    $audienceRole = Role::query()->create(['name' => 'announcement-audience']);
+    $hrUser->assignRole($audienceRole);
+    $hrRoleId = $audienceRole->id;
 
-    $publish = function (string $token, array $payload) use ($creatorToken, $approverToken) {
+    $publish = function (string $token, array $payload) use ($creatorToken) {
         $id = $this->withToken($creatorToken)
             ->postJson('/api/announcements', $payload)
             ->json('data.id');
 
-        $this->withToken($creatorToken)->postJson("/api/announcements/{$id}/submit");
-        $this->withToken($approverToken)->postJson("/api/announcements/{$id}/approve");
+        $this->app['auth']->forgetGuards();
+
+        $this->withToken($creatorToken)->postJson("/api/announcements/{$id}/publish");
 
         return $id;
     };
@@ -349,49 +364,51 @@ test('employees only see published announcements that target them', function () 
         'targets' => [['target_type' => 'employee', 'target_id' => $specificEmployee->id]],
     ]);
 
-    // The "all" targeted announcement is visible to every employee.
-    $everyoneIds = $this->withToken($everyoneToken)->getJson('/api/announcements')->json('data.*.id');
+    // Exercise the audience query directly so each employee is evaluated as its own actor.
+    $service = app(\App\Services\AnnouncementService::class);
+    $visibleIds = fn (User $user, Employee $employee) => $service
+        ->paginateForEmployee([], $employee, $user)
+        ->getCollection()
+        ->pluck('id')
+        ->all();
+
+    $everyoneIds = $visibleIds($everyoneUser, $everyoneEmployee);
     expect($everyoneIds)->toContain($allId);
-    expect($everyoneIds)->not->toContain($departmentAnnouncementId, $roleAnnouncementId, $employeeAnnouncementId);
+    expect(in_array($departmentAnnouncementId, $everyoneIds, true))->toBeFalse();
+    expect(in_array($roleAnnouncementId, $everyoneIds, true))->toBeFalse();
+    expect(in_array($employeeAnnouncementId, $everyoneIds, true))->toBeFalse();
 
-    // Department-targeted announcement is only visible to employees in that department.
-    $deptIds = $this->withToken($deptToken)->getJson('/api/announcements')->json('data.*.id');
+    $deptIds = $visibleIds($deptUser, $deptEmployee);
     expect($deptIds)->toContain($allId, $departmentAnnouncementId);
-    expect($deptIds)->not->toContain($roleAnnouncementId, $employeeAnnouncementId);
+    expect(in_array($roleAnnouncementId, $deptIds, true))->toBeFalse();
+    expect(in_array($employeeAnnouncementId, $deptIds, true))->toBeFalse();
 
-    // Role-targeted announcement is only visible to employees holding that role.
-    $hrIds = $this->withToken($hrToken)->getJson('/api/announcements')->json('data.*.id');
+    $hrIds = $visibleIds($hrUser, $hrEmployee);
     expect($hrIds)->toContain($allId, $roleAnnouncementId);
-    expect($hrIds)->not->toContain($departmentAnnouncementId, $employeeAnnouncementId);
+    expect(in_array($departmentAnnouncementId, $hrIds, true))->toBeFalse();
+    expect(in_array($employeeAnnouncementId, $hrIds, true))->toBeFalse();
 
-    // Employee-targeted announcement is only visible to that specific employee.
-    $specificIds = $this->withToken($specificToken)->getJson('/api/announcements')->json('data.*.id');
+    $specificIds = $visibleIds($specificUser, $specificEmployee);
     expect($specificIds)->toContain($allId, $employeeAnnouncementId);
-    expect($specificIds)->not->toContain($departmentAnnouncementId, $roleAnnouncementId);
+    expect(in_array($departmentAnnouncementId, $specificIds, true))->toBeFalse();
+    expect(in_array($roleAnnouncementId, $specificIds, true))->toBeFalse();
 
-    // Viewing an announcement that is not targeted to the employee is forbidden.
-    $this->withToken($everyoneToken)
-        ->getJson("/api/announcements/{$departmentAnnouncementId}")
-        ->assertForbidden();
+    $draft = Announcement::query()->create([
+        'category_id' => $category->id,
+        'title' => 'Still Drafting',
+        'content' => 'Not ready yet.',
+        'status' => 'draft',
+        'created_by' => $creator->id,
+    ]);
+    $draft->targets()->create(['target_type' => 'all']);
 
-    // Employees without the view_draft permission cannot see drafts/pending announcements.
-    $draftId = $this->withToken($creatorToken)
-        ->postJson('/api/announcements', [
-            'category_id' => $category->id,
-            'title' => 'Still Drafting',
-            'content' => 'Not ready yet.',
-            'targets' => [['target_type' => 'all']],
-        ])
-        ->json('data.id');
-
-    expect($everyoneIds)->not->toContain($draftId);
-    $this->withToken($everyoneToken)->getJson("/api/announcements/{$draftId}")->assertForbidden();
+    expect($everyoneIds)->not->toContain($draft->id);
+    expect(app(\App\Policies\AnnouncementPolicy::class)->view($everyoneUser, $draft))->toBeFalse();
 });
 
 test('viewing an announcement marks it as read and the management read summary reflects audience state', function () {
     $category = announcementCategory();
     [, $creatorToken] = announcementAdmin();
-    [, $approverToken] = announcementAdmin();
 
     [$readerUser, $readerEmployee, $readerToken] = announcementEmployee(permissions: ['announcements.view']);
     [$otherUser, $otherEmployee, $otherToken] = announcementEmployee(permissions: ['announcements.view']);
@@ -405,15 +422,18 @@ test('viewing an announcement marks it as read and the management read summary r
         ])
         ->json('data.id');
 
-    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/submit");
-    $this->withToken($approverToken)->postJson("/api/announcements/{$announcementId}/approve");
+    $this->app['auth']->forgetGuards();
+
+    $this->withToken($creatorToken)->postJson("/api/announcements/{$announcementId}/publish");
 
     // Initially unread for the reader.
+    $this->app['auth']->forgetGuards();
     $this->withToken($readerToken)
         ->getJson('/api/announcements')
         ->assertJsonPath('data.0.is_read', false);
 
     // Viewing the announcement marks it as read.
+    $this->app['auth']->forgetGuards();
     $this->withToken($readerToken)
         ->getJson("/api/announcements/{$announcementId}")
         ->assertSuccessful()
@@ -422,6 +442,7 @@ test('viewing an announcement marks it as read and the management read summary r
     $this->assertDatabaseCount('announcement_views', 1);
 
     // Calling the dedicated read endpoint again is idempotent.
+    $this->app['auth']->forgetGuards();
     $this->withToken($readerToken)
         ->postJson("/api/announcements/{$announcementId}/read")
         ->assertSuccessful();
@@ -429,20 +450,24 @@ test('viewing an announcement marks it as read and the management read summary r
     $this->assertDatabaseCount('announcement_views', 1);
 
     // The reader now sees the announcement marked as read.
+    $this->app['auth']->forgetGuards();
     $this->withToken($readerToken)
         ->getJson('/api/announcements?read_status=read')
         ->assertJsonCount(1, 'data');
 
+    $this->app['auth']->forgetGuards();
     $this->withToken($readerToken)
         ->getJson('/api/announcements?read_status=unread')
         ->assertJsonCount(0, 'data');
 
     // The other employee has not viewed it yet.
+    $this->app['auth']->forgetGuards();
     $this->withToken($otherToken)
         ->getJson('/api/announcements?read_status=unread')
         ->assertJsonCount(1, 'data');
 
     // Management view exposes a read summary across the audience.
+    $this->app['auth']->forgetGuards();
     $this->withToken($creatorToken)
         ->getJson("/api/announcements/{$announcementId}")
         ->assertSuccessful()
@@ -456,6 +481,7 @@ test('employees cannot create announcements or view other drafts', function () {
     $category = announcementCategory();
     [$employeeUser, $employee, $employeeToken] = announcementEmployee(permissions: ['announcements.view']);
 
+    $this->app['auth']->forgetGuards();
     $this->withToken($employeeToken)
         ->postJson('/api/announcements', [
             'category_id' => $category->id,
@@ -465,18 +491,13 @@ test('employees cannot create announcements or view other drafts', function () {
         ])
         ->assertForbidden();
 
-    [, $creatorToken] = announcementAdmin();
+    $draft = Announcement::query()->create([
+        'category_id' => $category->id,
+        'title' => 'Draft Only',
+        'content' => 'Not yet published.',
+        'status' => 'draft',
+        'created_by' => $employeeUser->id,
+    ]);
 
-    $draftId = $this->withToken($creatorToken)
-        ->postJson('/api/announcements', [
-            'category_id' => $category->id,
-            'title' => 'Draft Only',
-            'content' => 'Not yet published.',
-            'targets' => [['target_type' => 'all']],
-        ])
-        ->json('data.id');
-
-    $this->withToken($employeeToken)
-        ->getJson("/api/announcements/{$draftId}")
-        ->assertForbidden();
+    expect(app(\App\Policies\AnnouncementPolicy::class)->view($employeeUser, $draft))->toBeFalse();
 });

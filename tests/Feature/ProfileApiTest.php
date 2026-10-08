@@ -139,8 +139,10 @@ test('authenticated users can change their own password', function () {
     ]);
     $user->assignRole('employee');
 
-    $token = $user->createToken('profile-device')->plainTextToken;
-    $otherToken = $user->createToken('other-device')->plainTextToken;
+    $tokenRecord = $user->createToken('profile-device');
+    $otherTokenRecord = $user->createToken('other-device');
+    $token = $tokenRecord->plainTextToken;
+    $otherToken = $otherTokenRecord->plainTextToken;
 
     $this->withToken($token)
         ->postJson('/api/profile/change-password', [
@@ -159,9 +161,8 @@ test('authenticated users can change their own password', function () {
         ->getJson('/api/profile')
         ->assertSuccessful();
 
-    $this->withToken($otherToken)
-        ->getJson('/api/profile')
-        ->assertUnauthorized();
+    $this->assertDatabaseHas('personal_access_tokens', ['id' => $tokenRecord->accessToken->id]);
+    $this->assertDatabaseMissing('personal_access_tokens', ['id' => $otherTokenRecord->accessToken->id]);
 });
 
 test('change password fails when the current password is incorrect', function () {

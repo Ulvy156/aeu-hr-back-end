@@ -22,6 +22,9 @@ function employeeActor(string $role): array
 {
     $user = User::factory()->create();
     $user->assignRole($role);
+    if ($role === 'admin') {
+        $user->givePermissionTo(['employees.create', 'employees.update', 'employees.delete']);
+    }
 
     return [$user, $user->createToken("{$role}-device")->plainTextToken];
 }
@@ -162,7 +165,7 @@ test('creating a probation employee defaults probation_end_date to join_date plu
     $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
 
     expect($employee->probation_end_date->toDateString())->toBe('2026-08-01')
-        ->and($employee->user->status)->toBe('active');
+        ->and($employee->user->status->value)->toBe('active');
 });
 
 test('creating a probation employee allows hr to override probation_end_date', function () {
@@ -780,8 +783,9 @@ test('normal employee cannot create employee profile', function () {
     $linkedUser = linkableUser();
     [, $token] = employeeActor('employee');
 
+    $manager = createManagerEmployee();
     $this->withToken($token)
-        ->postJson('/api/employees', employeePayload($linkedUser))
+        ->postJson('/api/employees', employeePayload($linkedUser, ['manager_id' => $manager->id]))
         ->assertForbidden();
 });
 
@@ -1133,7 +1137,7 @@ test('deleting an employee soft deletes the employee and linked user without har
         ->and(User::query()->find($linkedUser->id))->toBeNull()
         ->and(Employee::withTrashed()->find($employee->id))->not->toBeNull()
         ->and(User::withTrashed()->find($linkedUser->id))->not->toBeNull()
-        ->and(User::withTrashed()->find($linkedUser->id)->status)->toBe('inactive')
+        ->and(User::withTrashed()->find($linkedUser->id)->status->value)->toBe('inactive')
         ->and(Activity::query()->where('log_name', 'employees')->where('description', 'delete')->exists())->toBeTrue();
 
     Storage::disk(config('filesystems.cloud'))->assertMissing($employee->profile_photo);
@@ -1187,7 +1191,7 @@ test('employee update syncs linked user name and status and audits salary change
         ->first();
 
     expect($employee->fresh()->user->email)->toBe('original.employee@example.com')
-        ->and($employee->fresh()->user->status)->toBe('inactive')
+        ->and($employee->fresh()->user->status->value)->toBe('inactive')
         ->and($activity->properties->get('old_values')['base_salary'])->toBe('1000.00')
         ->and($activity->properties->get('new_values')['base_salary'])->toBe('1200.50');
 });

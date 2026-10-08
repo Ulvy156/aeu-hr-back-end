@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Employee;
 use App\Models\User;
 use App\Services\AuditLogService;
 use Database\Seeders\RoleSeeder;
@@ -13,18 +14,26 @@ test('login and logout actions are written to the spatie activity log', function
 
     $user = User::factory()->create([
         'email' => 'employee@example.com',
-        'password' => 'secret-password',
+        'password' => 'Secret-password1',
     ]);
 
-    $user->assignRole('employee');
+    $user->assignRole('admin');
+    Employee::query()->create([
+        'user_id' => $user->id,
+        'employee_id' => 'EMP-AUDIT-001',
+        'full_name' => $user->name,
+        'join_date' => '2026-01-01',
+        'base_salary' => 1000,
+        'employment_status' => 'full-time',
+    ]);
 
     $loginResponse = $this->postJson('/api/login', [
         'email' => 'employee@example.com',
-        'password' => 'secret-password',
+        'password' => 'Secret-password1',
         'device_name' => 'web-client',
     ])->assertSuccessful();
 
-    $plainTextToken = $loginResponse->json('data.token');
+    $plainTextToken = $loginResponse->json('data.access_token');
 
     $loginActivity = Activity::query()->first();
 

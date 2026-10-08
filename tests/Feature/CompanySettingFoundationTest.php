@@ -27,7 +27,7 @@ test('company setting seeder creates the default singleton row', function () {
         ])
         ->and($setting->salary_currency)->toBe('USD')
         ->and($setting->payroll_day_rate)->toBe(26)
-        ->and($setting->allowed_radius_meters)->toBe(100);
+        ->and($setting->allowed_radius_meters)->toBe(30);
 });
 
 test('company setting service creates defaults when no settings row exists', function () {

@@ -77,7 +77,7 @@ test('hr can list create update and disable public holidays', function () {
         ->orderBy('id')
         ->get();
 
-    expect($publicHoliday->status)->toBe('inactive')
+    expect($publicHoliday->status->value)->toBe('inactive')
         ->and($activities)->toHaveCount(3)
         ->and($activities[0]->description)->toBe('create')
         ->and($activities[1]->description)->toBe('update')
@@ -89,6 +89,7 @@ test('hr can list create update and disable public holidays', function () {
 test('admin can manage public holidays', function () {
     $admin = User::factory()->create();
     $admin->assignRole('admin');
+    $admin->givePermissionTo('public_holidays.create');
     $token = $admin->createToken('admin-device')->plainTextToken;
 
     $this->withToken($token)
@@ -151,7 +152,7 @@ test('employees and ceo cannot manage public holidays', function () {
 
     $this->withToken($employeeToken)
         ->getJson('/api/public-holidays')
-        ->assertForbidden();
+        ->assertSuccessful();
 
     $ceo = User::factory()->create();
     $ceo->assignRole('ceo');

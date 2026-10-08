@@ -16,6 +16,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
@@ -257,7 +258,12 @@ class AttendanceService
                     $query
                         ->where('status', 'approved')
                         ->whereDate('start_date', '<=', $date->toDateString())
-                        ->whereDate('end_date', '>=', $date->toDateString());
+                        ->whereDate('end_date', '>=', $date->toDateString())
+                        ->where(function (Builder $leaveQuery): void {
+                            $leaveQuery
+                                ->where('duration_type', '!=', 'half_day')
+                                ->orWhereNull('half_day_period');
+                        });
                 })
                 ->lockForUpdate()
                 ->get(['id']);
@@ -446,12 +452,12 @@ class AttendanceService
             ->whereBelongsTo($employee)
             ->whereDate('attendance_date', '>=', $periodStart->toDateString())
             ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
-            ->get(['attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
+            ->get(['employee_id', 'attendance_date', 'status', 'is_late', 'clock_in_time', 'clock_out_time']);
 
         $present = $records->where('status', 'present')->count();
         // A manual late status and a time-based late flag both count as late.
         $late = $records->filter(fn (Attendance $record) => $record->status === 'late' || $record->is_late)->count();
-        $absent = $records->where('status', 'absent')->count()
+        $absent = ($this->recordedAbsenceDaysByEmployee($records)[$employee->id] ?? 0.0)
             + $this->countUnrecordedAbsences($periodStart, $effectiveTo, $employee->id);
         $missingClockOut = $records->where('status', 'missing_clock_out')->count();
         $attendedDays = $records
@@ -523,11 +529,17 @@ class AttendanceService
             ->selectRaw('COUNT(*) as total_records')
             ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present")
             ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late")
-            ->selectRaw("SUM(CASE WHEN status = 'absent' THEN 1 ELSE 0 END) as absent")
             ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out")
             ->first();
 
+        $absentRecords = Attendance::query()
+            ->whereDate('attendance_date', '>=', $periodStart->toDateString())
+            ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
+            ->where('status', 'absent')
+            ->get(['employee_id', 'attendance_date', 'status']);
+        $recordedAbsences = $this->countRecordedAbsenceDays($absentRecords);
         $unrecordedAbsences = $this->countUnrecordedAbsences($periodStart, $effectiveTo);
+        $unrecordedAbsenceRecords = $this->countUnrecordedAbsenceRecords($periodStart, $effectiveTo);
 
         return [
             'period' => [
@@ -537,10 +549,10 @@ class AttendanceService
                 'to' => $periodEnd->toDateString(),
             ],
             'summary' => [
-                'total_records' => (int) ($counts?->total_records ?? 0) + $unrecordedAbsences,
+                'total_records' => (int) ($counts?->total_records ?? 0) + $unrecordedAbsenceRecords,
                 'present' => (int) ($counts?->present ?? 0),
                 'late' => (int) ($counts?->late ?? 0),
-                'absent' => (int) ($counts?->absent ?? 0) + $unrecordedAbsences,
+                'absent' => $recordedAbsences + $unrecordedAbsences,
                 'missing_clock_out' => (int) ($counts?->missing_clock_out ?? 0),
             ],
         ];
@@ -551,7 +563,7 @@ class AttendanceService
         CarbonInterface $to,
         ?int $employeeId = null,
         bool $includeCurrentDayAfterStart = false,
-    ): int {
+    ): float {
         $settings = $this->companySettingService->current();
         $count = 0;
         $date = Carbon::parse($from->toDateString())->startOfDay();
@@ -563,26 +575,121 @@ class AttendanceService
 
             if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
                 $day = $date->toDateString();
-                $count += Employee::query()
-                    ->when($employeeId !== null, fn (Builder $query) => $query->whereKey($employeeId))
-                    ->whereDate('join_date', '<=', $day)
-                    ->where(function (Builder $query) use ($day): void {
-                        $query->whereNull('last_working_date')
-                            ->orWhereDate('last_working_date', '>=', $day);
-                    })
-                    ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('attendance_date', $day))
-                    ->whereDoesntHave('leaveRequests', function (Builder $query) use ($day): void {
-                        $query->where('status', 'approved')
-                            ->whereDate('start_date', '<=', $day)
-                            ->whereDate('end_date', '>=', $day);
-                    })
+                $eligibleEmployees = $this->unrecordedAbsenceEmployees($day, $employeeId);
+                $halfDayAbsenceCount = (clone $eligibleEmployees)
+                    ->whereHas('leaveRequests', fn (Builder $query) => $query
+                        ->where('status', 'approved')
+                        ->where('duration_type', 'half_day')
+                        ->whereIn('half_day_period', ['morning', 'afternoon'])
+                        ->whereDate('start_date', '<=', $day)
+                        ->whereDate('end_date', '>=', $day))
                     ->count();
+
+                $count += $eligibleEmployees->count() - ($halfDayAbsenceCount * 0.5);
             }
 
             $date->addDay();
         }
 
         return $count;
+    }
+
+    public function countUnrecordedAbsenceRecords(
+        CarbonInterface $from,
+        CarbonInterface $to,
+        ?int $employeeId = null,
+        bool $includeCurrentDayAfterStart = false,
+    ): int {
+        $settings = $this->companySettingService->current();
+        $count = 0;
+        $date = Carbon::parse($from->toDateString())->startOfDay();
+
+        while ($date->lte($to)) {
+            $day = $date->toDateString();
+            $todayThreshold = $includeCurrentDayAfterStart ? $settings->working_start_time : $settings->working_end_time;
+            $isCompleted = $date->lt(today())
+                || ($date->isToday() && now()->greaterThanOrEqualTo(Carbon::parse($day.' '.$todayThreshold)));
+
+            if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
+                $count += $this->unrecordedAbsenceEmployees($day, $employeeId)->count();
+            }
+
+            $date->addDay();
+        }
+
+        return $count;
+    }
+
+    /** @return Builder<Employee> */
+    protected function unrecordedAbsenceEmployees(string $day, ?int $employeeId = null): Builder
+    {
+        return Employee::query()
+            ->when($employeeId !== null, fn (Builder $query) => $query->whereKey($employeeId))
+            ->whereDate('join_date', '<=', $day)
+            ->where(function (Builder $query) use ($day): void {
+                $query->whereNull('last_working_date')
+                    ->orWhereDate('last_working_date', '>=', $day);
+            })
+            ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('attendance_date', $day))
+            ->whereDoesntHave('leaveRequests', function (Builder $query) use ($day): void {
+                $query->where('status', 'approved')
+                    ->whereDate('start_date', '<=', $day)
+                    ->whereDate('end_date', '>=', $day)
+                    ->where(function (Builder $leaveQuery): void {
+                        $leaveQuery
+                            ->where('duration_type', '!=', 'half_day')
+                            ->orWhereNull('half_day_period');
+                    });
+            });
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Attendance>  $attendanceRecords
+     * @return array<int, float>
+     */
+    public function recordedAbsenceDaysByEmployee(Collection $attendanceRecords): array
+    {
+        $absences = $attendanceRecords->where('status', 'absent');
+        if ($absences->isEmpty()) {
+            return [];
+        }
+
+        $employeeIds = $absences->pluck('employee_id')->unique()->values();
+        $dates = $absences->map(fn (Attendance $attendance) => $attendance->attendance_date->toDateString());
+        $firstDate = $dates->min();
+        $lastDate = $dates->max();
+
+        $halfDayLeaves = LeaveRequest::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->where('status', 'approved')
+            ->where('duration_type', 'half_day')
+            ->whereIn('half_day_period', ['morning', 'afternoon'])
+            ->whereDate('start_date', '<=', $lastDate)
+            ->whereDate('end_date', '>=', $firstDate)
+            ->get(['employee_id', 'start_date', 'end_date']);
+
+        $counts = [];
+        foreach ($absences as $absence) {
+            $date = $absence->attendance_date->toDateString();
+            $isHalfDayAbsence = $halfDayLeaves->contains(fn (LeaveRequest $leave): bool =>
+                (int) $leave->employee_id === (int) $absence->employee_id
+                && $leave->start_date->toDateString() <= $date
+                && $leave->end_date->toDateString() >= $date
+            );
+
+            $employeeId = (int) $absence->employee_id;
+            $counts[$employeeId] = ($counts[$employeeId] ?? 0.0) + ($isHalfDayAbsence ? 0.5 : 1.0);
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Attendance>  $attendanceRecords
+     */
+    public function countRecordedAbsenceDays(Collection $attendanceRecords): float
+    {
+        return array_sum($this->recordedAbsenceDaysByEmployee($attendanceRecords));
     }
 
     public function generateQrToken(User $actor): AttendanceQrToken

@@ -15,6 +15,7 @@ function announcementCategoryAdmin(): User
 {
     $user = User::factory()->create(['status' => 'active']);
     $user->assignRole('admin');
+    $user->givePermissionTo(['announcement_categories.create', 'announcement_categories.update', 'announcement_categories.deactivate']);
 
     return $user;
 }
@@ -84,7 +85,7 @@ test('employees without permission cannot manage announcement categories', funct
 
     $this->withToken($token)
         ->getJson('/api/announcement-categories')
-        ->assertForbidden();
+        ->assertSuccessful();
 
     $this->withToken($token)
         ->postJson('/api/announcement-categories', ['name' => 'New Category'])

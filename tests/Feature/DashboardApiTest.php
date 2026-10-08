@@ -223,6 +223,14 @@ test('hr dashboard returns attendance summary pending hr leave requests and payr
     dashboardAttendance($lateEmployee, '2026-05-05', 'late');
     dashboardAttendance($absentEmployee, '2026-05-05', 'absent');
     dashboardAttendance($missingClockOutEmployee, '2026-05-05', 'missing_clock_out');
+    dashboardLeave($absentEmployee, [
+        'start_date' => '2026-05-05',
+        'end_date' => '2026-05-05',
+        'duration_type' => 'half_day',
+        'half_day_period' => 'morning',
+        'total_days' => 0.5,
+        'status' => 'approved',
+    ]);
 
     $pendingHrLeave = dashboardLeave($presentEmployee, [
         'start_date' => '2026-05-06',
@@ -272,7 +280,7 @@ test('hr dashboard returns attendance summary pending hr leave requests and payr
         ->assertJsonPath('data.today_attendance_summary.total_records', 4)
         ->assertJsonPath('data.today_attendance_summary.present_count', 1)
         ->assertJsonPath('data.today_attendance_summary.late_count', 1)
-        ->assertJsonPath('data.today_attendance_summary.absent_count', 1)
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 0.5)
         ->assertJsonPath('data.today_attendance_summary.missing_clock_out_count', 1)
         ->assertJsonPath('data.pending_leave_requests.total', 1)
         ->assertJsonPath('data.pending_leave_requests.items.0.id', $pendingHrLeave->id)

@@ -45,6 +45,7 @@ class ProfileController extends Controller
             newPassword: $request->validated('password'),
             ipAddress: $request->ip(),
             userAgent: $request->userAgent(),
+            currentTokenId: $request->user()->currentAccessToken()?->getKey(),
         );
 
         return ApiResponse::success(message: 'Password changed successfully.');

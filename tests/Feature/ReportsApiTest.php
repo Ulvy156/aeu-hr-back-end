@@ -168,7 +168,7 @@ test('hr can view and export payroll reports while ceo cannot export them', func
 
     Sanctum::actingAs($hr);
 
-    $this->getJson("/api/reports/payroll?report_type=employee_list&month=4&year=2026&employee_id={$employee->id}")
+    $this->getJson("/api/reports/payroll?report_type=employee_list&month=4&year=2026&employee_id={$employee->employee_id}")
         ->assertSuccessful()
         ->assertJsonPath('message', 'Payroll report fetched successfully.')
         ->assertJsonPath('meta.total', 1)
@@ -209,6 +209,14 @@ test('attendance reports return monthly summary and correction exports while emp
     ]);
     reportAttendance($otherEmployee, '2026-05-04', 'absent');
     reportAttendance($otherEmployee, '2026-05-05', 'missing_clock_out');
+    reportLeave($otherEmployee, [
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'duration_type' => 'half_day',
+        'half_day_period' => 'afternoon',
+        'total_days' => 0.5,
+        'status' => 'approved',
+    ]);
 
     Sanctum::actingAs($ceo);
 
@@ -219,7 +227,8 @@ test('attendance reports return monthly summary and correction exports while emp
         ->assertJsonPath('data.summary.employee_count', 2)
         ->assertJsonPath('data.summary.present_count', 1)
         ->assertJsonPath('data.summary.late_count', 1)
-        ->assertJsonPath('data.summary.absent_count', 1)
+        ->assertJsonPath('data.summary.absent_count', 0.5)
+        ->assertJsonPath('data.items.1.absent_count', 0.5)
         ->assertJsonPath('data.summary.missing_clock_out_count', 1)
         ->assertJsonPath('data.summary.corrected_count', 1);
 
