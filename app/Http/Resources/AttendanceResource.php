@@ -22,6 +22,7 @@ class AttendanceResource extends JsonResource
             'clock_in_time' => $this->clock_in_time?->toISOString(),
             'clock_out_time' => $this->clock_out_time?->toISOString(),
             'status' => $this->status,
+            'absent_periods' => $this->absent_periods,
             'is_late' => $this->is_late,
             'correction_reason' => $this->correction_reason,
             'corrected_at' => $this->corrected_at?->toISOString(),

@@ -29,6 +29,7 @@ class PayrollService
         protected AuditLogService $auditLogService,
         protected CompanySettingService $companySettingService,
         protected PayrollVisibility $payrollVisibility,
+        protected AttendanceService $attendanceService,
     ) {}
 
     /**
@@ -805,7 +806,7 @@ class PayrollService
             ->whereIn('employee_id', $employeeIds)
             ->whereDate('attendance_date', '>=', $periodStart->toDateString())
             ->whereDate('attendance_date', '<=', $periodEnd->toDateString())
-            ->get(['employee_id', 'attendance_date', 'status'])
+            ->get(['employee_id', 'attendance_date', 'status', 'clock_in_time', 'clock_out_time'])
             ->groupBy('employee_id');
     }
 
@@ -892,10 +893,9 @@ class PayrollService
             ->filter(function (Attendance $attendance) use ($start, $end, $settings, $holidayDates): bool {
                 return $attendance->attendance_date
                     && $attendance->attendance_date->betweenIncluded($start, $end)
-                    && in_array($attendance->status, ['present', 'late', 'missing_clock_out'], true)
                     && $this->isWorkingPayrollDate($attendance->attendance_date, $settings, $holidayDates);
             })
-            ->count();
+            ->sum(fn (Attendance $attendance): float => $this->attendanceService->recordedAttendanceDays($attendance, $settings));
     }
 
     /**

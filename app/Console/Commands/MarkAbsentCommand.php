@@ -9,7 +9,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('attendance:mark-absent {--date= : Attendance date (Y-m-d); defaults to today}')]
-#[Description('Mark employees without attendance or approved leave as absent')]
+#[Description('Mark missed scheduled attendance periods as absent')]
 class MarkAbsentCommand extends Command
 {
     public function handle(AttendanceService $attendanceService): int
@@ -28,8 +28,9 @@ class MarkAbsentCommand extends Command
         $result = $attendanceService->markAbsent($date);
 
         $this->info(sprintf(
-            'Marked %d employee(s) absent for %s.',
+            'Marked %d absent record(s) and updated %d attendance record(s) for %s.',
             $result['created_count'],
+            $result['updated_count'],
             $result['attendance_date'],
         ));
 

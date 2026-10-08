@@ -67,7 +67,12 @@ distance). Features include:
 - Clock in / clock out
 - QR code-based attendance (generate and scan a QR code to clock in)
 - Automatically detecting late arrivals
-- Automatically marking employees absent if they never clocked in
+- At 5:30 p.m., showing HR who forgot to clock out. At 11:00 p.m., checking
+  attendance for the morning and afternoon.
+- Example: A morning clock-in with no clock-out counts the afternoon as absent
+  (0.5 day). No attendance and no leave counts as a full absent day (1 day).
+- HR can correct the record later, and the absent day count will update. Approved
+  half-day leave covers that half of the day.
 - HR can manually correct attendance records
 - "Proxy clock" - HR can clock in/out on behalf of an employee if needed
 

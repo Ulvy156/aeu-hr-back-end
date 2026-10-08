@@ -54,7 +54,7 @@ class HrDashboardService
         $absentRecords = Attendance::query()
             ->whereDate('attendance_date', $today->toDateString())
             ->where('status', 'absent')
-            ->get(['employee_id', 'attendance_date', 'status']);
+            ->get(['employee_id', 'attendance_date', 'status', 'absent_periods']);
         $recordedAbsences = $this->attendanceService->countRecordedAbsenceDays($absentRecords);
         $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today, includeCurrentDayAfterStart: true);
         $unrecordedAbsenceRecords = $this->attendanceService->countUnrecordedAbsenceRecords($today, $today, includeCurrentDayAfterStart: true);

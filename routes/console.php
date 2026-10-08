@@ -8,8 +8,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('attendance:mark-missing-clock-out')
-    ->everyFifteenMinutes()
+Schedule::command('attendance:mark-missing-clock-out --scheduled')
+    ->dailyAt('17:30')
     ->withoutOverlapping();
 
 Schedule::command('attendance:mark-absent')

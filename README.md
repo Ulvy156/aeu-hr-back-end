@@ -20,7 +20,7 @@ The backend is the single source of truth for all business logic, calculations, 
 - **Users, Roles & Permissions** — 4 roles (admin, hr, ceo, employee) via Spatie
 - **Departments & Positions** — company structure management
 - **Employees** — profiles, org chart hierarchy, employment history, HR-proposed upgrade requests with CEO approval
-- **Attendance** — GPS-validated clock in/out, QR code attendance, late/absent detection, corrections
+- **Attendance** — GPS and QR clock in/out; at 5:30 p.m. HR sees missing clock-outs, and at 11 p.m. the system counts missed morning and afternoon periods as absent. HR can correct records later.
 - **Leave Management** — annual/sick/special/maternity/special-sick leave with dual approval (HR + CEO)
 - **Public Holidays** — feeds into attendance and payroll calculations
 - **Payroll** — proration, tax brackets, NSSF deductions, generate → submit → approve/reject workflow

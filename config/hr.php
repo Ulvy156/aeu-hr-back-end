@@ -50,7 +50,7 @@ return [
     ],
     'auth' => [],
     'attendance' => [
-        // Hours after working_end_time before an open clock-in is marked missing_clock_out.
+        // Grace period for manual missing-clock-out marking; the scheduled HR sweep runs at 17:30.
         'missing_clock_out_grace_hours' => (int) env('HR_MISSING_CLOCK_OUT_GRACE_HOURS', 2),
     ],
     'hr_department_name' => 'HR & Admin',

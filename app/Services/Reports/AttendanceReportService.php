@@ -72,7 +72,7 @@ class AttendanceReportService
 
         $absentRecords = (clone $query)
             ->where('attendances.status', 'absent')
-            ->get(['attendances.employee_id', 'attendances.attendance_date', 'attendances.status']);
+            ->get(['attendances.employee_id', 'attendances.attendance_date', 'attendances.status', 'attendances.absent_periods']);
 
         return [
             'report_type' => $reportType,
@@ -130,7 +130,7 @@ class AttendanceReportService
             ->whereDate('attendance_date', '<=', $period['end']->toDateString())
             ->where('status', 'absent')
             ->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId))
-            ->get(['employee_id', 'attendance_date', 'status']);
+            ->get(['employee_id', 'attendance_date', 'status', 'absent_periods']);
         $absentDaysByEmployee = $this->attendanceService->recordedAbsenceDaysByEmployee($absentRecords);
         $employeeRows = (clone $query)->get();
         $employeeRows->each(function (Employee $employee) use ($absentDaysByEmployee): void {
@@ -188,6 +188,7 @@ class AttendanceReportService
                 $attendance->employee?->full_name,
                 $attendance->attendance_date?->toDateString(),
                 $attendance->status,
+                implode(' + ', $attendance->absent_periods ?? []),
                 $attendance->is_late ? 'Yes' : 'No',
                 $attendance->clock_in_time?->toISOString(),
                 $attendance->clock_out_time?->toISOString(),
@@ -198,7 +199,7 @@ class AttendanceReportService
         return [
             'file_name' => "attendance-{$suffix}-report.xlsx",
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Attendance Date', 'Status', 'Is Late', 'Clock In Time', 'Clock Out Time', 'Corrected At'],
+                headings: ['Employee ID', 'Employee Name', 'Attendance Date', 'Status', 'Absent Periods', 'Is Late', 'Clock In Time', 'Clock Out Time', 'Corrected At'],
                 rows: $rows,
             ),
         ];
@@ -244,7 +245,7 @@ class AttendanceReportService
             ->whereDate('attendance_date', '<=', $period['end']->toDateString())
             ->where('status', 'absent')
             ->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('employee_id', $employeeId))
-            ->get(['employee_id', 'attendance_date', 'status']);
+            ->get(['employee_id', 'attendance_date', 'status', 'absent_periods']);
         $absentDaysByEmployee = $this->attendanceService->recordedAbsenceDaysByEmployee($absentRecords);
 
         $rows = $employees->map(fn (Employee $employee): array => [
