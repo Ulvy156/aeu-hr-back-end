@@ -1,15 +1,18 @@
 <?php
 
 use App\Models\Attendance;
+use App\Models\AttendanceQrToken;
 use App\Models\CompanySetting;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PublicHoliday;
 use App\Models\User;
+use App\Services\AttendanceService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schedule;
 use Spatie\Activitylog\Models\Activity;
 
 uses(RefreshDatabase::class);
@@ -725,6 +728,167 @@ test('mark absent uses today when no attendance date is provided', function () {
     expect(Attendance::query()->whereDate('attendance_date', '2026-05-04')->count())->toBe(2);
 });
 
+test('morning clock-in check is scheduled at 0930', function () {
+    $event = collect(Schedule::events())
+        ->first(fn ($event) => str_contains($event->command ?? '', 'attendance:check-missing-clock-in'));
+
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('30 9 * * *')
+        ->and($event->withoutOverlapping)->toBeTrue()
+        ->and($event->onOneServer)->toBeTrue();
+});
+
+test('morning clock-in check flags only employees expected in the morning', function (string $duration, ?string $period, string $status, bool $expected) {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    attendanceCompanySettings();
+    [, $employee] = attendanceEmployeeUser();
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id,
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-06',
+        'duration_type' => $duration,
+        'half_day_period' => $period,
+        'total_days' => $duration === 'full_day' ? 3 : 0.5,
+        'reason' => 'Leave eligibility check',
+        'status' => $status,
+    ]);
+
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    $attendance = $employee->attendances()->first();
+    expect($attendance !== null)->toBe($expected);
+    if ($expected) {
+        expect($attendance->status)->toBe('absent')
+            ->and($attendance->absent_periods)->toBe(['morning'])
+            ->and($attendance->clock_in_time)->toBeNull();
+    }
+})->with([
+    'approved full day is excluded' => ['full_day', null, 'approved', false],
+    'approved morning is excluded' => ['half_day', 'morning', 'approved', false],
+    'approved afternoon is included' => ['half_day', 'afternoon', 'approved', true],
+    'pending morning does not excuse attendance' => ['half_day', 'morning', 'pending', true],
+]);
+
+test('morning clock-in check respects employment dates clock-ins and HR corrections', function () {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    attendanceCompanySettings();
+    [, $eligible] = attendanceEmployeeUser('employee', [], ['join_date' => '2026-05-05', 'last_working_date' => '2026-05-05']);
+    [, $future] = attendanceEmployeeUser('employee', [], ['join_date' => '2026-05-06']);
+    [, $ended] = attendanceEmployeeUser('employee', [], ['last_working_date' => '2026-05-04']);
+    [, $clockedIn] = attendanceEmployeeUser();
+    [, $corrected] = attendanceEmployeeUser();
+    $present = Attendance::query()->create([
+        'employee_id' => $clockedIn->id,
+        'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00',
+        'status' => 'present',
+    ]);
+    $manual = Attendance::query()->create([
+        'employee_id' => $corrected->id,
+        'attendance_date' => '2026-05-05',
+        'status' => 'present',
+        'corrected_at' => now(),
+    ]);
+
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+
+    expect($eligible->attendances()->sole()->absent_periods)->toBe(['morning'])
+        ->and($future->attendances()->count())->toBe(0)
+        ->and($ended->attendances()->count())->toBe(0)
+        ->and($present->fresh()->status)->toBe('present')
+        ->and($manual->fresh()->status)->toBe('present')
+        ->and(Attendance::query()->count())->toBe(3);
+});
+
+test('morning clock-in check skips non-working days and public holidays', function (bool $holiday) {
+    Carbon::setTestNow($holiday ? '2026-05-05 09:30:00' : '2026-05-03 09:30:00');
+    attendanceCompanySettings();
+    attendanceEmployeeUser();
+    if ($holiday) {
+        PublicHoliday::query()->create([
+            'name' => 'Public holiday',
+            'holiday_date' => '2026-05-05',
+            'status' => 'active',
+        ]);
+    }
+
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    expect(Attendance::query()->count())->toBe(0);
+})->with(['non-working day' => false, 'public holiday' => true]);
+
+test('morning clock-in check preserves previously recorded absent periods without duplicates', function () {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    attendanceCompanySettings();
+    [, $employee] = attendanceEmployeeUser();
+    $record = Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-05-05',
+        'status' => 'absent',
+        'absent_periods' => ['afternoon'],
+    ]);
+
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    expect($record->fresh()->absent_periods)->toBe(['afternoon', 'morning'])
+        ->and($employee->attendances()->count())->toBe(1);
+});
+
+test('later morning clock-in reuses the flagged record and clears its absence', function (string $channel) {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    $recordId = $employee->attendances()->sole()->id;
+    Carbon::setTestNow('2026-05-05 10:00:00');
+    $service = app(AttendanceService::class);
+
+    if ($channel === 'gps') {
+        $this->actingAs($user)->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+            ->assertCreated()->assertJsonPath('data.status', 'late');
+    } elseif ($channel === 'qr') {
+        $token = $service->generateQrToken($user);
+        $result = $service->scanQr($user, $token->token, ...array_values(ATTENDANCE_VALID_GPS));
+        expect($result['action'])->toBe('qr_clock_in');
+    } else {
+        $service->proxyClockIn($user, $employee->id, '2026-05-05');
+    }
+
+    $record = $employee->attendances()->sole();
+    expect($record->id)->toBe($recordId)
+        ->and($record->clock_in_time)->not->toBeNull()
+        ->and($record->clock_out_time)->toBeNull()
+        ->and($record->absent_periods)->toBe([])
+        ->and($record->status)->toBe($channel === 'proxy' ? 'present' : 'late');
+
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    expect($record->fresh()->absent_periods)->toBe([]);
+})->with(['gps', 'qr', 'proxy']);
+
+test('afternoon arrival retains the morning absence and HR correction can clear it', function () {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
+    Carbon::setTestNow('2026-05-05 13:30:00');
+    $service = app(AttendanceService::class);
+    $record = $service->clockIn($user, ...array_values(ATTENDANCE_VALID_GPS));
+    expect($record->status)->toBe('absent')->and($record->absent_periods)->toBe(['morning']);
+
+    $service->correct($record, [
+        'clock_in_time' => '2026-05-05 08:00:00',
+        'status' => 'present',
+        'correction_reason' => 'Forgot to clock in',
+    ], $user);
+    expect($record->fresh()->absent_periods)->toBe([])->and($record->fresh()->status)->toBe('present');
+});
+
+test('morning clock-in command rejects future and malformed dates', function (string $date) {
+    Carbon::setTestNow('2026-05-05 09:30:00');
+    $this->artisan('attendance:check-missing-clock-in', ['--date' => $date])->assertFailed();
+    expect(Attendance::query()->count())->toBe(0);
+})->with(['2026-05-06', 'invalid-date', '2026-02-30']);
+
 test('scheduled absence command marks today and is idempotent', function () {
     Carbon::setTestNow('2026-10-02 23:00:00');
     attendanceCompanySettings();
@@ -1100,9 +1264,9 @@ test('october 2026 summary includes a qr scan and caps working days at today', f
         ->assertJsonPath('data.summary.present', 0)
         ->assertJsonPath('data.summary.late', 1)
         ->assertJsonPath('data.summary.absent', 1)
-        ->assertJsonPath('data.summary.attended_days', 1)
+        ->assertJsonPath('data.summary.attended_days', 0.5)
         ->assertJsonPath('data.summary.working_days_in_period', 2)
-        ->assertJsonPath('data.summary.attendance_rate', '50.00')
+        ->assertJsonPath('data.summary.attendance_rate', '25.00')
         ->assertJsonPath('data.today.status', 'late')
         ->assertJsonPath('data.today.is_late', true);
 });
@@ -1199,7 +1363,7 @@ test('attendance summary auto-marks forgotten clock-out after grace hours and co
         ->assertSuccessful()
         ->assertJsonPath('data.summary.late', 1)
         ->assertJsonPath('data.summary.missing_clock_out', 1)
-        ->assertJsonPath('data.summary.attended_days', 1);
+        ->assertJsonPath('data.summary.attended_days', 0.5);
 
     expect($openLate->fresh()->status)->toBe('missing_clock_out')
         ->and($openLate->fresh()->is_late)->toBeTrue();
@@ -1300,8 +1464,6 @@ test('mark missing clock-out rejects future dates', function () {
 });
 
 // ─── QR Code Attendance ───────────────────────────────────────────────────────
-
-use App\Models\AttendanceQrToken;
 
 test('hr can generate a qr token and response includes token and scan_url', function () {
     $hr = User::factory()->create();

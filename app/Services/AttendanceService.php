@@ -93,19 +93,13 @@ class AttendanceService
             throw ApiException::unprocessable('Today is not a working day.');
         }
 
-        if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $attendanceDate)->exists()) {
-            throw ApiException::unprocessable('You have already clocked in today.');
-        }
-
-        return Attendance::query()->create([
-            'employee_id' => $employee->id,
-            'attendance_date' => $attendanceDate,
+        return $this->recordClockIn($employee, $attendanceDate, [
             'clock_in_time' => $clockInAt,
             'clock_in_latitude' => $latitude,
             'clock_in_longitude' => $longitude,
             'status' => $this->isLateForEmployee($clockInAt, $employee, $settings) ? 'late' : 'present',
             'is_late' => $this->isLateForEmployee($clockInAt, $employee, $settings),
-        ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+        ], 'You have already clocked in today.');
     }
 
     public function clockOut(User $user, float $latitude, float $longitude): Attendance
@@ -337,6 +331,7 @@ class AttendanceService
                         }
                         $updated++;
                     }
+
                     continue;
                 }
 
@@ -366,7 +361,80 @@ class AttendanceService
     }
 
     /**
-     * Flag open clock-ins for HR follow-up; manual runs still honor the configured grace period.
+     * Flag employees expected in the morning who have not clocked in.
+     *
+     * @return array{attendance_date: string, updated_count: int}
+     */
+    public function checkMissingClockIn(?string $attendanceDate = null): array
+    {
+        $date = $attendanceDate ? Carbon::parse($attendanceDate)->startOfDay() : today();
+        $settings = $this->companySettingService->current();
+
+        if (! $this->isWorkingDay($date, $settings) || $this->isPublicHoliday($date)) {
+            return ['attendance_date' => $date->toDateString(), 'updated_count' => 0];
+        }
+
+        $updatedCount = DB::transaction(function () use ($date): int {
+            $employees = Employee::query()
+                ->whereDate('join_date', '<=', $date->toDateString())
+                ->where(fn (Builder $query) => $query->whereNull('last_working_date')->orWhereDate('last_working_date', '>=', $date->toDateString()))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id']);
+            $employeeIds = $employees->modelKeys();
+            $attendances = Attendance::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->whereDate('attendance_date', $date->toDateString())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('employee_id');
+            $leaves = LeaveRequest::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->where('status', 'approved')
+                ->whereDate('start_date', '<=', $date->toDateString())
+                ->whereDate('end_date', '>=', $date->toDateString())
+                ->get()
+                ->groupBy('employee_id');
+
+            $updated = 0;
+            foreach ($employees as $employee) {
+                $leavePeriods = $this->approvedLeavePeriodsFromCollection($leaves->get($employee->id, collect()));
+                if (in_array('morning', $leavePeriods, true)) {
+                    continue;
+                }
+
+                $attendance = $attendances->get($employee->id);
+                if ($attendance?->clock_in_time || $attendance?->corrected_at) {
+                    continue;
+                }
+
+                $absentPeriods = array_values(array_unique([...(array) ($attendance?->absent_periods ?? []), 'morning']));
+                if ($attendance) {
+                    if ($attendance->status === 'absent' && $attendance->absent_periods === $absentPeriods) {
+                        continue;
+                    }
+                    $attendance->update(['status' => 'absent', 'absent_periods' => $absentPeriods]);
+                } else {
+                    Attendance::query()->create([
+                        'employee_id' => $employee->id,
+                        'attendance_date' => $date->toDateString(),
+                        'status' => 'absent',
+                        'absent_periods' => $absentPeriods,
+                        'is_late' => false,
+                    ]);
+                }
+                $updated++;
+            }
+
+            return $updated;
+        });
+
+        return ['attendance_date' => $date->toDateString(), 'updated_count' => $updatedCount];
+    }
+
+    /**
+     * Flag afternoon attendance issues for HR follow-up. Scheduled runs also flag employees
+     * who were expected to work in the afternoon but did not record afternoon attendance.
      *
      * @return array{attendance_date: string|null, updated_count: int}
      */
@@ -388,6 +456,10 @@ class AttendanceService
             $updated = 0;
 
             foreach ($query->get() as $attendance) {
+                if ($scheduledFollowUp && in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, (string) $attendance->attendance_date->toDateString()), true)) {
+                    continue;
+                }
+
                 if (! $scheduledFollowUp && ! $this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
                     continue;
                 }
@@ -397,6 +469,65 @@ class AttendanceService
                     'is_late' => $attendance->is_late || $attendance->status === 'late',
                 ]);
                 $updated++;
+            }
+
+            if ($scheduledFollowUp && $date && $this->isWorkingDay(Carbon::parse($date), $settings) && ! $this->isPublicHoliday(Carbon::parse($date))) {
+                $employees = Employee::query()
+                    ->whereDate('join_date', '<=', $date)
+                    ->where(fn (Builder $query) => $query->whereNull('last_working_date')->orWhereDate('last_working_date', '>=', $date))
+                    ->get(['id']);
+                $employeeIds = $employees->modelKeys();
+                $attendances = Attendance::query()->whereIn('employee_id', $employeeIds)->whereDate('attendance_date', $date)->lockForUpdate()->get()->keyBy('employee_id');
+                $leaves = LeaveRequest::query()->whereIn('employee_id', $employeeIds)->where('status', 'approved')
+                    ->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->get()->groupBy('employee_id');
+
+                foreach ($employees as $employee) {
+                    $leavePeriods = $this->approvedLeavePeriodsFromCollection($leaves->get($employee->id, collect()));
+                    if (in_array('afternoon', $leavePeriods, true)) {
+                        continue;
+                    }
+
+                    $attendance = $attendances->get($employee->id);
+                    if ($attendance?->corrected_at) {
+                        continue;
+                    }
+
+                    if ($attendance?->clock_in_time && ! $attendance->clock_out_time) {
+                        // Open clock-ins were flagged above. Morning leave does not excuse
+                        // a missing clock-out for an afternoon shift.
+                        if ($attendance->status !== 'missing_clock_out') {
+                            $attendance->update([
+                                'status' => 'missing_clock_out',
+                                'is_late' => $attendance->is_late || $attendance->status === 'late',
+                            ]);
+                            $updated++;
+                        }
+
+                        continue;
+                    }
+
+                    $attendedPeriods = $attendance ? $this->attendedPeriodsForAttendance($attendance, $settings) : [];
+                    if (in_array('afternoon', $attendedPeriods, true)) {
+                        continue;
+                    }
+
+                    $absentPeriods = array_values(array_unique([...(array) ($attendance?->absent_periods ?? []), 'afternoon']));
+                    if ($attendance) {
+                        if ($attendance->status !== 'absent' || $attendance->absent_periods !== $absentPeriods) {
+                            $attendance->update(['status' => 'absent', 'absent_periods' => $absentPeriods]);
+                            $updated++;
+                        }
+                    } else {
+                        Attendance::query()->create([
+                            'employee_id' => $employee->id,
+                            'attendance_date' => $date,
+                            'status' => 'absent',
+                            'absent_periods' => ['afternoon'],
+                            'is_late' => false,
+                        ]);
+                        $updated++;
+                    }
+                }
             }
 
             return $updated;
@@ -425,18 +556,12 @@ class AttendanceService
             : Carbon::parse($date->toDateString().' '.$settings->working_start_time);
         $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_in', $clockInTime, 'This employee is on approved leave on the selected date and cannot be clocked in.');
 
-        if (Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date->toDateString())->exists()) {
-            throw ApiException::unprocessable('An attendance record already exists for this employee on the selected date.');
-        }
-
-        $attendance = Attendance::query()->create([
-            'employee_id' => $employee->id,
-            'attendance_date' => $date->toDateString(),
+        $attendance = $this->recordClockIn($employee, $date->toDateString(), [
             'clock_in_time' => $clockInTime,
             'status' => 'present',
             'is_late' => false,
             'proxied_clock_in_by' => $actor->id,
-        ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+        ], 'An attendance record already exists for this employee on the selected date.');
 
         $this->auditLogService->log(
             action: 'proxy_clock_in',
@@ -726,7 +851,7 @@ class AttendanceService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Attendance>  $attendanceRecords
+     * @param  Collection<int, Attendance>  $attendanceRecords
      * @return array<int, float>
      */
     public function recordedAbsenceDaysByEmployee(Collection $attendanceRecords): array
@@ -756,8 +881,7 @@ class AttendanceService
             if (is_array($absence->absent_periods)) {
                 $absenceDays = count($absence->absent_periods) * 0.5;
             } else {
-                $isHalfDayAbsence = $halfDayLeaves->contains(fn (LeaveRequest $leave): bool =>
-                (int) $leave->employee_id === (int) $absence->employee_id
+                $isHalfDayAbsence = $halfDayLeaves->contains(fn (LeaveRequest $leave): bool => (int) $leave->employee_id === (int) $absence->employee_id
                 && $leave->start_date->toDateString() <= $date
                 && $leave->end_date->toDateString() >= $date
                 );
@@ -772,7 +896,7 @@ class AttendanceService
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Attendance>  $attendanceRecords
+     * @param  Collection<int, Attendance>  $attendanceRecords
      */
     public function countRecordedAbsenceDays(Collection $attendanceRecords): float
     {
@@ -791,7 +915,7 @@ class AttendanceService
     }
 
     /** @param Collection<int, LeaveRequest> $leaves
-     *  @return array<int, string>
+     * @return array<int, string>
      */
     protected function approvedLeavePeriodsFromCollection(Collection $leaves): array
     {
@@ -809,7 +933,7 @@ class AttendanceService
     }
 
     /** @param array<int, string>|null $leavePeriods
-     *  @return array<int, string>
+     * @return array<int, string>
      */
     public function absentPeriodsForAttendance(
         ?Attendance $attendance,
@@ -972,6 +1096,7 @@ class AttendanceService
             }
 
             $employee = $this->employeeForUserOrFail($user);
+            Employee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $today = now()->toDateString();
 
             if ($this->isPublicHoliday(now())) {
@@ -993,25 +1118,25 @@ class AttendanceService
                 ->lockForUpdate()
                 ->first();
 
-            if (! $attendance) {
+            if (! $attendance || (! $attendance->clock_in_time && ! $attendance->clock_out_time && $attendance->status === 'absent' && ! $attendance->corrected_at)) {
                 $clockInAt = now();
 
                 $this->assertLeaveAllowsAttendance($employee, $today, 'clock_in', $clockInAt, 'You are on approved leave today and cannot use QR attendance.');
 
                 $isLate = $this->isLateForEmployee($clockInAt, $employee, $settings);
 
-                $attendance = Attendance::query()->create([
-                    'employee_id' => $employee->id,
-                    'attendance_date' => $today,
+                $attendance = $this->recordClockIn($employee, $today, [
                     'clock_in_time' => $clockInAt,
                     'clock_in_latitude' => $latitude,
                     'clock_in_longitude' => $longitude,
                     'status' => $isLate ? 'late' : 'present',
                     'is_late' => $isLate,
                     'qr_clock_in' => true,
-                ])->load(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+                ], 'You have already clocked in today.');
 
                 $action = 'qr_clock_in';
+            } elseif (! $attendance->clock_in_time) {
+                throw ApiException::unprocessable('You must clock in before clocking out.');
             } elseif (! $attendance->clock_out_time) {
                 $clockOutAt = now();
                 $this->assertLeaveAllowsAttendance($employee, $today, 'clock_out', $clockOutAt, 'You are on approved leave today and cannot use QR attendance.');
@@ -1049,6 +1174,41 @@ class AttendanceService
             );
 
             return ['action' => $action, 'attendance' => $attendance];
+        });
+    }
+
+    /**
+     * Reuse an automatic absence record so a scheduled check cannot block a later clock-in.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    protected function recordClockIn(Employee $employee, string $date, array $attributes, string $duplicateMessage): Attendance
+    {
+        return DB::transaction(function () use ($employee, $date, $attributes, $duplicateMessage): Attendance {
+            Employee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
+            $attendance = Attendance::query()
+                ->whereBelongsTo($employee)
+                ->whereDate('attendance_date', $date)
+                ->lockForUpdate()
+                ->first();
+
+            if ($attendance && ($attendance->clock_in_time || $attendance->clock_out_time || $attendance->status !== 'absent' || $attendance->corrected_at)) {
+                throw ApiException::unprocessable($duplicateMessage);
+            }
+
+            $attendedPeriods = $this->attendedPeriodsForAttendance(Attendance::make([
+                'attendance_date' => $date,
+                'clock_in_time' => $attributes['clock_in_time'],
+            ]), $this->companySettingService->current());
+            $attributes['absent_periods'] = array_values(array_diff($attendance?->absent_periods ?? [], $attendedPeriods));
+            if ($attributes['absent_periods'] !== []) {
+                $attributes['status'] = 'absent';
+            }
+
+            $attendance ??= new Attendance(['employee_id' => $employee->id, 'attendance_date' => $date]);
+            $attendance->fill($attributes)->save();
+
+            return $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
         });
     }
 

@@ -897,7 +897,7 @@ class PayrollService
             })
             ->sum(fn (Attendance $attendance): float => $this->attendanceService->recordedAttendanceDays($attendance, $settings));
     }
-
+                                                                                                                                                                                                    
     /**
      * @param  Collection<int, LeaveRequest>  $leaveRows
      * @param  array<string, true>  $holidayDates
