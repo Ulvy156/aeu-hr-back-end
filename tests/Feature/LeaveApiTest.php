@@ -1094,3 +1094,53 @@ test('multi day leave rejects an attendance marker inside its date range', funct
     ])->assertUnprocessable();
     expect(LeaveRequest::query()->count())->toBe(0);
 });
+
+test('leave approval rechecks balance after other pending requests consume entitlement', function (string $finalApprover) {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+    $leave = makeLeave($employee, [
+        'start_date' => '2026-06-01', 'end_date' => '2026-06-12', 'total_days' => 10,
+        'hr_approval_status' => $finalApprover === 'ceo' ? 'approved' : 'pending',
+        'ceo_approval_status' => $finalApprover === 'hr' ? 'approved' : 'pending',
+    ]);
+    makeLeave($employee, [
+        'start_date' => '2026-05-04', 'end_date' => '2026-05-15', 'total_days' => 10,
+        'status' => 'approved', 'hr_approval_status' => 'approved', 'ceo_approval_status' => 'approved',
+    ]);
+    $actor = $finalApprover === 'hr' ? leaveHrHeadUser() : leaveEmployeeUser('ceo')[0];
+    Sanctum::actingAs($actor);
+    $this->postJson("/api/leaves/{$leave->id}/approve")->assertUnprocessable()
+        ->assertJsonPath('message', 'Requested annual leave exceeds the available 2026 balance.');
+    expect($leave->fresh()->status)->toBe('pending')
+        ->and($leave->fresh()->hr_approval_status)->toBe($finalApprover === 'ceo' ? 'approved' : 'pending')
+        ->and($leave->fresh()->ceo_approval_status)->toBe($finalApprover === 'hr' ? 'approved' : 'pending')
+        ->and(Activity::query()->where('log_name', 'leaves')->where('event', 'approve')->count())->toBe(0);
+})->with(['hr', 'ceo']);
+
+test('rechecking special sick leave at approval does not count the request itself as another case', function () {
+    leaveCompanySettings();
+    [$user] = leaveEmployeeUser(employeeOverrides: ['join_date' => '2024-01-01']);
+    Sanctum::actingAs($user);
+    $id = $this->postJson('/api/leaves', [
+        'leave_type' => 'special_sick', 'start_date' => '2026-05-05', 'end_date' => '2026-05-05',
+        'duration_type' => 'full_day', 'reason' => 'Verified special sick leave case.',
+    ])->assertCreated()->json('data.id');
+    Sanctum::actingAs(leaveHrHeadUser());
+    $this->postJson("/api/leaves/{$id}/approve")->assertOk()->assertJsonPath('data.status', 'pending');
+    Sanctum::actingAs(leaveEmployeeUser('ceo')[0]);
+    $this->postJson("/api/leaves/{$id}/approve")->assertOk()->assertJsonPath('data.status', 'approved');
+});
+
+test('special sick database upgrade preserves existing leave requests', function () {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+    $leave = makeLeave($employee);
+    $migration = require database_path('migrations/2026_10_15_000002_allow_special_sick_leave_on_other_databases.php');
+    $migration->down();
+    $migration->up();
+    expect($leave->fresh()->reason)->toBe('Annual leave request')
+        ->and($leave->fresh()->employee_id)->toBe($employee->id)
+        ->and($leave->fresh()->status)->toBe('pending');
+    $special = makeLeave($employee, ['leave_type' => 'special_sick', 'start_date' => '2026-06-01', 'end_date' => '2026-06-01']);
+    expect($special->fresh()->leave_type)->toBe('special_sick');
+});

@@ -179,6 +179,14 @@ class LeaveService
             }
 
             $this->assertNoAttendanceConflict($leave->employee_id, $leave->start_date, $leave->end_date, $leave->duration_type, $leave->half_day_period);
+            $this->assertLeaveBalanceAvailable(
+                $leave->employee,
+                $leave->leave_type,
+                $leave->start_date,
+                $leave->end_date,
+                $leave->duration_type,
+                $leave->id,
+            );
 
             $leave->status = $leave->hr_approval_status === 'approved' && $leave->ceo_approval_status === 'approved'
                 ? 'approved'
@@ -393,6 +401,7 @@ class LeaveService
         CarbonInterface $startDate,
         CarbonInterface $endDate,
         string $durationType,
+        ?int $exceptLeaveId = null,
     ): void {
         if ($leaveType === 'unpaid') {
             return;
@@ -423,6 +432,7 @@ class LeaveService
             $existingCase = LeaveRequest::query()
                 ->where('employee_id', $employee->id)
                 ->where('leave_type', 'special_sick')
+                ->when($exceptLeaveId !== null, fn (Builder $query) => $query->whereKeyNot($exceptLeaveId))
                 ->whereIn('status', ['approved', 'pending'])
                 ->whereYear('start_date', $year)
                 ->exists();
