@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\ApiException;
+use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PublicHoliday;
@@ -103,6 +104,8 @@ class LeaveService
                 throw ApiException::unprocessable('The selected leave dates do not include any working days.');
             }
 
+            $this->assertNoAttendanceConflict($employee->id, $startDate, $endDate, $durationType, $halfDayPeriod);
+            $this->assertNoOverlappingLeave($employee, $startDate, $endDate, $durationType, $halfDayPeriod);
             $this->assertLeaveBalanceAvailable($employee, $leaveType, $startDate, $endDate, $durationType);
 
             $leave = LeaveRequest::query()->create([
@@ -146,6 +149,7 @@ class LeaveService
         ?string $userAgent = null,
     ): LeaveRequest {
         return DB::transaction(function () use ($leave, $actor, $ipAddress, $userAgent): LeaveRequest {
+            Employee::query()->whereKey($leave->employee_id)->lockForUpdate()->firstOrFail();
             $leave = LeaveRequest::query()->whereKey($leave->id)->lockForUpdate()->firstOrFail();
             $this->assertPendingForDecision($leave);
             $oldValues = $this->auditAttributes($leave);
@@ -173,6 +177,8 @@ class LeaveService
             } else {
                 throw ApiException::forbidden();
             }
+
+            $this->assertNoAttendanceConflict($leave->employee_id, $leave->start_date, $leave->end_date, $leave->duration_type, $leave->half_day_period);
 
             $leave->status = $leave->hr_approval_status === 'approved' && $leave->ceo_approval_status === 'approved'
                 ? 'approved'
@@ -328,6 +334,56 @@ class LeaveService
 
         if ($leave->status === 'rejected') {
             throw ApiException::unprocessable('This leave request has already been rejected.');
+        }
+    }
+
+    protected function assertNoAttendanceConflict(
+        int $employeeId,
+        CarbonInterface $startDate,
+        CarbonInterface $endDate,
+        string $durationType,
+        ?string $halfDayPeriod,
+    ): void {
+        $conflict = Attendance::query()
+            ->where('employee_id', $employeeId)
+            ->whereDate('attendance_date', '>=', $startDate->toDateString())
+            ->whereDate('attendance_date', '<=', $endDate->toDateString())
+            ->where(function (Builder $query) use ($durationType, $halfDayPeriod): void {
+                if ($durationType === 'half_day' && $halfDayPeriod !== null) {
+                    $query->whereNotNull($halfDayPeriod === 'morning' ? 'clock_in_time' : 'clock_out_time');
+                } else {
+                    $query->whereNotNull('clock_in_time')->orWhereNotNull('clock_out_time');
+                }
+            })->exists();
+
+        if ($conflict) {
+            throw ApiException::unprocessable('Attendance is already recorded for this period. Please contact HR to correct it before requesting leave.');
+        }
+    }
+
+    protected function assertNoOverlappingLeave(
+        Employee $employee,
+        CarbonInterface $startDate,
+        CarbonInterface $endDate,
+        string $durationType,
+        ?string $halfDayPeriod,
+    ): void {
+        $query = LeaveRequest::query()
+            ->where('employee_id', $employee->id)
+            ->whereIn('status', ['pending', 'approved'])
+            ->whereDate('start_date', '<=', $endDate->toDateString())
+            ->whereDate('end_date', '>=', $startDate->toDateString());
+
+        if ($durationType === 'half_day') {
+            $query->where(function ($query) use ($halfDayPeriod): void {
+                $query->where('duration_type', 'full_day')
+                    ->orWhereNull('half_day_period')
+                    ->orWhere('half_day_period', $halfDayPeriod);
+            });
+        }
+
+        if ($query->exists()) {
+            throw ApiException::unprocessable('You already have a pending or approved leave request covering the selected dates or shift.');
         }
     }
 

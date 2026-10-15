@@ -64,7 +64,7 @@ class EmployeeService
     }
 
     /**
-     * @return Collection<int, array{employee_id: string, full_name: string, display: string}>
+     * @return Collection<int, array{id: int, employee_id: string, full_name: string, display: string}>
      */
     public function search(?string $query): Collection
     {
@@ -87,6 +87,7 @@ class EmployeeService
             ->limit(15)
             ->get()
             ->map(fn (Employee $employee): array => [
+                'id' => $employee->id,
                 'employee_id' => $employee->employee_id,
                 'full_name' => $employee->full_name,
                 'display' => "{$employee->employee_id} - {$employee->full_name}",

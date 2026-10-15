@@ -144,7 +144,7 @@ test('leave request rejects frontend controlled total days and supports half day
             'start_date' => '2026-05-04',
             'end_date' => '2026-05-04',
             'duration_type' => 'half_day',
-        'half_day_period' => 'morning',
+            'half_day_period' => 'morning',
             'reason' => 'Half-day clinic visit',
             'total_days' => 99,
         ])
@@ -163,6 +163,68 @@ test('leave request rejects frontend controlled total days and supports half day
         ->assertCreated()
         ->assertJsonPath('data.total_days', '0.50');
 });
+
+test('leave requests reject overlapping dates and shifts', function (array $existing, array $requested) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    makeLeave($employee, $existing);
+    Sanctum::actingAs($user);
+
+    $this->postJson('/api/leaves', array_merge([
+        'leave_type' => 'unpaid',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'duration_type' => 'full_day',
+        'reason' => 'Conflicting leave request',
+    ], $requested))
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You already have a pending or approved leave request covering the selected dates or shift.');
+
+    expect(LeaveRequest::query()->count())->toBe(1);
+})->with([
+    'duplicate pending full day across leave types' => [[], []],
+    'duplicate approved full day' => [['status' => 'approved'], []],
+    'partial overlap' => [['end_date' => '2026-05-06'], ['start_date' => '2026-05-05', 'end_date' => '2026-05-07']],
+    'request inside existing range' => [['end_date' => '2026-05-08'], ['start_date' => '2026-05-05', 'end_date' => '2026-05-06']],
+    'request contains existing range' => [['start_date' => '2026-05-05', 'end_date' => '2026-05-06'], ['end_date' => '2026-05-08']],
+    'shared end boundary' => [['end_date' => '2026-05-06'], ['start_date' => '2026-05-06', 'end_date' => '2026-05-08']],
+    'shared start boundary' => [['start_date' => '2026-05-06', 'end_date' => '2026-05-08'], ['end_date' => '2026-05-06']],
+    'half day inside full day range' => [['end_date' => '2026-05-06'], ['start_date' => '2026-05-05', 'end_date' => '2026-05-05', 'duration_type' => 'half_day', 'half_day_period' => 'morning']],
+    'full day covers half day' => [['duration_type' => 'half_day', 'half_day_period' => 'afternoon', 'total_days' => 0.5], ['end_date' => '2026-05-06']],
+    'duplicate morning' => [['duration_type' => 'half_day', 'half_day_period' => 'morning', 'total_days' => 0.5], ['duration_type' => 'half_day', 'half_day_period' => 'morning']],
+    'duplicate afternoon' => [['duration_type' => 'half_day', 'half_day_period' => 'afternoon', 'total_days' => 0.5], ['duration_type' => 'half_day', 'half_day_period' => 'afternoon']],
+    'legacy half day blocks morning' => [['duration_type' => 'half_day', 'total_days' => 0.5], ['duration_type' => 'half_day', 'half_day_period' => 'morning']],
+    'legacy half day blocks afternoon' => [['duration_type' => 'half_day', 'total_days' => 0.5], ['duration_type' => 'half_day', 'half_day_period' => 'afternoon']],
+    'legacy half day blocks full day' => [['duration_type' => 'half_day', 'total_days' => 0.5], []],
+]);
+
+test('leave requests allow dates and shifts without an active conflict', function (array $existing, array $requested, bool $otherEmployee) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    if ($otherEmployee) {
+        [, $employee] = leaveEmployeeUser();
+    }
+    makeLeave($employee, $existing);
+    Sanctum::actingAs($user);
+
+    $this->postJson('/api/leaves', array_merge([
+        'leave_type' => 'unpaid',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'duration_type' => 'full_day',
+        'reason' => 'Non-conflicting leave request',
+    ], $requested))->assertCreated();
+
+    expect(LeaveRequest::query()->count())->toBe(2);
+})->with([
+    'rejected request' => [['status' => 'rejected'], [], false],
+    'cancelled request' => [['status' => 'cancelled'], [], false],
+    'following date' => [[], ['start_date' => '2026-05-05', 'end_date' => '2026-05-05'], false],
+    'preceding date' => [['start_date' => '2026-05-05', 'end_date' => '2026-05-05'], [], false],
+    'different employee' => [[], [], true],
+    'morning then afternoon' => [['duration_type' => 'half_day', 'half_day_period' => 'morning', 'total_days' => 0.5], ['duration_type' => 'half_day', 'half_day_period' => 'afternoon'], false],
+    'afternoon then morning' => [['duration_type' => 'half_day', 'half_day_period' => 'afternoon', 'total_days' => 0.5, 'status' => 'approved'], ['duration_type' => 'half_day', 'half_day_period' => 'morning'], false],
+]);
 
 test('past-date leave requests are currently allowed and use the same backend calculations', function () {
     leaveCompanySettings();
@@ -947,4 +1009,88 @@ test('maternity leave is rejected for male employees', function () {
         ])
         ->assertUnprocessable()
         ->assertJsonPath('message', 'Maternity Leave is for female employee only!');
+});
+
+test('attendance markers control which leave shifts can be requested', function (bool $clockIn, bool $clockOut, string $duration, ?string $period, bool $blocked) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => '2026-05-04',
+        'clock_in_time' => $clockIn ? '2026-05-04 08:00:00' : null,
+        'clock_out_time' => $clockOut ? '2026-05-04 13:00:00' : null,
+        'status' => $clockIn || $clockOut ? 'present' : 'absent',
+    ]);
+    Sanctum::actingAs($user);
+    $response = $this->postJson('/api/leaves', [
+        'leave_type' => 'unpaid', 'start_date' => '2026-05-04', 'end_date' => '2026-05-04',
+        'duration_type' => $duration, 'half_day_period' => $period, 'reason' => 'Leave against attendance',
+    ])->assertStatus($blocked ? 422 : 201);
+    if ($blocked) {
+        $response->assertJsonPath('message', 'Attendance is already recorded for this period. Please contact HR to correct it before requesting leave.');
+    }
+    expect(LeaveRequest::query()->count())->toBe($blocked ? 0 : 1);
+})->with([
+    'empty morning' => [false, false, 'half_day', 'morning', false],
+    'empty afternoon' => [false, false, 'half_day', 'afternoon', false],
+    'empty full day' => [false, false, 'full_day', null, false],
+    'morning marker blocks morning' => [true, false, 'half_day', 'morning', true],
+    'morning marker allows afternoon' => [true, false, 'half_day', 'afternoon', false],
+    'morning marker blocks full day' => [true, false, 'full_day', null, true],
+    'afternoon marker allows morning' => [false, true, 'half_day', 'morning', false],
+    'afternoon marker blocks afternoon' => [false, true, 'half_day', 'afternoon', true],
+    'afternoon marker blocks full day' => [false, true, 'full_day', null, true],
+    'both markers block morning' => [true, true, 'half_day', 'morning', true],
+    'both markers block afternoon' => [true, true, 'half_day', 'afternoon', true],
+    'both markers block full day' => [true, true, 'full_day', null, true],
+]);
+
+test('leave approval rechecks recorded attendance before either approval step', function (string $role, string $period, bool $conflict) {
+    leaveCompanySettings();
+    [, $employee] = leaveEmployeeUser();
+    $approver = $role === 'hr' ? leaveHrHeadUser() : leaveEmployeeUser('ceo')[0];
+    $leave = makeLeave($employee, ['duration_type' => 'half_day', 'half_day_period' => $period, 'total_days' => 0.5]);
+    Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => '2026-05-04',
+        'clock_in_time' => ($period === 'morning') === $conflict ? '2026-05-04 08:00:00' : null,
+        'clock_out_time' => ($period === 'afternoon') === $conflict ? '2026-05-04 13:00:00' : null,
+        'status' => 'present',
+    ]);
+    Sanctum::actingAs($approver);
+    $this->postJson('/api/leaves/'.$leave->id.'/approve')->assertStatus($conflict ? 422 : 200);
+    if ($conflict) {
+        expect($leave->fresh()->hr_approval_status)->toBe('pending')
+            ->and($leave->fresh()->ceo_approval_status)->toBe('pending');
+    }
+})->with(['hr', 'ceo'])->with(['morning', 'afternoon'])->with([true, false]);
+
+test('attendance conflicts are limited to the employee and requested date range', function (bool $otherEmployee) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    [, $other] = leaveEmployeeUser();
+    Attendance::query()->create([
+        'employee_id' => $otherEmployee ? $other->id : $employee->id,
+        'attendance_date' => $otherEmployee ? '2026-05-04' : '2026-05-07',
+        'clock_in_time' => $otherEmployee ? '2026-05-04 08:00:00' : '2026-05-07 08:00:00',
+        'status' => 'present',
+    ]);
+    Sanctum::actingAs($user);
+    $this->postJson('/api/leaves', [
+        'leave_type' => 'unpaid', 'start_date' => '2026-05-04', 'end_date' => '2026-05-06',
+        'duration_type' => 'full_day', 'reason' => 'Non-conflicting attendance',
+    ])->assertCreated();
+})->with([true, false]);
+
+test('multi day leave rejects an attendance marker inside its date range', function () {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => '2026-05-05',
+        'clock_out_time' => '2026-05-05 13:00:00', 'status' => 'absent', 'absent_periods' => ['morning'],
+    ]);
+    Sanctum::actingAs($user);
+    $this->postJson('/api/leaves', [
+        'leave_type' => 'unpaid', 'start_date' => '2026-05-04', 'end_date' => '2026-05-06',
+        'duration_type' => 'full_day', 'reason' => 'Overlaps afternoon attendance',
+    ])->assertUnprocessable();
+    expect(LeaveRequest::query()->count())->toBe(0);
 });

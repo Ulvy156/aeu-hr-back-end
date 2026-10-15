@@ -82,8 +82,9 @@ class AttendanceService
 
         $clockInAt = now();
         $attendanceDate = $clockInAt->toDateString();
+        $this->assertAttendanceWindow('clock_in', $clockInAt, $settings);
 
-        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_in', $clockInAt, 'You are on approved leave today and cannot clock in.');
+        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_in', 'You are on approved leave today and cannot clock in.');
 
         if ($this->isPublicHoliday($clockInAt)) {
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
@@ -113,7 +114,8 @@ class AttendanceService
         $attendanceDate = now()->toDateString();
 
         $clockOutAt = now();
-        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_out', $clockOutAt, 'You are on approved leave today and cannot clock out.');
+        $this->assertAttendanceWindow('clock_out', $clockOutAt, $settings);
+        $this->assertLeaveAllowsAttendance($employee, $attendanceDate, 'clock_out', 'You are on approved leave today and cannot clock out.');
 
         if ($this->isPublicHoliday(now())) {
             throw ApiException::unprocessable('Today is a public holiday and attendance is not required.');
@@ -123,34 +125,11 @@ class AttendanceService
             throw ApiException::unprocessable('Today is not a working day.');
         }
 
-        $attendance = Attendance::query()
-            ->whereBelongsTo($employee)
-            ->whereDate('attendance_date', $attendanceDate)
-            ->first();
-
-        if (! $attendance || ! $attendance->clock_in_time) {
-            throw ApiException::unprocessable('You must clock in before clocking out.');
-        }
-
-        if ($attendance->clock_out_time) {
-            throw ApiException::unprocessable('You have already clocked out today.');
-        }
-
-        $clockOutStatus = $attendance->status;
-        $absentPeriods = $attendance->absent_periods;
-        if (in_array($attendance->status, ['missing_clock_out', 'absent'], true)) {
-            [$clockOutStatus, $absentPeriods] = $this->statusAfterClockOut($attendance, $clockOutAt, $settings);
-        }
-
-        $attendance->update([
+        return $this->recordClockOut($employee, $attendanceDate, [
             'clock_out_time' => $clockOutAt,
             'clock_out_latitude' => $latitude,
             'clock_out_longitude' => $longitude,
-            'status' => $clockOutStatus,
-            'absent_periods' => $absentPeriods ?? [],
-        ]);
-
-        return $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+        ], 'You have already clocked out today.');
     }
 
     /**
@@ -456,7 +435,7 @@ class AttendanceService
             $updated = 0;
 
             foreach ($query->get() as $attendance) {
-                if ($scheduledFollowUp && in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, (string) $attendance->attendance_date->toDateString()), true)) {
+                if (in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, (string) $attendance->attendance_date->toDateString()), true)) {
                     continue;
                 }
 
@@ -550,11 +529,8 @@ class AttendanceService
         $settings = $this->companySettingService->current();
 
         $date = Carbon::parse($attendanceDate)->startOfDay();
-        $approvedLeave = $this->approvedLeaveForDate($employee, $date->toDateString());
-        $clockInTime = $approvedLeave?->duration_type === 'half_day' && $approvedLeave->half_day_period === 'morning'
-            ? $this->halfDayAfternoonStart($date)
-            : Carbon::parse($date->toDateString().' '.$settings->working_start_time);
-        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_in', $clockInTime, 'This employee is on approved leave on the selected date and cannot be clocked in.');
+        $clockInTime = Carbon::parse($date->toDateString().' '.$settings->working_start_time);
+        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_in', 'This employee is on approved leave on the selected date and cannot be clocked in.');
 
         $attendance = $this->recordClockIn($employee, $date->toDateString(), [
             'clock_in_time' => $clockInTime,
@@ -589,41 +565,19 @@ class AttendanceService
 
         $date = Carbon::parse($attendanceDate)->startOfDay();
 
-        $approvedLeave = $this->approvedLeaveForDate($employee, $date->toDateString());
-        $clockOutTime = $approvedLeave?->duration_type === 'half_day' && $approvedLeave->half_day_period === 'afternoon'
-            ? $this->halfDayMorningEnd($date)
-            : Carbon::parse($date->toDateString().' '.$settings->working_end_time);
-        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_out', $clockOutTime, 'This employee is on approved leave on the selected date and cannot be clocked out.');
+        $clockOutTime = Carbon::parse($date->toDateString().' '.$settings->working_end_time);
+        $this->assertLeaveAllowsAttendance($employee, $date->toDateString(), 'clock_out', 'This employee is on approved leave on the selected date and cannot be clocked out.');
 
         $attendance = Attendance::query()
             ->whereBelongsTo($employee)
             ->whereDate('attendance_date', $date->toDateString())
             ->first();
 
-        if (! $attendance) {
-            throw ApiException::unprocessable('No clock-in record found for this employee on the selected date. Clock in first.');
-        }
-
-        if ($attendance->clock_out_time) {
-            throw ApiException::unprocessable('This employee has already clocked out on the selected date.');
-        }
-
-        $oldValues = $this->auditAttributes($attendance);
-
-        $clockOutStatus = $attendance->status;
-        $absentPeriods = $attendance->absent_periods;
-        if (in_array($attendance->status, ['missing_clock_out', 'absent'], true)) {
-            [$clockOutStatus, $absentPeriods] = $this->statusAfterClockOut($attendance, $clockOutTime, $settings);
-        }
-
-        $attendance->update([
+        $oldValues = $attendance ? $this->auditAttributes($attendance) : [];
+        $attendance = $this->recordClockOut($employee, $date->toDateString(), [
             'clock_out_time' => $clockOutTime,
             'proxied_clock_out_by' => $actor->id,
-            'status' => $clockOutStatus,
-            'absent_periods' => $absentPeriods ?? [],
-        ]);
-
-        $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+        ], 'This employee has already clocked out on the selected date.');
 
         $this->auditLogService->log(
             action: 'proxy_clock_out',
@@ -715,6 +669,7 @@ class AttendanceService
                 'attendance_rate' => $attendanceRate,
             ],
             'today' => $todayData,
+            'attendance_actions' => $this->attendanceActions($viewer),
         ];
     }
 
@@ -953,34 +908,10 @@ class AttendanceService
     /** @return array<int, string> */
     public function attendedPeriodsForAttendance(Attendance $attendance, CompanySetting $settings): array
     {
-        $clockIn = $attendance->clock_in_time;
-        $clockOut = $attendance->clock_out_time;
-        if (! $clockIn && ! $clockOut) {
-            return [];
-        }
-
-        $date = $attendance->attendance_date->toDateString();
-        $morningStart = Carbon::parse($date.' '.$settings->working_start_time);
-        $morningEnd = $this->halfDayMorningEnd($attendance->attendance_date);
-        $afternoonStart = $this->halfDayAfternoonStart($attendance->attendance_date);
-        $afternoonEnd = Carbon::parse($date.' '.$settings->working_end_time);
-
-        // An open record confirms attendance only in the half where clock-in occurred.
-        if ($clockIn && ! $clockOut) {
-            return [$clockIn->lt($afternoonStart) ? 'morning' : 'afternoon'];
-        }
-
-        $start = $clockIn ?? $clockOut;
-        $end = $clockOut ?? $clockIn;
-        $attended = [];
-        if ($start->lte($morningEnd) && $end->gte($morningStart)) {
-            $attended[] = 'morning';
-        }
-        if ($start->lte($afternoonEnd) && $end->gte($afternoonStart)) {
-            $attended[] = 'afternoon';
-        }
-
-        return $attended;
+        return array_values(array_filter([
+            $attendance->clock_in_time ? 'morning' : null,
+            $attendance->clock_out_time ? 'afternoon' : null,
+        ]));
     }
 
     public function recordedAttendanceDays(Attendance $attendance, ?CompanySetting $settings = null): float
@@ -1118,49 +1049,35 @@ class AttendanceService
                 ->lockForUpdate()
                 ->first();
 
-            if (! $attendance || (! $attendance->clock_in_time && ! $attendance->clock_out_time && $attendance->status === 'absent' && ! $attendance->corrected_at)) {
-                $clockInAt = now();
+            $at = now();
+            $actionName = $at->gte($this->halfDayAfternoonStart($at)) ? 'clock_out' : 'clock_in';
+            if ($attendance?->clock_in_time && $attendance?->clock_out_time) {
+                throw ApiException::unprocessable('You have already completed your attendance for today.');
+            }
+            $this->assertAttendanceWindow($actionName, $at, $settings);
+            $this->assertLeaveAllowsAttendance($employee, $today, $actionName, 'You are on approved leave today and cannot use QR attendance.');
+            if (! $user->hasPermissionTo('attendance.'.$actionName)) {
+                throw ApiException::forbidden();
+            }
 
-                $this->assertLeaveAllowsAttendance($employee, $today, 'clock_in', $clockInAt, 'You are on approved leave today and cannot use QR attendance.');
-
-                $isLate = $this->isLateForEmployee($clockInAt, $employee, $settings);
-
+            if ($actionName === 'clock_in') {
                 $attendance = $this->recordClockIn($employee, $today, [
-                    'clock_in_time' => $clockInAt,
+                    'clock_in_time' => $at,
                     'clock_in_latitude' => $latitude,
                     'clock_in_longitude' => $longitude,
-                    'status' => $isLate ? 'late' : 'present',
-                    'is_late' => $isLate,
+                    'status' => $this->isLateForEmployee($at, $employee, $settings) ? 'late' : 'present',
+                    'is_late' => $this->isLateForEmployee($at, $employee, $settings),
                     'qr_clock_in' => true,
                 ], 'You have already clocked in today.');
-
-                $action = 'qr_clock_in';
-            } elseif (! $attendance->clock_in_time) {
-                throw ApiException::unprocessable('You must clock in before clocking out.');
-            } elseif (! $attendance->clock_out_time) {
-                $clockOutAt = now();
-                $this->assertLeaveAllowsAttendance($employee, $today, 'clock_out', $clockOutAt, 'You are on approved leave today and cannot use QR attendance.');
-
-                $clockOutStatus = $attendance->status;
-                $absentPeriods = $attendance->absent_periods;
-                if (in_array($attendance->status, ['missing_clock_out', 'absent'], true)) {
-                    [$clockOutStatus, $absentPeriods] = $this->statusAfterClockOut($attendance, $clockOutAt, $settings);
-                }
-
-                $attendance->update([
-                    'clock_out_time' => $clockOutAt,
+            } else {
+                $attendance = $this->recordClockOut($employee, $today, [
+                    'clock_out_time' => $at,
                     'clock_out_latitude' => $latitude,
                     'clock_out_longitude' => $longitude,
                     'qr_clock_out' => true,
-                    'status' => $clockOutStatus,
-                    'absent_periods' => $absentPeriods ?? [],
-                ]);
-
-                $attendance = $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
-                $action = 'qr_clock_out';
-            } else {
-                throw ApiException::unprocessable('You have already completed your attendance for today.');
+                ], 'You have already clocked out today.');
             }
+            $action = 'qr_'.$actionName;
 
             $this->auditLogService->log(
                 action: $action,
@@ -1192,13 +1109,16 @@ class AttendanceService
                 ->lockForUpdate()
                 ->first();
 
-            if ($attendance && ($attendance->clock_in_time || $attendance->clock_out_time || $attendance->status !== 'absent' || $attendance->corrected_at)) {
+            $this->assertLeaveAllowsAttendance($employee, $date, 'clock_in', 'This employee is on approved leave and cannot clock in.');
+
+            if ($attendance?->clock_in_time || ($attendance?->corrected_at && ! $attendance?->clock_out_time)) {
                 throw ApiException::unprocessable($duplicateMessage);
             }
 
             $attendedPeriods = $this->attendedPeriodsForAttendance(Attendance::make([
                 'attendance_date' => $date,
                 'clock_in_time' => $attributes['clock_in_time'],
+                'clock_out_time' => $attendance?->clock_out_time,
             ]), $this->companySettingService->current());
             $attributes['absent_periods'] = array_values(array_diff($attendance?->absent_periods ?? [], $attendedPeriods));
             if ($attributes['absent_periods'] !== []) {
@@ -1266,36 +1186,109 @@ class AttendanceService
         Employee $employee,
         string $date,
         string $action,
-        CarbonInterface $actionTime,
         string $fullDayError,
     ): void {
-        $leave = $this->approvedLeaveForDate($employee, $date);
-
-        if (! $leave) {
-            return;
-        }
-
-        if ($leave->duration_type !== 'half_day' || ! in_array($leave->half_day_period, ['morning', 'afternoon'], true)) {
+        $periods = $this->approvedLeavePeriods($employee->id, $date);
+        if (count($periods) === 2) {
             throw ApiException::unprocessable($fullDayError);
         }
-
-        $morningEnd = $this->halfDayMorningEnd(Carbon::parse($date)->startOfDay());
-        $afternoonStart = $this->halfDayAfternoonStart(Carbon::parse($date)->startOfDay());
-        $message = null;
-
-        if ($leave->half_day_period === 'morning' && $action === 'clock_in' && $actionTime->lt($afternoonStart)) {
-            $message = 'You have approved Half Day Morning leave. You can clock in from '.$afternoonStart->format('g:i A').'.';
-        } elseif ($leave->half_day_period === 'morning' && $action === 'clock_out' && $actionTime->lt($afternoonStart)) {
-            $message = 'You have approved Half Day Morning leave. You can clock out after starting work from '.$afternoonStart->format('g:i A').'.';
-        } elseif ($leave->half_day_period === 'afternoon' && $action === 'clock_in' && $actionTime->gt($morningEnd)) {
-            $message = 'You have approved Half Day Afternoon leave. You can clock in during morning work hours, before '.$morningEnd->format('g:i A').'.';
-        } elseif ($leave->half_day_period === 'afternoon' && $action === 'clock_out' && $actionTime->gt($morningEnd)) {
-            $message = 'You have approved Half Day Afternoon leave. Please clock out by '.$morningEnd->format('g:i A').'.';
+        $period = $action === 'clock_in' ? 'morning' : 'afternoon';
+        if (in_array($period, $periods, true)) {
+            throw ApiException::unprocessable('You have approved '.ucfirst($period).' leave and cannot '.str_replace('_', ' ', $action).'.');
         }
+    }
 
+    protected function assertAttendanceWindow(string $action, CarbonInterface $at, CompanySetting $settings): void
+    {
+        $message = $this->attendanceWindowError($action, $at, $settings);
         if ($message !== null) {
             throw ApiException::unprocessable($message);
         }
+    }
+
+    protected function attendanceWindowError(string $action, CarbonInterface $at, CompanySetting $settings): ?string
+    {
+        $start = Carbon::parse($at->toDateString().' '.$settings->working_start_time);
+        $end = $this->halfDayMorningEnd($at);
+        $afternoon = $this->halfDayAfternoonStart($at);
+        if ($action === 'clock_in' && ($at->lt($start) || $at->gt($end))) {
+            return 'Clock In is available from '.$start->format('g:i A').' to '.$end->format('g:i A').'.';
+        }
+        if ($action === 'clock_out' && $at->lt($afternoon)) {
+            return 'Clock Out is available from '.$afternoon->format('g:i A').'.';
+        }
+
+        return null;
+    }
+
+    /** @return array{available_action: ?string, message: string, complete: bool, refresh_after_seconds: int} */
+    public function attendanceActions(User $user): array
+    {
+        $employee = $this->employeeForUserOrFail($user);
+        $settings = $this->companySettingService->current();
+        $at = now();
+        $date = $at->toDateString();
+        $record = Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date)->first();
+        $leavePeriods = $this->approvedLeavePeriods($employee->id, $date);
+        $morningDone = (bool) $record?->clock_in_time || in_array('morning', $leavePeriods, true);
+        $afternoonDone = (bool) $record?->clock_out_time || in_array('afternoon', $leavePeriods, true);
+        $complete = $morningDone && $afternoonDone;
+        $action = $at->gte($this->halfDayAfternoonStart($at)) ? 'clock_out' : 'clock_in';
+        $message = $this->attendanceWindowError($action, $at, $settings);
+        if ($this->isPublicHoliday($at)) {
+            $message = 'Today is a public holiday and attendance is not required.';
+        } elseif (! $this->isWorkingDay($at, $settings)) {
+            $message = 'Today is not a working day.';
+        } elseif ($complete) {
+            $message = count($leavePeriods) === 2 ? 'You are on approved leave today.' : 'Attendance complete for today.';
+        } elseif (in_array($action === 'clock_in' ? 'morning' : 'afternoon', $leavePeriods, true)) {
+            $message = 'You have approved '.($action === 'clock_in' ? 'morning' : 'afternoon').' leave.';
+        } elseif ($action === 'clock_in' ? (bool) $record?->clock_in_time : (bool) $record?->clock_out_time) {
+            $message = $action === 'clock_in' ? 'Morning attendance recorded. Clock Out is available from '.$this->halfDayAfternoonStart($at)->format('g:i A').'.' : 'Afternoon attendance recorded.';
+        } elseif (! $user->hasPermissionTo('attendance.'.$action)) {
+            $message = 'You do not have permission to record attendance.';
+        }
+        $boundaries = [
+            Carbon::parse($date.' '.$settings->working_start_time),
+            $this->halfDayMorningEnd($at)->addSecond(),
+            $this->halfDayAfternoonStart($at),
+            $at->copy()->addDay()->startOfDay(),
+        ];
+        $refresh = 60;
+        foreach ($boundaries as $boundary) {
+            if ($boundary->gt($at)) {
+                $refresh = min($refresh, max(1, (int) ceil($at->diffInSeconds($boundary))));
+            }
+        }
+
+        return [
+            'available_action' => $message === null ? $action : null,
+            'message' => $message ?? ($action === 'clock_in' ? 'Record your morning attendance.' : 'Record your afternoon attendance.'),
+            'complete' => $complete,
+            'refresh_after_seconds' => $refresh,
+        ];
+    }
+
+    /** @param array<string, mixed> $attributes */
+    protected function recordClockOut(Employee $employee, string $date, array $attributes, string $duplicateMessage): Attendance
+    {
+        return DB::transaction(function () use ($employee, $date, $attributes, $duplicateMessage): Attendance {
+            Employee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
+            $this->assertLeaveAllowsAttendance($employee, $date, 'clock_out', 'This employee is on approved leave and cannot clock out.');
+            $attendance = Attendance::query()->whereBelongsTo($employee)->whereDate('attendance_date', $date)->lockForUpdate()->first();
+            if ($attendance?->clock_out_time) {
+                throw ApiException::unprocessable($duplicateMessage);
+            }
+            $attendance ??= new Attendance(['employee_id' => $employee->id, 'attendance_date' => $date]);
+            [$status, $absentPeriods] = $this->statusAfterClockOut($attendance, Carbon::parse($attributes['clock_out_time']), $this->companySettingService->current());
+            $attendance->fill($attributes + [
+                'status' => $status,
+                'absent_periods' => $absentPeriods,
+                'is_late' => $attendance->is_late || $status === 'late',
+            ])->save();
+
+            return $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
+        });
     }
 
     protected function halfDayMorningEnd(CarbonInterface $date): Carbon
@@ -1450,7 +1443,7 @@ class AttendanceService
             ->orderBy('id')
             ->get()
             ->each(function (Attendance $attendance) use ($settings, $graceHours): void {
-                if ($this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
+                if (! in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, $attendance->attendance_date->toDateString()), true) && $this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
                     $attendance->update([
                         'status' => 'missing_clock_out',
                         'is_late' => $attendance->is_late || $attendance->status === 'late',

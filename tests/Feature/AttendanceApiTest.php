@@ -144,17 +144,17 @@ test('clock in location checks use office gps from company settings', function (
         ->assertJsonPath('message', 'You are outside the allowed clock-in location.');
 });
 
-test('duplicate clock in and duplicate clock out are prevented and clock out requires an existing clock in', function () {
+test('duplicate clock in and duplicate clock out are prevented and clock out requires the afternoon window', function () {
     attendanceCompanySettings();
     [$user, $employee] = attendanceEmployeeUser();
     $token = $user->createToken('employee-device')->plainTextToken;
 
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
 
     $this->withToken($token)
         ->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'You must clock in before clocking out.');
+        ->assertJsonPath('message', 'Clock Out is available from 1:00 PM.');
 
     $this->withToken($token)
         ->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
@@ -211,7 +211,7 @@ test('clock in is rejected for an employee on approved leave today', function ()
 });
 
 test('clock out is rejected for an employee on approved leave today', function () {
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings();
 
     [$user, $employee] = attendanceEmployeeUser();
@@ -872,7 +872,7 @@ test('afternoon arrival retains the morning absence and HR correction can clear 
     $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
     Carbon::setTestNow('2026-05-05 13:30:00');
     $service = app(AttendanceService::class);
-    $record = $service->clockIn($user, ...array_values(ATTENDANCE_VALID_GPS));
+    $record = $service->clockOut($user, ...array_values(ATTENDANCE_VALID_GPS));
     expect($record->status)->toBe('absent')->and($record->absent_periods)->toBe(['morning']);
 
     $service->correct($record, [
@@ -1694,7 +1694,7 @@ test('qr scan requires gps coordinates and rejects locations outside the office 
 });
 
 test('employee can scan qr token again after clock in to auto clock out', function () {
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings();
 
     $hr = User::factory()->create();
@@ -1737,7 +1737,7 @@ test('employee can scan qr token again after clock in to auto clock out', functi
 });
 
 test('qr scan is rejected when employee has already completed attendance for today', function () {
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings();
 
     $hr = User::factory()->create();
@@ -1840,7 +1840,7 @@ test('qr scan returns 403 when user has no employee profile', function () {
 });
 
 test('qr scan audit log is written for clock in and clock out', function () {
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings();
 
     $hr = User::factory()->create();
@@ -1863,7 +1863,7 @@ test('qr scan audit log is written for clock in and clock out', function () {
 });
 
 test('two rapid qr scans from same employee only create one attendance record', function () {
-    Carbon::setTestNow('2026-05-05 07:55:00');
+    Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings();
 
     $hr = User::factory()->create();
@@ -1876,7 +1876,225 @@ test('two rapid qr scans from same employee only create one attendance record', 
     auth()->forgetGuards();
 
     $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue, ...ATTENDANCE_VALID_GPS])->assertCreated();
-    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue, ...ATTENDANCE_VALID_GPS])->assertSuccessful();
+    $this->withToken($empToken)->postJson('/api/attendance/qr/scan', ['token' => $qrTokenValue, ...ATTENDANCE_VALID_GPS])->assertUnprocessable()->assertJsonPath('message', 'You have already clocked in today.');
 
     expect(Attendance::query()->count())->toBe(1);
 });
+
+test('backend controls attendance action windows and rejects out of window requests', function (string $time, ?string $action) {
+    Carbon::setTestNow('2026-05-05 '.$time);
+    attendanceCompanySettings();
+    [$user] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    $state = $this->withToken($token)->getJson('/api/attendance/summary')
+        ->assertSuccessful()
+        ->assertJsonPath('data.today', null)
+        ->assertJsonPath('data.attendance_actions.available_action', $action)
+        ->assertJsonPath('data.attendance_actions.complete', false)
+        ->json('data.attendance_actions');
+    expect($state['refresh_after_seconds'])->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(60);
+
+    $this->withToken($token)->postJson('/api/attendance/clock-in', ATTENDANCE_VALID_GPS)
+        ->assertStatus($action === 'clock_in' ? 201 : 422);
+    $this->withToken($token)->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
+        ->assertStatus($action === 'clock_out' ? 200 : 422);
+})->with([
+    'before morning' => ['07:59:59', null],
+    'morning start' => ['08:00:00', 'clock_in'],
+    'morning end' => ['12:00:00', 'clock_in'],
+    'after morning' => ['12:00:01', null],
+    'lunch' => ['12:59:59', null],
+    'afternoon start' => ['13:00:00', 'clock_out'],
+    'after office hours' => ['20:00:00', 'clock_out'],
+    'end of day' => ['23:59:59', 'clock_out'],
+]);
+
+test('afternoon attendance can be recorded independently through manual qr or proxy attendance', function (string $channel) {
+    Carbon::setTestNow('2026-05-05 13:00:00');
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $payload = ATTENDANCE_VALID_GPS;
+    $endpoint = '/api/attendance/clock-out';
+    if ($channel === 'qr') {
+        $qr = app(AttendanceService::class)->generateQrToken($user);
+        $endpoint = '/api/attendance/qr/scan';
+        $payload['token'] = $qr->token;
+    } elseif ($channel === 'proxy') {
+        [$hr] = attendanceEmployeeUser('hr');
+        $token = $hr->createToken('hr-device')->plainTextToken;
+        auth()->forgetGuards();
+        $endpoint = '/api/attendance/proxy-clock-out';
+        $payload = ['employee_id' => $employee->id, 'attendance_date' => '2026-05-05'];
+    }
+    $this->withToken($token)->postJson($endpoint, $payload)->assertSuccessful();
+    $this->withToken($token)->postJson($endpoint, $payload)->assertUnprocessable();
+    $record = $employee->attendances()->sole();
+    expect($record->clock_in_time)->toBeNull()
+        ->and($record->clock_out_time)->not->toBeNull()
+        ->and($record->absent_periods)->toBe(['morning'])
+        ->and(app(AttendanceService::class)->recordedAttendanceDays($record))->toBe(0.5);
+})->with(['manual', 'qr', 'proxy']);
+
+test('approved half day leave completes attendance with only the other shift marker', function (string $period, string $time, string $action) {
+    Carbon::setTestNow('2026-05-05 '.$time);
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id, 'leave_type' => 'annual',
+        'start_date' => '2026-05-05', 'end_date' => '2026-05-05',
+        'duration_type' => 'half_day', 'half_day_period' => $period, 'total_days' => 0.5,
+        'reason' => 'Approved half day', 'status' => 'approved',
+        'hr_approval_status' => 'approved', 'ceo_approval_status' => 'approved',
+    ]);
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $this->withToken($token)->getJson('/api/attendance/summary')
+        ->assertJsonPath('data.attendance_actions.available_action', $action);
+    $this->withToken($token)->postJson('/api/attendance/'.str_replace('_', '-', $action), ATTENDANCE_VALID_GPS)->assertSuccessful();
+    $this->withToken($token)->getJson('/api/attendance/summary')
+        ->assertJsonPath('data.attendance_actions.available_action', null)
+        ->assertJsonPath('data.attendance_actions.complete', true)
+        ->assertJsonPath('data.summary.attended_days', 0.5);
+    Carbon::setTestNow('2026-05-05 23:00:00');
+    $this->artisan('attendance:mark-missing-clock-out')->assertSuccessful();
+    $this->withToken($token)->getJson('/api/attendance/summary')->assertJsonPath('data.summary.missing_clock_out', 0);
+    expect($employee->attendances()->sole()->absent_periods)->toBe([]);
+})->with([
+    'morning leave' => ['morning', '13:00:00', 'clock_out'],
+    'afternoon leave' => ['afternoon', '08:00:00', 'clock_in'],
+]);
+
+test('approved leave blocks its own shift for manual qr and proxy attendance', function (string $period, string $channel) {
+    $time = $period === 'morning' ? '08:00:00' : '13:00:00';
+    $action = $period === 'morning' ? 'clock_in' : 'clock_out';
+    Carbon::setTestNow('2026-05-05 '.$time);
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    LeaveRequest::query()->create([
+        'employee_id' => $employee->id, 'leave_type' => 'annual',
+        'start_date' => '2026-05-05', 'end_date' => '2026-05-05',
+        'duration_type' => 'half_day', 'half_day_period' => $period, 'total_days' => 0.5,
+        'reason' => 'Approved half day', 'status' => 'approved',
+        'hr_approval_status' => 'approved', 'ceo_approval_status' => 'approved',
+    ]);
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $this->withToken($token)->getJson('/api/attendance/summary')->assertJsonPath('data.attendance_actions.available_action', null);
+    $payload = ATTENDANCE_VALID_GPS;
+    $endpoint = '/api/attendance/'.str_replace('_', '-', $action);
+    if ($channel === 'qr') {
+        $payload['token'] = app(AttendanceService::class)->generateQrToken($user)->token;
+        $endpoint = '/api/attendance/qr/scan';
+    } elseif ($channel === 'proxy') {
+        [$hr] = attendanceEmployeeUser('hr');
+        $token = $hr->createToken('hr-device')->plainTextToken;
+        auth()->forgetGuards();
+        $endpoint = '/api/attendance/proxy-'.str_replace('_', '-', $action);
+        $payload = ['employee_id' => $employee->id, 'attendance_date' => '2026-05-05'];
+    }
+    $this->withToken($token)->postJson($endpoint, $payload)->assertUnprocessable();
+    expect($employee->attendances()->count())->toBe(0);
+})->with(['morning', 'afternoon'])->with(['manual', 'qr', 'proxy']);
+
+test('attendance actions respect configured schedule permissions and date rollover', function () {
+    Carbon::setTestNow('2026-05-05 08:00:00');
+    attendanceCompanySettings(['working_start_time' => '09:00:00']);
+    config(['hr.leave.half_day_schedule.morning_end_time' => '11:30:00', 'hr.leave.half_day_schedule.afternoon_start_time' => '14:00:00']);
+    [$user, $employee] = attendanceEmployeeUser();
+    $service = app(AttendanceService::class);
+    expect($service->attendanceActions($user)['available_action'])->toBeNull();
+    Carbon::setTestNow('2026-05-05 09:00:00');
+    expect($service->attendanceActions($user)['available_action'])->toBe('clock_in');
+    Carbon::setTestNow('2026-05-05 11:30:01');
+    expect($service->attendanceActions($user)['available_action'])->toBeNull();
+    Carbon::setTestNow('2026-05-05 13:59:59');
+    expect($service->attendanceActions($user)['refresh_after_seconds'])->toBe(1);
+    Carbon::setTestNow('2026-05-05 14:00:00');
+    $service->clockOut($user, ...array_values(ATTENDANCE_VALID_GPS));
+    Carbon::setTestNow('2026-05-06 09:00:00');
+    expect($service->attendanceActions($user)['available_action'])->toBe('clock_in');
+    $user->removeRole('employee');
+    expect($service->attendanceActions($user)['available_action'])->toBeNull();
+});
+
+test('full day and complementary approved leaves disable both actions', function (bool $complementary) {
+    Carbon::setTestNow('2026-05-05 08:00:00');
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    foreach ($complementary ? ['morning', 'afternoon'] : [null] as $period) {
+        LeaveRequest::query()->create([
+            'employee_id' => $employee->id, 'leave_type' => 'annual',
+            'start_date' => '2026-05-05', 'end_date' => '2026-05-05',
+            'duration_type' => $period ? 'half_day' : 'full_day', 'half_day_period' => $period,
+            'total_days' => $period ? 0.5 : 1, 'reason' => 'Approved leave',
+            'status' => 'approved', 'hr_approval_status' => 'approved', 'ceo_approval_status' => 'approved',
+        ]);
+    }
+    foreach (['08:00:00', '13:00:00'] as $time) {
+        Carbon::setTestNow('2026-05-05 '.$time);
+        $state = app(AttendanceService::class)->attendanceActions($user);
+        expect($state['available_action'])->toBeNull()->and($state['complete'])->toBeTrue();
+    }
+})->with([false, true]);
+
+test('proxy morning attendance can fill the other shift after afternoon attendance was recorded', function () {
+    Carbon::setTestNow('2026-05-05 13:00:00');
+    attendanceCompanySettings();
+    [$user, $employee] = attendanceEmployeeUser();
+    [$hr] = attendanceEmployeeUser('hr');
+    $service = app(AttendanceService::class);
+    $service->clockOut($user, ...array_values(ATTENDANCE_VALID_GPS));
+    $record = $service->proxyClockIn($hr, $employee->id, '2026-05-05');
+    expect($record->clock_in_time)->not->toBeNull()
+        ->and($record->clock_out_time)->not->toBeNull()
+        ->and($record->absent_periods)->toBe([])
+        ->and($service->recordedAttendanceDays($record))->toBe(1.0);
+});
+
+test('qr scans do not record a shift outside attendance windows', function (string $time) {
+    Carbon::setTestNow('2026-05-05 '.$time);
+    attendanceCompanySettings();
+    [$user] = attendanceEmployeeUser();
+    $qr = app(AttendanceService::class)->generateQrToken($user);
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $this->withToken($token)->postJson('/api/attendance/qr/scan', ['token' => $qr->token, ...ATTENDANCE_VALID_GPS])->assertUnprocessable();
+    expect(Attendance::query()->count())->toBe(0);
+})->with(['07:59:59', '12:00:01', '12:59:59']);
+
+test('backend attendance actions are unavailable on holidays and non working days', function (bool $holiday) {
+    attendanceCompanySettings();
+    [$user] = attendanceEmployeeUser();
+    Carbon::setTestNow($holiday ? '2026-05-05 13:00:00' : '2026-05-03 13:00:00');
+    if ($holiday) {
+        PublicHoliday::query()->create(['name' => 'Holiday', 'holiday_date' => '2026-05-05', 'status' => 'active']);
+    }
+    $state = app(AttendanceService::class)->attendanceActions($user);
+    expect($state['available_action'])->toBeNull();
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $this->withToken($token)->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)->assertUnprocessable();
+    expect(Attendance::query()->count())->toBe(0);
+})->with([true, false]);
+
+test('hr can proxy attendance using the numeric id returned by employee search', function (string $action) {
+    Carbon::setTestNow('2026-05-05 13:00:00');
+    attendanceCompanySettings();
+    [$hr] = attendanceEmployeeUser('hr');
+    [, $employee] = attendanceEmployeeUser('employee', [], ['employee_id' => 'EMP-PROXY-LOOKUP', 'full_name' => 'Proxy Lookup Employee']);
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $option = $this->withToken($token)->getJson('/api/employees/search?q=EMP-PROXY-LOOKUP')
+        ->assertSuccessful()
+        ->assertJsonCount(1)
+        ->assertJsonPath('0.id', $employee->id)
+        ->assertJsonPath('0.employee_id', 'EMP-PROXY-LOOKUP')
+        ->json('0');
+    expect($option['id'])->toBeInt();
+
+    $this->withToken($token)->postJson('/api/attendance/proxy-'.$action, [
+        'employee_id' => $option['id'],
+        'attendance_date' => '2026-05-05',
+    ])->assertSuccessful()->assertJsonPath('data.employee.employee_id', 'EMP-PROXY-LOOKUP');
+
+    $record = $employee->attendances()->sole();
+    expect($action === 'clock-in' ? $record->clock_in_time : $record->clock_out_time)->not->toBeNull();
+})->with(['clock-in', 'clock-out']);
