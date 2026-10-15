@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\RecruitmentVacancy;
 
+use App\Rules\RequiredRichText;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -21,7 +22,7 @@ class UpdateVacancyRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'department_id' => ['required', 'integer', Rule::exists('departments', 'id')],
-            'description' => ['required', 'string'],
+            'description' => ['required', 'string', new RequiredRichText],
             'required_headcount' => ['required', 'integer', 'min:1'],
             'target_hiring_date' => ['required', 'date'],
             'close_date' => ['nullable', 'date', 'after:target_hiring_date'],

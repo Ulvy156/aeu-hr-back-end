@@ -306,3 +306,27 @@ test('user without recruitment.vacancies.close permission cannot close a vacancy
         ->postJson("/api/recruitment/vacancies/{$vacancy->id}/close")
         ->assertForbidden();
 });
+
+test('vacancy descriptions must contain visible text on creation and update', function (string $description) {
+    $department = recruitmentDepartment();
+    [$admin, $token] = recruitmentAdmin();
+    $payload = [
+        'title' => 'Backend Developer',
+        'department_id' => $department->id,
+        'description' => '<p>Build APIs.</p>',
+        'required_headcount' => 2,
+        'target_hiring_date' => now()->toDateString(),
+    ];
+    $vacancy = RecruitmentVacancy::query()->create(array_merge($payload, [
+        'filled_headcount' => 0,
+        'status' => 'open',
+        'created_by' => $admin->id,
+    ]));
+    $invalid = array_merge($payload, ['description' => $description]);
+
+    $this->withToken($token)->postJson('/api/recruitment/vacancies', $invalid)
+        ->assertUnprocessable()->assertJsonValidationErrors('description');
+    $this->withToken($token)->putJson("/api/recruitment/vacancies/{$vacancy->id}", $invalid)
+        ->assertUnprocessable()->assertJsonValidationErrors('description');
+    expect($vacancy->fresh()->description)->toBe('<p>Build APIs.</p>');
+})->with(['<p><br></p>', '<p> &nbsp; </p>', '<ul><li><br></li></ul>']);
