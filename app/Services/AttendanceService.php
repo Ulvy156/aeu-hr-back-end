@@ -143,6 +143,8 @@ class AttendanceService
         ?string $userAgent = null,
     ): Attendance {
         return DB::transaction(function () use ($attendance, $data, $actor, $ipAddress, $userAgent): Attendance {
+            Employee::query()->whereKey($attendance->employee_id)->lockForUpdate()->firstOrFail();
+            $attendance = Attendance::query()->whereKey($attendance->id)->lockForUpdate()->firstOrFail();
             $settings = $this->companySettingService->current();
             $attendance->loadMissing(['employee', 'correctedBy']);
             $oldValues = $this->auditAttributes($attendance);
@@ -172,6 +174,11 @@ class AttendanceService
             $finalClockOutTime = array_key_exists('clock_out_time', $attributes)
                 ? ($attributes['clock_out_time'] ? Carbon::parse((string) $attributes['clock_out_time']) : null)
                 : $attendance->clock_out_time;
+
+            if ($finalClockInTime && $finalClockOutTime && $finalClockOutTime->lt($finalClockInTime)) {
+                $message = 'The clock out time must be after or equal to the clock in time.';
+                throw ApiException::unprocessable($message, ['clock_out_time' => [$message]]);
+            }
 
             if ($finalStatus === 'absent') {
                 $attributes['absent_periods'] = $this->absentPeriodsForAttendance(

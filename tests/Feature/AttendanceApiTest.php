@@ -2098,3 +2098,44 @@ test('hr can proxy attendance using the numeric id returned by employee search',
     $record = $employee->attendances()->sole();
     expect($action === 'clock-in' ? $record->clock_in_time : $record->clock_out_time)->not->toBeNull();
 })->with(['clock-in', 'clock-out']);
+
+test('partial attendance corrections validate against retained clock times', function (array $changes) {
+    Carbon::setTestNow('2026-05-05 18:00:00');
+    attendanceCompanySettings();
+    [$hr] = attendanceEmployeeUser('hr');
+    [, $employee] = attendanceEmployeeUser();
+    $attendance = Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00', 'clock_out_time' => '2026-05-05 17:00:00',
+        'status' => 'present', 'is_late' => false,
+    ]);
+    $token = $hr->createToken('attendance-correction-test')->plainTextToken;
+    $this->withToken($token)->putJson("/api/attendance/{$attendance->id}/correction", [
+        ...$changes, 'correction_reason' => 'Verify retained clock times.',
+    ])->assertUnprocessable()->assertJsonValidationErrors('clock_out_time');
+    expect($attendance->fresh()->clock_in_time->format('H:i:s'))->toBe('08:00:00')
+        ->and($attendance->fresh()->clock_out_time->format('H:i:s'))->toBe('17:00:00');
+})->with([
+    'clock-in after existing clock-out' => [['clock_in_time' => '2026-05-05 18:00:00']],
+    'clock-out before existing clock-in' => [['clock_out_time' => '2026-05-05 07:00:00']],
+]);
+
+test('attendance correction can explicitly clear a mistaken clock timestamp', function (string $field) {
+    Carbon::setTestNow('2026-05-05 18:00:00');
+    attendanceCompanySettings();
+    [$hr] = attendanceEmployeeUser('hr');
+    [, $employee] = attendanceEmployeeUser();
+    $attendance = Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => '2026-05-05',
+        'clock_in_time' => '2026-05-05 08:00:00', 'clock_out_time' => '2026-05-05 17:00:00',
+        'status' => 'present', 'is_late' => false,
+    ]);
+    $token = $hr->createToken('attendance-correction-test')->plainTextToken;
+    $this->withToken($token)->putJson("/api/attendance/{$attendance->id}/correction", [
+        $field => null, 'correction_reason' => 'Remove an incorrectly recorded timestamp.',
+    ])->assertOk()->assertJsonPath("data.{$field}", null);
+    expect($attendance->fresh()->getAttribute($field))->toBeNull();
+    $audit = Activity::query()->where('log_name', 'attendance')->where('event', 'correction')->sole();
+    expect($audit->properties['old_values'][$field])->not->toBeNull()
+        ->and($audit->properties['new_values'][$field])->toBeNull();
+})->with(['clock_in_time', 'clock_out_time']);
