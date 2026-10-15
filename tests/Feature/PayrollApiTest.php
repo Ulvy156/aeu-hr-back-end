@@ -129,6 +129,7 @@ test('generated paid days use the monthly rate while absences use scheduled date
     string $expectedPartialDays,
     string $expectedPartialGross,
 ) {
+    Carbon::setTestNow(Carbon::create(2026, $month, 1)->addMonth());
     payrollCompanySettings([
         'working_days' => ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
         'payroll_day_rate' => 26,

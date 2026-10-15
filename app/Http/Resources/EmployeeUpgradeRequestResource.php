@@ -39,6 +39,10 @@ class EmployeeUpgradeRequestResource extends JsonResource
             'current_values' => $this->resolveValueNames($this->current_values),
             'proposed_values' => $this->resolveValueNames($this->proposed_values),
             'effective_date' => $this->effective_date?->toDateString(),
+            'applied_at' => $this->applied_at?->toISOString(),
+            'application_failed_at' => $this->application_failed_at?->toISOString(),
+            'application_error' => $this->application_error,
+            'application_state' => $this->status !== 'approved' ? null : ($this->applied_at ? 'applied' : ($this->application_failed_at ? 'failed' : 'scheduled')),
             'rejection_reason' => $this->rejection_reason,
             'attachments' => collect($this->attachments ?? [])->map(fn (array $attachment): array => [
                 'name' => $attachment['name'],

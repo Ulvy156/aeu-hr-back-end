@@ -7,19 +7,27 @@ use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\EmployeeUpgradeRequest;
 use App\Models\EmploymentHistory;
+use App\Models\Position;
 use App\Models\User;
 use App\Support\FileStorage;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class EmployeeUpgradeRequestService
 {
+    private const TRANSIENT_APPLICATION_ERROR = 'Application failed. Check server logs and retry.';
+
     public function __construct(
         protected EmployeeService $employeeService,
         protected EmploymentHistoryService $employmentHistoryService,
         protected AuditLogService $auditLogService,
+        protected SalaryHistoryService $salaryHistoryService,
     ) {}
 
     /**
@@ -51,6 +59,7 @@ class EmployeeUpgradeRequestService
     {
         return DB::transaction(function () use ($data, $attachmentFiles, $actor, $ipAddress, $userAgent): EmployeeUpgradeRequest {
             $employee = Employee::query()->whereKey($data['employee_id'])->lockForUpdate()->firstOrFail();
+            $this->assertNextMonth($data['effective_date'] ?? null);
 
             [$currentValues, $proposedValues] = $this->buildSnapshots($employee, $data['proposed_values']);
 
@@ -91,84 +100,179 @@ class EmployeeUpgradeRequestService
         });
     }
 
+    public function assertNextMonth(?string $date): void
+    {
+        if ($date !== now('Asia/Phnom_Penh')->startOfMonth()->addMonth()->toDateString()) {
+            throw ApiException::unprocessable('The effective month must be next month. Cancel an expired request and submit a new one.', [
+                'effective_date' => ['Select next month as the effective month.'],
+            ]);
+        }
+    }
+
     public function approve(EmployeeUpgradeRequest $upgradeRequest, User $actor, ?string $ipAddress = null, ?string $userAgent = null): EmployeeUpgradeRequest
     {
-        return DB::transaction(function () use ($upgradeRequest, $actor, $ipAddress, $userAgent): EmployeeUpgradeRequest {
+        return DB::transaction(function () use ($upgradeRequest, $actor, $ipAddress, $userAgent) {
+            $employee = Employee::query()->whereKey($upgradeRequest->employee_id)->lockForUpdate()->firstOrFail();
             $upgradeRequest = EmployeeUpgradeRequest::query()->whereKey($upgradeRequest->id)->lockForUpdate()->firstOrFail();
-
             if ($upgradeRequest->status !== 'pending') {
                 throw ApiException::unprocessable('Only pending upgrade requests can be approved.');
             }
-
-            $employee = Employee::query()
-                ->with(['user:id,name,email,status', 'department', 'position', 'manager'])
-                ->whereKey($upgradeRequest->employee_id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            $oldAttributes = [];
-            foreach (EmploymentHistory::TRACKED_FIELDS as $field) {
-                $oldAttributes[$field] = $employee->getAttribute($field);
+            $this->assertNextMonth($upgradeRequest->effective_date?->toDateString());
+            if (EmployeeUpgradeRequest::query()->where('employee_id', $employee->id)->where('status', 'approved')->whereNull('applied_at')->exists()) {
+                throw ApiException::unprocessable('This employee already has an approved promotion waiting to apply. Wait for it to apply or cancel it first.');
             }
+            $this->validateApplication($employee, $upgradeRequest->proposed_values);
+            if (array_key_exists('base_salary', $upgradeRequest->proposed_values)) {
+                $this->salaryHistoryService->assertPayrollAllowsChange($employee, $upgradeRequest->effective_date);
+            }
+            $upgradeRequest->update(['status' => 'approved', 'reviewed_by' => $actor->id, 'reviewed_at' => now()]);
+            $this->auditLogService->log(action: 'approve', module: 'employee_upgrade_requests', user: $actor,
+                subject: $upgradeRequest, newValues: $this->auditAttributes($upgradeRequest), ipAddress: $ipAddress, userAgent: $userAgent);
 
-            $oldDepartment = $employee->department;
-            $oldPosition = $employee->position;
-            $oldManager = $employee->manager;
-            $oldEmployeeSnapshot = $this->employeeAuditSnapshot($employee);
+            return $upgradeRequest->load(['employee:id,user_id,employee_id,full_name', 'requestedBy:id,name', 'reviewedBy:id,name']);
+        }, 3);
+    }
 
-            $changes = collect($upgradeRequest->proposed_values)
-                ->only([...EmployeeUpgradeRequest::UPGRADABLE_FIELDS, 'last_working_date'])
-                ->all();
+    /** Apply one due request atomically; the employee lock is always acquired first. */
+    public function apply(EmployeeUpgradeRequest $request): EmployeeUpgradeRequest
+    {
+        try {
+            return DB::transaction(function () use ($request) {
+                $employee = Employee::withTrashed()->with(['user', 'department', 'position', 'manager'])
+                    ->whereKey($request->employee_id)->lockForUpdate()->firstOrFail();
+                $upgradeRequest = EmployeeUpgradeRequest::query()->whereKey($request->id)->lockForUpdate()->firstOrFail();
+                if ($upgradeRequest->status !== 'approved' || $upgradeRequest->applied_at || ! $upgradeRequest->effective_date
+                    || $upgradeRequest->effective_date->toDateString() > now('Asia/Phnom_Penh')->toDateString()) {
+                    return $upgradeRequest;
+                }
+                if ($employee->trashed()) {
+                    throw ApiException::unprocessable('The employee was deleted. Cancel this promotion.');
+                }
+                $this->validateApplication($employee, $upgradeRequest->proposed_values);
+                if (array_key_exists('base_salary', $upgradeRequest->proposed_values)) {
+                    $this->salaryHistoryService->assertPayrollAllowsChange($employee, $upgradeRequest->effective_date);
+                }
+                $oldAttributes = [];
+                foreach (EmploymentHistory::TRACKED_FIELDS as $field) {
+                    $oldAttributes[$field] = $employee->getAttribute($field);
+                }
 
-            $this->employeeService->applyEmploymentFieldChanges($employee, $changes);
-            $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager']);
+                $oldDepartment = $employee->department;
+                $oldPosition = $employee->position;
+                $oldManager = $employee->manager;
+                $oldEmployeeSnapshot = $this->employeeAuditSnapshot($employee);
 
-            $this->employmentHistoryService->recordChanges(
-                employee: $employee,
-                oldAttributes: $oldAttributes,
-                oldDepartment: $oldDepartment,
-                oldPosition: $oldPosition,
-                oldManager: $oldManager,
-                actor: $actor,
-                effectiveDate: $upgradeRequest->effective_date?->toDateString(),
-            );
+                $changes = collect($upgradeRequest->proposed_values)
+                    ->only([...EmployeeUpgradeRequest::UPGRADABLE_FIELDS, 'last_working_date'])
+                    ->all();
 
-            $upgradeRequest->update([
-                'status' => 'approved',
-                'reviewed_by' => $actor->id,
-                'reviewed_at' => now(),
+                $this->employeeService->applyEmploymentFieldChanges($employee, $changes);
+                $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager']);
+
+                $this->employmentHistoryService->recordChanges(
+                    employee: $employee,
+                    oldAttributes: $oldAttributes,
+                    oldDepartment: $oldDepartment,
+                    oldPosition: $oldPosition,
+                    oldManager: $oldManager,
+                    actor: $upgradeRequest->reviewedBy,
+                    effectiveDate: $upgradeRequest->effective_date->toDateString(),
+                    source: 'promotion',
+                );
+
+                $upgradeRequest->update(['applied_at' => now(), 'application_failed_at' => null, 'application_error' => null]);
+                $this->auditLogService->log(action: 'apply', module: 'employee_upgrade_requests', user: $upgradeRequest->reviewedBy,
+                    subject: $upgradeRequest, newValues: $this->auditAttributes($upgradeRequest));
+                $this->auditLogService->log(action: 'update', module: 'employees', user: $upgradeRequest->reviewedBy,
+                    subject: $employee, oldValues: $oldEmployeeSnapshot, newValues: $this->employeeAuditSnapshot($employee));
+
+                return $upgradeRequest;
+            }, 3);
+        } catch (Throwable $exception) {
+            // Technical exceptions stay in server logs; domain errors are safe to show to HR.
+            EmployeeUpgradeRequest::query()->whereKey($request->id)->where('status', 'approved')->whereNull('applied_at')->update([
+                'application_failed_at' => now(),
+                'application_error' => $exception instanceof ApiException ? $exception->getMessage() : self::TRANSIENT_APPLICATION_ERROR,
             ]);
+            Log::error('Promotion application failed', ['request_id' => $request->id, 'exception' => $exception]);
+            throw $exception;
+        }
+    }
 
-            $upgradeRequest->load(['employee:id,user_id,employee_id,full_name', 'requestedBy:id,name', 'reviewedBy:id,name']);
+    /** Apply due requests before payroll calculation, or through the daily command. */
+    public function applyDue(?array $employeeIds = null, bool $stopOnFailure = false): int
+    {
+        $count = 0;
+        $query = EmployeeUpgradeRequest::query()->where('status', 'approved')->whereNull('applied_at')
+            ->whereDate('effective_date', '<=', now('Asia/Phnom_Penh')->toDateString())
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('employee_id', $employeeIds))
+            ->orderBy('employee_id')->orderBy('effective_date')->orderBy('id');
+        foreach ($query->get() as $request) {
+            try {
+                if ($request->application_failed_at && $request->application_error !== self::TRANSIENT_APPLICATION_ERROR) {
+                    throw ApiException::unprocessable($request->application_error.' Cancel this request and submit a replacement.');
+                }
+                $applied = $this->apply($request);
+                if ($applied->applied_at) {
+                    $count++;
+                }
+            } catch (Throwable $exception) {
+                if ($stopOnFailure) {
+                    throw ApiException::unprocessable("Cannot generate payroll: promotion #{$request->id} for employee #{$request->employee_id} could not apply. ".($exception instanceof ApiException ? $exception->getMessage() : 'Check server logs.'));
+                }
+            }
+        }
 
-            $this->auditLogService->log(
-                action: 'approve',
-                module: 'employee_upgrade_requests',
-                user: $actor,
-                subject: $upgradeRequest,
-                newValues: $this->auditAttributes($upgradeRequest),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
+        return $count;
+    }
 
-            $this->auditLogService->log(
-                action: 'update',
-                module: 'employees',
-                user: $actor,
-                subject: $employee,
-                oldValues: $oldEmployeeSnapshot,
-                newValues: $this->employeeAuditSnapshot($employee),
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-            );
-
-            return $upgradeRequest;
-        });
+    protected function validateApplication(Employee $employee, array $changes): void
+    {
+        $validator = Validator::make($changes, [
+            'department_id' => ['nullable', Rule::exists('departments', 'id')->whereNull('deleted_at')],
+            'position_id' => ['nullable', Rule::exists('positions', 'id')->whereNull('deleted_at')],
+            'manager_id' => ['nullable', Rule::exists('employees', 'id')->whereNull('deleted_at')],
+            'base_salary' => ['numeric', 'min:0'],
+            'employment_status' => [Rule::enum(EmploymentStatus::class)],
+            'last_working_date' => ['nullable', 'date'],
+        ]);
+        if ($validator->fails()) {
+            throw ApiException::unprocessable('The proposed employment details are no longer valid.', $validator->errors()->toArray());
+        }
+        $departmentId = array_key_exists('department_id', $changes) ? $changes['department_id'] : $employee->department_id;
+        $positionId = array_key_exists('position_id', $changes) ? $changes['position_id'] : $employee->position_id;
+        $position = $positionId ? Position::query()->find($positionId) : null;
+        if ($position && $position->department_id && $departmentId && (int) $position->department_id !== (int) $departmentId) {
+            throw ApiException::unprocessable('The selected position does not belong to the resulting department.');
+        }
+        $managerId = array_key_exists('manager_id', $changes) ? $changes['manager_id'] : $employee->manager_id;
+        $visited = [$employee->id];
+        while ($managerId !== null) {
+            if (in_array((int) $managerId, $visited, true)) {
+                throw ApiException::unprocessable('This change would create a circular reporting relationship.');
+            }
+            $visited[] = (int) $managerId;
+            $manager = Employee::query()->find($managerId);
+            if (! $manager) {
+                throw ApiException::unprocessable('The selected manager is no longer available.');
+            }
+            $managerId = $manager->manager_id;
+        }
+        if (isset($changes['employment_status'])) {
+            $inactive = in_array($changes['employment_status'], [EmploymentStatus::Resigned->value, EmploymentStatus::Terminated->value], true);
+            if ($inactive && empty($changes['last_working_date'])) {
+                throw ApiException::unprocessable('Resigned or terminated employees must have a last working date.');
+            }
+            if (! $inactive && ! empty($changes['last_working_date'])) {
+                throw ApiException::unprocessable('Active employees must not have a last working date.');
+            }
+        }
     }
 
     public function reject(EmployeeUpgradeRequest $upgradeRequest, User $actor, string $rejectionReason, ?string $ipAddress = null, ?string $userAgent = null): EmployeeUpgradeRequest
     {
         return DB::transaction(function () use ($upgradeRequest, $actor, $rejectionReason, $ipAddress, $userAgent): EmployeeUpgradeRequest {
+            Employee::withTrashed()->whereKey($upgradeRequest->employee_id)->lockForUpdate()->firstOrFail();
             $upgradeRequest = EmployeeUpgradeRequest::query()->whereKey($upgradeRequest->id)->lockForUpdate()->firstOrFail();
 
             if ($upgradeRequest->status !== 'pending') {
@@ -201,16 +305,21 @@ class EmployeeUpgradeRequestService
     public function cancel(EmployeeUpgradeRequest $upgradeRequest, User $actor, ?string $ipAddress = null, ?string $userAgent = null): EmployeeUpgradeRequest
     {
         return DB::transaction(function () use ($upgradeRequest, $actor, $ipAddress, $userAgent): EmployeeUpgradeRequest {
+            Employee::withTrashed()->whereKey($upgradeRequest->employee_id)->lockForUpdate()->firstOrFail();
             $upgradeRequest = EmployeeUpgradeRequest::query()->whereKey($upgradeRequest->id)->lockForUpdate()->firstOrFail();
 
-            if ($upgradeRequest->status !== 'pending') {
-                throw ApiException::unprocessable('Only pending upgrade requests can be cancelled.');
+            $scheduled = $upgradeRequest->status === 'approved' && ! $upgradeRequest->applied_at;
+            if ($upgradeRequest->status !== 'pending' && ! $scheduled) {
+                throw ApiException::unprocessable('Only pending or approved unapplied requests can be cancelled.');
+            }
+            if ($scheduled && ! $actor->hasPermissionTo('employee_upgrade_requests.approve')) {
+                throw ApiException::forbidden();
             }
 
             $upgradeRequest->update([
                 'status' => 'cancelled',
-                'reviewed_by' => $actor->id,
-                'reviewed_at' => now(),
+                'reviewed_by' => $scheduled ? $upgradeRequest->reviewed_by : $actor->id,
+                'reviewed_at' => $scheduled ? $upgradeRequest->reviewed_at : now(),
             ]);
 
             $upgradeRequest->load(['employee:id,user_id,employee_id,full_name', 'requestedBy:id,name', 'reviewedBy:id,name']);
@@ -313,6 +422,8 @@ class EmployeeUpgradeRequestService
             'effective_date' => $upgradeRequest->effective_date?->toDateString(),
             'attachments' => collect($upgradeRequest->attachments ?? [])->pluck('name')->all(),
             'rejection_reason' => $upgradeRequest->rejection_reason,
+            'applied_at' => $upgradeRequest->applied_at?->toISOString(),
+            'application_error' => $upgradeRequest->application_error,
         ];
     }
 

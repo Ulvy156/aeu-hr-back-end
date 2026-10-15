@@ -6,6 +6,7 @@ use App\Enums\EmploymentStatus;
 use App\Enums\Status;
 use App\Exceptions\ApiException;
 use App\Models\Employee;
+use App\Models\EmploymentHistory;
 use App\Models\User;
 use App\Support\FileStorage;
 use Carbon\Carbon;
@@ -22,6 +23,7 @@ class EmployeeService
     public function __construct(
         protected AuditLogService $auditLogService,
         protected JobLevelRoleService $jobLevelRoleService,
+        protected SalaryHistoryService $salaryHistoryService,
     ) {}
 
     /**
@@ -283,7 +285,14 @@ class EmployeeService
         ?string $userAgent = null,
     ): Employee {
         return DB::transaction(function () use ($employee, $data, $profilePhoto, $documentFiles, $removeDocuments, $actor, $ipAddress, $userAgent): Employee {
+            $employee = Employee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
+            $oldSalary = $employee->base_salary;
+            $salaryChanged = number_format((float) $oldSalary, 2, '.', '') !== number_format((float) ($data['base_salary'] ?? $oldSalary), 2, '.', '');
+            $correctionMonth = now('Asia/Phnom_Penh')->startOfMonth();
+            if ($salaryChanged) {
+                $this->salaryHistoryService->assertPayrollAllowsChange($employee, $correctionMonth);
+            }
             $previousPositionId = $employee->position_id;
             $previousDepartmentId = $employee->department_id;
             $oldValues = $this->auditAttributes($employee);
@@ -333,6 +342,17 @@ class EmployeeService
             }
 
             $employee->update($attributes);
+            if ($salaryChanged) {
+                EmploymentHistory::query()->create([
+                    'employee_id' => $employee->id,
+                    'field' => EmploymentHistory::FIELD_BASE_SALARY,
+                    'old_value' => ['value' => (float) $oldSalary],
+                    'new_value' => ['value' => (float) $employee->base_salary],
+                    'effective_date' => $correctionMonth->toDateString(),
+                    'changed_by' => $actor->id,
+                    'source' => 'correction',
+                ]);
+            }
             $employee = $employee->fresh(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
 
             if ($employee->position_id !== $previousPositionId || $employee->department_id !== $previousDepartmentId) {
@@ -345,7 +365,7 @@ class EmployeeService
                 user: $actor,
                 subject: $employee,
                 oldValues: $oldValues,
-                newValues: $this->auditAttributes($employee),
+                newValues: [...$this->auditAttributes($employee), ...($salaryChanged ? ['salary_change_source' => 'correction', 'salary_effective_month' => $correctionMonth->toDateString()] : [])],
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
             );
@@ -361,6 +381,7 @@ class EmployeeService
         ?string $userAgent = null,
     ): void {
         DB::transaction(function () use ($employee, $actor, $ipAddress, $userAgent): void {
+            $employee = Employee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $employee->loadMissing(['user:id,name,email,status', 'department', 'position']);
             $oldValues = $this->auditAttributes($employee);
 

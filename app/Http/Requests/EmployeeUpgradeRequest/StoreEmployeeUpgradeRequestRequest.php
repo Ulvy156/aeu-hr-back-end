@@ -25,7 +25,7 @@ class StoreEmployeeUpgradeRequestRequest extends FormRequest
     {
         return [
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
-            'effective_date' => ['nullable', 'date'],
+            'effective_date' => ['required', 'date_format:Y-m-d', Rule::in([now('Asia/Phnom_Penh')->startOfMonth()->addMonth()->toDateString()])],
             'proposed_values' => ['required', 'array', 'min:1'],
             'proposed_values.department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'proposed_values.position_id' => ['nullable', 'integer', 'exists:positions,id'],

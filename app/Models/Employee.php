@@ -24,6 +24,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'join_date',
     'last_working_date',
     'base_salary',
+    'salary_history_start_month',
+    'salary_history_baseline',
+    'salary_history_baseline_history_id',
     'employment_status',
     'probation_end_date',
     'intern_end_date',
@@ -34,6 +37,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Employee extends Model
 {
     use HasFactory, SoftDeletes;
+
+    protected static function booted(): void
+    {
+        static::creating(function (Employee $employee): void {
+            $employee->salary_history_start_month ??= $employee->join_date?->copy()->startOfMonth()->toDateString();
+            $employee->salary_history_baseline ??= $employee->base_salary;
+        });
+    }
 
     public function user(): BelongsTo
     {
@@ -103,6 +114,9 @@ class Employee extends Model
             'probation_end_date' => 'date',
             'intern_end_date' => 'date',
             'base_salary' => 'decimal:2',
+            'salary_history_start_month' => 'date',
+            'salary_history_baseline' => 'decimal:2',
+            'salary_history_baseline_history_id' => 'integer',
             'employment_status' => EmploymentStatus::class,
             'documents' => 'array',
         ];

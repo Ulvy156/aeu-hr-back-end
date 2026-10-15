@@ -90,3 +90,7 @@ See [CLAUDE.md](CLAUDE.md) for the full development guide and conventions used b
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Promotions and historical payroll
+
+See [Promotions and payroll](PROMOTIONS_AND_PAYROLL.md) for next-month approvals, the daily 01:00 Cambodia-time scheduler, deployment, direct salary corrections, and legacy salary-history reconciliation.

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'new_value',
     'effective_date',
     'changed_by',
+    'source',
 ])]
 class EmploymentHistory extends Model
 {

@@ -38,6 +38,10 @@ class EmployeeUpgradeRequestPolicy
 
     public function cancel(User $user, EmployeeUpgradeRequest $upgradeRequest): bool
     {
-        return $user->hasPermissionTo('employee_upgrade_requests.cancel') && $upgradeRequest->requested_by === $user->id;
+        if ($upgradeRequest->status === 'approved' && ! $upgradeRequest->applied_at) {
+            return $user->hasPermissionTo('employee_upgrade_requests.approve');
+        }
+
+        return $upgradeRequest->status === 'pending' && $user->hasPermissionTo('employee_upgrade_requests.cancel') && $upgradeRequest->requested_by === $user->id;
     }
 }

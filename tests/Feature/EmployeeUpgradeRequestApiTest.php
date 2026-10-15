@@ -6,6 +6,7 @@ use App\Models\EmployeeUpgradeRequest;
 use App\Models\EmploymentHistory;
 use App\Models\Position;
 use App\Models\User;
+use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -17,6 +18,7 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
+    $this->travelTo(Carbon::parse('2026-06-15 10:00:00', 'Asia/Phnom_Penh'));
     Storage::fake(config('filesystems.cloud'));
 });
 
@@ -77,6 +79,7 @@ test('hr can create a single-field upgrade request for base salary', function ()
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'base_salary' => '1500.00',
@@ -104,6 +107,7 @@ test('hr can create a multi-field upgrade request for department position and sa
     Sanctum::actingAs(upgradeActor('hr'));
 
     $response = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'department_id' => $deptB->id,
@@ -131,6 +135,7 @@ test('upgrade request creation fails when no proposed value differs from current
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'base_salary' => '1000.00',
@@ -145,6 +150,7 @@ test('upgrade request validates employment_status and last_working_date combinat
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'employment_status' => 'resigned',
@@ -154,6 +160,7 @@ test('upgrade request validates employment_status and last_working_date combinat
         ->assertJsonValidationErrors('proposed_values.last_working_date');
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'employment_status' => 'full-time',
@@ -176,6 +183,7 @@ test('upgrade request validates that the proposed position belongs to the result
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'position_id' => $posB->id,
@@ -190,18 +198,20 @@ test('employee role cannot create upgrade requests and ceo lacks create permissi
 
     Sanctum::actingAs(upgradeActor('employee'));
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertForbidden();
 
     Sanctum::actingAs(upgradeActor('ceo'));
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertForbidden();
 });
 
-test('ceo can approve a pending upgrade request and it updates the employee and employment history', function () {
+test('ceo approval schedules employment changes and the command applies them with history', function () {
     $employee = upgradeEmployee([
         'employment_status' => 'full-time',
         'base_salary' => '1000.00',
@@ -211,6 +221,7 @@ test('ceo can approve a pending upgrade request and it updates the employee and 
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'employment_status' => 'probation',
@@ -224,7 +235,12 @@ test('ceo can approve a pending upgrade request and it updates the employee and 
 
     $this->postJson("/api/employee-upgrade-requests/{$id}/approve")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'approved');
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.application_state', 'scheduled');
+
+    expect(EmploymentHistory::query()->count())->toBe(0);
+    $this->travelTo(Carbon::parse('2026-07-01 01:00:00', 'Asia/Phnom_Penh'));
+    $this->artisan('employees:apply-due-promotions')->assertSuccessful();
 
     $employee->refresh();
     $employee->load('user');
@@ -256,6 +272,7 @@ test('ceo can approve a pending upgrade request to intern and it derives intern_
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'employment_status' => 'intern',
@@ -269,7 +286,12 @@ test('ceo can approve a pending upgrade request to intern and it derives intern_
 
     $this->postJson("/api/employee-upgrade-requests/{$id}/approve")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'approved');
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.application_state', 'scheduled');
+
+    expect(EmploymentHistory::query()->count())->toBe(0);
+    $this->travelTo(Carbon::parse('2026-07-01 01:00:00', 'Asia/Phnom_Penh'));
+    $this->artisan('employees:apply-due-promotions')->assertSuccessful();
 
     $employee->refresh();
     $employee->load('user');
@@ -294,6 +316,7 @@ test('ceo can reject a pending upgrade request with a reason and rejecting witho
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
@@ -325,6 +348,7 @@ test('requester can cancel their own pending upgrade request but other hr users 
     Sanctum::actingAs($hr1);
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
@@ -351,6 +375,7 @@ test('approve reject and cancel fail with 422 on a non-pending upgrade request',
     Sanctum::actingAs($hr);
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
@@ -371,7 +396,7 @@ test('approve reject and cancel fail with 422 on a non-pending upgrade request',
     Sanctum::actingAs($hr);
 
     $this->postJson("/api/employee-upgrade-requests/{$id}/cancel")
-        ->assertStatus(422);
+        ->assertForbidden();
 });
 
 test('hr lacks permission to approve or reject upgrade requests', function () {
@@ -379,6 +404,7 @@ test('hr lacks permission to approve or reject upgrade requests', function () {
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
@@ -401,12 +427,14 @@ test('ceo sees all upgrade requests while hr only sees their own', function () {
 
     Sanctum::actingAs($hr1);
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
 
     Sanctum::actingAs($hr2);
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1600.00'],
     ])->assertCreated();
@@ -428,8 +456,8 @@ test('effective_date on the upgrade request propagates to the employment history
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
-        'employee_id' => $employee->id,
         'effective_date' => '2026-07-01',
+        'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])->assertCreated();
 
@@ -438,6 +466,8 @@ test('effective_date on the upgrade request propagates to the employment history
     Sanctum::actingAs(upgradeActor('ceo'));
 
     $this->postJson("/api/employee-upgrade-requests/{$id}/approve")->assertSuccessful();
+    $this->travelTo(Carbon::parse('2026-07-01 01:00:00', 'Asia/Phnom_Penh'));
+    $this->artisan('employees:apply-due-promotions')->assertSuccessful();
 
     $history = EmploymentHistory::query()
         ->where('employee_id', $employee->id)
@@ -447,7 +477,7 @@ test('effective_date on the upgrade request propagates to the employment history
     expect($history->effective_date->toDateString())->toBe('2026-07-01');
 });
 
-test('employee update endpoint still works and does not create employment history rows', function () {
+test('direct salary corrections work without approval and create salary history', function () {
     [$department, $position] = upgradeDepartmentAndPosition('Operations', 'Operations Lead');
     $manager = upgradeEmployee();
     $employee = upgradeEmployee([
@@ -471,7 +501,12 @@ test('employee update endpoint still works and does not create employment histor
         ->assertSuccessful()
         ->assertJsonPath('data.base_salary', '1200.00');
 
-    expect(EmploymentHistory::query()->count())->toBe(0);
+    $history = EmploymentHistory::query()->sole();
+    expect($history->source)->toBe('correction')
+        ->and($history->old_value)->toBe(['value' => 1000])
+        ->and($history->new_value)->toBe(['value' => 1200])
+        ->and($history->effective_date->toDateString())->toBe('2026-06-01')
+        ->and(EmployeeUpgradeRequest::query()->count())->toBe(0);
 });
 
 test('creating an upgrade request with 1 to 3 attachments stores file metadata and urls', function () {
@@ -479,6 +514,7 @@ test('creating an upgrade request with 1 to 3 attachments stores file metadata a
     Sanctum::actingAs(upgradeActor('hr'));
 
     $response = $this->post('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'base_salary' => '1500.00',
@@ -513,6 +549,7 @@ test('upgrade request rejects more than 3 attachments and disallowed file types'
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->post('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
         'attachments' => [
@@ -526,6 +563,7 @@ test('upgrade request rejects more than 3 attachments and disallowed file types'
         ->assertJsonValidationErrors('attachments');
 
     $this->post('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
         'attachments' => [
@@ -541,6 +579,7 @@ test('upgrade request without attachments returns an empty attachments array', f
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['base_salary' => '1500.00'],
     ])
@@ -555,6 +594,7 @@ test('hr can create an upgrade request proposing a new manager', function () {
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'manager_id' => $manager->id,
@@ -577,6 +617,7 @@ test('upgrade request still resolves department name after the department is sof
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => ['department_id' => $newDepartment->id],
     ])->assertCreated();
@@ -597,6 +638,7 @@ test('upgrade request rejects an employee being proposed as their own manager', 
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'manager_id' => $employee->id,
@@ -614,6 +656,7 @@ test('upgrade request rejects a manager change that would create a circular repo
 
     // Proposing that A (B's manager) reports to B would create a cycle.
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employeeA->id,
         'proposed_values' => [
             'manager_id' => $employeeB->id,
@@ -633,6 +676,7 @@ test('upgrade request accepts a manager_id proposal when the manager belongs to 
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'manager_id' => $manager->id,
@@ -662,6 +706,7 @@ test('upgrade request accepts a manager_id proposal when the manager is ceo desp
     Sanctum::actingAs(upgradeActor('hr'));
 
     $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'manager_id' => $ceo->id,
@@ -678,6 +723,7 @@ test('ceo can approve a manager_id upgrade request and it updates the employee a
     Sanctum::actingAs(upgradeActor('hr'));
 
     $createResponse = $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
         'employee_id' => $employee->id,
         'proposed_values' => [
             'manager_id' => $manager->id,
@@ -690,7 +736,12 @@ test('ceo can approve a manager_id upgrade request and it updates the employee a
 
     $this->postJson("/api/employee-upgrade-requests/{$id}/approve")
         ->assertSuccessful()
-        ->assertJsonPath('data.status', 'approved');
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.application_state', 'scheduled');
+
+    expect(EmploymentHistory::query()->count())->toBe(0);
+    $this->travelTo(Carbon::parse('2026-07-01 01:00:00', 'Asia/Phnom_Penh'));
+    $this->artisan('employees:apply-due-promotions')->assertSuccessful();
 
     expect($employee->fresh()->manager_id)->toBe($manager->id);
 

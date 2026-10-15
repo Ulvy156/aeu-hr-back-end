@@ -26,3 +26,9 @@ Schedule::command('recruitment:close-due-vacancies')
     ->dailyAt('00:05')
     ->onOneServer()
     ->withoutOverlapping();
+
+Schedule::command('employees:apply-due-promotions')
+    ->dailyAt('01:00')
+    ->timezone('Asia/Phnom_Penh')
+    ->onOneServer()
+    ->withoutOverlapping();

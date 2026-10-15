@@ -28,6 +28,7 @@ class EmploymentHistoryService
         ?Employee $oldManager,
         ?User $actor,
         ?string $effectiveDate = null,
+        ?string $source = null,
     ): void {
         $effectiveDate ??= now()->toDateString();
         $rows = [];
@@ -50,6 +51,7 @@ class EmploymentHistoryService
                 'new_value' => json_encode($newSnapshot, JSON_PRESERVE_ZERO_FRACTION),
                 'effective_date' => $effectiveDate,
                 'changed_by' => $actor?->id,
+                'source' => $source,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];

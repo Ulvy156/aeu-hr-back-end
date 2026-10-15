@@ -19,6 +19,7 @@ class EmploymentHistoryResource extends JsonResource
         return [
             'id' => $this->id,
             'field' => $this->field,
+            'source' => $this->source,
             'old_value' => $this->old_value,
             'new_value' => $this->new_value,
             'effective_date' => $this->effective_date?->toDateString(),

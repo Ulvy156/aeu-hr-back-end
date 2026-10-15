@@ -30,6 +30,8 @@ class PayrollService
         protected CompanySettingService $companySettingService,
         protected PayrollVisibility $payrollVisibility,
         protected AttendanceService $attendanceService,
+        protected SalaryHistoryService $salaryHistoryService,
+        protected EmployeeUpgradeRequestService $employeeUpgradeRequestService,
     ) {}
 
     /**
@@ -139,6 +141,14 @@ class PayrollService
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): PayrollBatch {
+        $selectedMonth = Carbon::create($year, $month, 1, 0, 0, 0, 'Asia/Phnom_Penh');
+        if ($selectedMonth->gt(now('Asia/Phnom_Penh')->startOfMonth())) {
+            throw ApiException::unprocessable('Payroll cannot be generated for a future month.');
+        }
+        // Apply independently so failures remain visible even when payroll is aborted.
+        $candidateIds = Employee::query()->whereDate('join_date', '<=', $selectedMonth->copy()->endOfMonth()->toDateString())->pluck('id')->all();
+        $this->employeeUpgradeRequestService->applyDue($candidateIds, true);
+
         try {
             return DB::transaction(function () use ($month, $year, $actor, $ipAddress, $userAgent): PayrollBatch {
                 if (PayrollBatch::query()->where('month', $month)->where('year', $year)->lockForUpdate()->exists()) {
@@ -156,6 +166,7 @@ class PayrollService
                             ->whereNull('last_working_date')
                             ->orWhereDate('last_working_date', '>=', $periodStart->toDateString());
                     })
+                    ->orderBy('id')
                     ->lockForUpdate()
                     ->get([
                         'id',
@@ -165,6 +176,9 @@ class PayrollService
                         'join_date',
                         'last_working_date',
                         'base_salary',
+                        'salary_history_start_month',
+                        'salary_history_baseline',
+                        'salary_history_baseline_history_id',
                         'employment_status',
                     ]);
 
@@ -173,6 +187,7 @@ class PayrollService
                 }
 
                 $employeeIds = $employees->modelKeys();
+                $salaryHistories = $this->salaryHistoryService->historiesFor($employeeIds);
                 $batch = PayrollBatch::query()->create([
                     'month' => $month,
                     'year' => $year,
@@ -188,6 +203,7 @@ class PayrollService
                 foreach ($employees as $employee) {
                     $itemPayload = $this->buildGeneratedItemPayload(
                         employee: $employee,
+                        monthlySalary: $this->salaryHistoryService->resolve($employee, $periodStart, $salaryHistories->get($employee->id, collect())),
                         settings: $settings,
                         periodStart: $periodStart,
                         periodEnd: $periodEnd,
@@ -633,6 +649,7 @@ class PayrollService
      */
     protected function buildGeneratedItemPayload(
         Employee $employee,
+        float $monthlySalary,
         CompanySetting $settings,
         CarbonInterface $periodStart,
         CarbonInterface $periodEnd,
@@ -644,7 +661,7 @@ class PayrollService
 
         if (! $activeRange) {
             return $this->calculatedItemPayload(
-                baseSalary: (float) $employee->base_salary,
+                baseSalary: $monthlySalary,
                 workingDays: 0,
                 presentDays: 0,
                 absentDays: 0,
@@ -691,7 +708,7 @@ class PayrollService
         $absentDays = max(0, $scheduledDays - $presentDays - $leaveBreakdown['paid_leave_days'] - $leaveBreakdown['unpaid_leave_days'] - $leaveBreakdown['maternity_leave_days'] - $leaveBreakdown['special_sick_leave_days']);
 
         return $this->calculatedItemPayload(
-            baseSalary: (float) $employee->base_salary,
+            baseSalary: $monthlySalary,
             workingDays: $workingDays,
             presentDays: $presentDays,
             absentDays: $absentDays,
@@ -897,7 +914,7 @@ class PayrollService
             })
             ->sum(fn (Attendance $attendance): float => $this->attendanceService->recordedAttendanceDays($attendance, $settings));
     }
-                                                                                                                                                                                                    
+
     /**
      * @param  Collection<int, LeaveRequest>  $leaveRows
      * @param  array<string, true>  $holidayDates

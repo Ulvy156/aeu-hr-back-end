@@ -17,6 +17,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'requested_by',
     'reviewed_by',
     'reviewed_at',
+    'applied_at',
+    'application_failed_at',
+    'application_error',
     'rejection_reason',
 ])]
 class EmployeeUpgradeRequest extends Model
@@ -33,7 +36,7 @@ class EmployeeUpgradeRequest extends Model
 
     public function employee(): BelongsTo
     {
-        return $this->belongsTo(Employee::class);
+        return $this->belongsTo(Employee::class)->withTrashed();
     }
 
     public function requestedBy(): BelongsTo
@@ -59,6 +62,8 @@ class EmployeeUpgradeRequest extends Model
             'effective_date' => 'date',
             'attachments' => 'array',
             'reviewed_at' => 'datetime',
+            'applied_at' => 'datetime',
+            'application_failed_at' => 'datetime',
         ];
     }
 }
