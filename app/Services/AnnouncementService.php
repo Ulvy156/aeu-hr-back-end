@@ -29,7 +29,7 @@ class AnnouncementService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return Announcement::query()
-            ->with(['category:id,name,status', 'creator:id,name'])
+            ->with(['category:id,name,status', 'creator:id,name', 'targets'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $query->where(function (Builder $inner) use ($search) {
                     $inner->where('title', 'like', '%'.$search.'%')

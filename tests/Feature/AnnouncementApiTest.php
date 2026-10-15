@@ -5,6 +5,8 @@ use App\Models\AnnouncementCategory;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
+use App\Policies\AnnouncementPolicy;
+use App\Services\AnnouncementService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -146,7 +148,6 @@ test('a draft announcement can be edited and published', function () {
         ->json('data.id');
 
     $this->app['auth']->forgetGuards();
-
 
     $this->withToken($creatorToken)
         ->putJson("/api/announcements/{$announcementId}", [
@@ -365,7 +366,7 @@ test('employees only see published announcements that target them', function () 
     ]);
 
     // Exercise the audience query directly so each employee is evaluated as its own actor.
-    $service = app(\App\Services\AnnouncementService::class);
+    $service = app(AnnouncementService::class);
     $visibleIds = fn (User $user, Employee $employee) => $service
         ->paginateForEmployee([], $employee, $user)
         ->getCollection()
@@ -403,7 +404,7 @@ test('employees only see published announcements that target them', function () 
     $draft->targets()->create(['target_type' => 'all']);
 
     expect($everyoneIds)->not->toContain($draft->id);
-    expect(app(\App\Policies\AnnouncementPolicy::class)->view($everyoneUser, $draft))->toBeFalse();
+    expect(app(AnnouncementPolicy::class)->view($everyoneUser, $draft))->toBeFalse();
 });
 
 test('viewing an announcement marks it as read and the management read summary reflects audience state', function () {
@@ -499,5 +500,24 @@ test('employees cannot create announcements or view other drafts', function () {
         'created_by' => $employeeUser->id,
     ]);
 
-    expect(app(\App\Policies\AnnouncementPolicy::class)->view($employeeUser, $draft))->toBeFalse();
+    expect(app(AnnouncementPolicy::class)->view($employeeUser, $draft))->toBeFalse();
+});
+
+test('management announcement list includes audience targets for its table', function () {
+    $category = announcementCategory();
+    $department = Department::query()->create(['name' => 'Audience '.uniqid(), 'status' => 'active']);
+    [$creator, $token] = announcementAdmin();
+
+    $announcementId = $this->withToken($token)->postJson('/api/announcements', [
+        'category_id' => $category->id,
+        'title' => 'Department Notice',
+        'content' => 'For the selected department.',
+        'targets' => [['target_type' => 'department', 'target_id' => $department->id]],
+    ])->assertCreated()->json('data.id');
+
+    $this->withToken($token)->getJson('/api/announcements?status=draft')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.id', $announcementId)
+        ->assertJsonPath('data.0.targets.0.target_type', 'department')
+        ->assertJsonPath('data.0.targets.0.target_id', $department->id);
 });
