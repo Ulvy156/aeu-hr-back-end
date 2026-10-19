@@ -442,6 +442,87 @@ test('leave balance role permissions match the expected access matrix', function
         ->and($employeePermissions->contains('leave_balances.view_own'))->toBeTrue();
 });
 
+test('monthly summary counts unique employees and working days within the month across all requests', function () {
+    leaveCompanySettings();
+    [$hr] = leaveEmployeeUser('hr');
+    [, $employee] = leaveEmployeeUser();
+    [, $otherEmployee] = leaveEmployeeUser();
+    PublicHoliday::query()->create([
+        'name' => 'Labour Day',
+        'holiday_date' => '2026-05-01',
+        'status' => 'active',
+    ]);
+
+    makeLeave($employee, [
+        'start_date' => '2026-04-30', 'end_date' => '2026-05-05',
+        'status' => 'approved', 'total_days' => 3,
+    ]);
+    makeLeave($employee, [
+        'start_date' => '2026-05-06', 'end_date' => '2026-05-06',
+        'status' => 'approved', 'duration_type' => 'half_day',
+        'half_day_period' => 'morning', 'total_days' => 0.5,
+    ]);
+    makeLeave($otherEmployee, [
+        'status' => 'approved', 'duration_type' => 'half_day',
+        'half_day_period' => 'afternoon', 'total_days' => 0.5,
+    ]);
+    makeLeave($employee, [
+        'start_date' => '2026-05-29', 'end_date' => '2026-06-02',
+        'status' => 'approved', 'total_days' => 3,
+    ]);
+    makeLeave($employee, ['start_date' => '2026-05-29', 'end_date' => '2026-06-02']);
+    makeLeave($employee, ['start_date' => '2026-04-29', 'end_date' => '2026-04-30']);
+    makeLeave($employee, ['start_date' => '2026-06-01', 'end_date' => '2026-06-01', 'status' => 'approved']);
+    makeLeave($employee, ['status' => 'cancelled']);
+    makeLeave($employee, ['status' => 'rejected']);
+
+    $token = $hr->createToken('hr-device')->plainTextToken;
+    $this->withToken($token)->getJson('/api/leaves?per_page=1')->assertJsonCount(1, 'data');
+    $this->withToken($token)->getJson('/api/leaves/summary')
+        ->assertSuccessful()
+        ->assertJsonPath('data.month', '2026-05')
+        ->assertJsonPath('data.date_from', '2026-05-01')
+        ->assertJsonPath('data.date_to', '2026-05-31')
+        ->assertJsonPath('data.today', '2026-05-04')
+        ->assertJsonPath('data.on_leave_today', 2)
+        ->assertJsonPath('data.employees_taking_leave', 2)
+        ->assertJsonPath('data.total_leave_days', 4)
+        ->assertJsonPath('data.awaiting_approval', 1);
+});
+
+test('monthly summary scopes employee accounts to their own leave and returns zero for empty months', function () {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+    [, $otherEmployee] = leaveEmployeeUser();
+    makeLeave($employee, ['status' => 'approved', 'duration_type' => 'half_day', 'half_day_period' => 'morning', 'total_days' => 0.5]);
+    makeLeave($otherEmployee, ['status' => 'approved']);
+    makeLeave($otherEmployee);
+
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $this->withToken($token)->getJson('/api/leaves/summary')
+        ->assertSuccessful()
+        ->assertJsonPath('data.on_leave_today', 1)
+        ->assertJsonPath('data.employees_taking_leave', 1)
+        ->assertJsonPath('data.total_leave_days', 0.5)
+        ->assertJsonPath('data.awaiting_approval', 0);
+
+    Carbon::setTestNow('2026-06-01 09:00:00');
+    $this->withToken($token)->getJson('/api/leaves/summary')
+        ->assertSuccessful()
+        ->assertJsonPath('data.month', '2026-06')
+        ->assertJsonPath('data.on_leave_today', 0)
+        ->assertJsonPath('data.employees_taking_leave', 0)
+        ->assertJsonPath('data.total_leave_days', 0)
+        ->assertJsonPath('data.awaiting_approval', 0);
+});
+
+test('monthly summary requires authentication and permission to view leave', function () {
+    $this->getJson('/api/leaves/summary')->assertUnauthorized();
+    $user = User::factory()->create();
+    $this->withToken($user->createToken('no-permission')->plainTextToken)
+        ->getJson('/api/leaves/summary')->assertForbidden();
+});
+
 test('leave balances are calculated dynamically from approved leave requests and managers can inspect by employee', function () {
     leaveCompanySettings();
     [$employeeUser, $employee] = leaveEmployeeUser();

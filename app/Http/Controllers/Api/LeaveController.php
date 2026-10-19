@@ -60,6 +60,16 @@ class LeaveController extends Controller
         );
     }
 
+    public function summary(): JsonResponse
+    {
+        $this->authorize('viewAny', LeaveRequest::class);
+
+        return ApiResponse::success(
+            data: $this->leaveService->monthlySummary(request()->user()),
+            message: 'Monthly leave summary fetched successfully.',
+        );
+    }
+
     public function store(StoreLeaveRequest $request): JsonResponse
     {
         $this->authorize('create', LeaveRequest::class);

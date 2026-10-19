@@ -56,6 +56,54 @@ class LeaveService
             ->paginate($perPage);
     }
 
+    public function monthlySummary(User $viewer): array
+    {
+        $today = Carbon::today();
+        $monthStart = $today->copy()->startOfMonth();
+        $monthEnd = $today->copy()->endOfMonth()->startOfDay();
+        $query = LeaveRequest::query()
+            ->whereIn('status', ['approved', 'pending'])
+            ->whereDate('start_date', '<=', $monthEnd->toDateString())
+            ->whereDate('end_date', '>=', $monthStart->toDateString());
+
+        if (! $this->canViewAllLeaves($viewer)) {
+            if (! $this->canViewOwnLeaves($viewer)) {
+                throw ApiException::forbidden();
+            }
+            $query->whereBelongsTo($this->employeeForUserOrFail($viewer));
+        }
+
+        $requests = $query->get(['employee_id', 'start_date', 'end_date', 'duration_type', 'status']);
+        $approved = $requests->where('status', 'approved');
+        $workingDates = $this->workingDates($monthStart, $monthEnd);
+        $days = 0.0;
+        $onLeaveToday = [];
+
+        foreach ($approved as $leave) {
+            if ($leave->start_date->lte($today) && $leave->end_date->gte($today)) {
+                $onLeaveToday[$leave->employee_id] = true;
+            }
+            foreach ($workingDates as $date) {
+                if ($date < $leave->start_date->toDateString() || $date > $leave->end_date->toDateString()) {
+                    continue;
+                }
+
+                $days += $leave->duration_type === 'half_day' ? 0.5 : 1;
+            }
+        }
+
+        return [
+            'month' => $today->format('Y-m'),
+            'date_from' => $monthStart->toDateString(),
+            'date_to' => $monthEnd->toDateString(),
+            'today' => $today->toDateString(),
+            'on_leave_today' => count($onLeaveToday),
+            'employees_taking_leave' => $approved->pluck('employee_id')->unique()->count(),
+            'total_leave_days' => $days,
+            'awaiting_approval' => $requests->where('status', 'pending')->count(),
+        ];
+    }
+
     /** @param array<string, mixed> $filters */
     protected function leaveListQuery(array $filters): Builder
     {
@@ -567,6 +615,19 @@ class LeaveService
             throw ApiException::unprocessable('Half-day leave must start and end on the same date.');
         }
 
+        $days = count($this->workingDates($startDate, $endDate));
+
+        if ($days === 0) {
+            return 0.0;
+        }
+
+        return $durationType === 'half_day' ? 0.5 : (float) $days;
+    }
+
+    /** @return array<int, string> */
+    protected function workingDates(CarbonInterface $startDate, CarbonInterface $endDate): array
+    {
+
         $settings = $this->companySettingService->current();
         $workingDays = collect($settings->working_days ?? [])
             ->map(fn (mixed $day) => strtolower((string) $day))
@@ -583,7 +644,7 @@ class LeaveService
                 ->all()
         );
 
-        $days = 0.0;
+        $dates = [];
         $cursor = $startDate->copy()->startOfDay();
         $rangeEnd = $endDate->copy()->startOfDay();
 
@@ -594,17 +655,13 @@ class LeaveService
                 in_array(strtolower($cursor->format('l')), $workingDays, true)
                 && ! array_key_exists($dateString, $holidayDates)
             ) {
-                $days++;
+                $dates[] = $dateString;
             }
 
             $cursor->addDay();
         }
 
-        if ($days === 0.0) {
-            return 0.0;
-        }
-
-        return $durationType === 'half_day' ? 0.5 : $days;
+        return $dates;
     }
 
     protected function loadRelations(LeaveRequest $leave): LeaveRequest
