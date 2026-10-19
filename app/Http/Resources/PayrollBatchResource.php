@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
+use App\Services\CompanySettingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -19,11 +20,15 @@ class PayrollBatchResource extends JsonResource
     public function toArray(Request $request): array
     {
         $items = $this->relationLoaded('items') ? $this->items : collect();
+        if (! $request->attributes->has('payroll_currency')) {
+            $request->attributes->set('payroll_currency', app(CompanySettingService::class)->current()->salary_currency);
+        }
 
         return [
             'id' => $this->id,
             'month' => $this->month,
             'year' => $this->year,
+            'currency' => $request->attributes->get('payroll_currency'),
             'status' => $this->status,
             'rejection_reason' => $this->rejection_reason,
             'item_count' => $this->when(

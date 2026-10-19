@@ -121,6 +121,29 @@ function makeApprovedLeave(Employee $employee, array $overrides = []): LeaveRequ
     ], $overrides));
 }
 
+test('payroll responses include the configured currency alongside monetary totals', function (string $currency) {
+    payrollCompanySettings(['salary_currency' => $currency]);
+    $manager = payrollHrHeadUser();
+    Sanctum::actingAs($manager);
+    $batch = PayrollBatch::query()->create([
+        'month' => 4,
+        'year' => 2026,
+        'status' => 'draft',
+        'generated_by' => $manager->id,
+        'generated_at' => now(),
+    ]);
+
+    $this->getJson("/api/payrolls/{$batch->id}")
+        ->assertSuccessful()
+        ->assertJsonPath('data.currency', $currency)
+        ->assertJsonPath('data.totals.gross_salary', '0.00')
+        ->assertJsonPath('data.totals.net_salary', '0.00');
+
+    $this->getJson('/api/payrolls?month=4&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.currency', $currency);
+})->with(['USD', 'KHR']);
+
 test('generated paid days use the monthly rate while absences use scheduled dates', function (
     int $month,
     string $partialJoinDate,
