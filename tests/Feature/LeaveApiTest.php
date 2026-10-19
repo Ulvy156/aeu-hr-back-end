@@ -491,6 +491,36 @@ test('leave balances are calculated dynamically from approved leave requests and
         ->assertJsonPath('data.balances.0.remaining', '16.00');
 });
 
+test('per case and unlimited balances report approved days taken for the selected year', function (string $leaveType, int $index) {
+    leaveCompanySettings();
+    [$user, $employee] = leaveEmployeeUser();
+
+    foreach ([['2026-05-04', 'approved'], ['2026-06-01', 'pending'], ['2025-05-05', 'approved']] as [$date, $status]) {
+        makeLeave($employee, [
+            'leave_type' => $leaveType,
+            'start_date' => $date,
+            'end_date' => $date,
+            'duration_type' => 'half_day',
+            'half_day_period' => 'morning',
+            'total_days' => 0.5,
+            'status' => $status,
+        ]);
+    }
+
+    $response = $this->withToken($user->createToken('employee-device')->plainTextToken)
+        ->getJson('/api/leave-balances?year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath("data.balances.{$index}.used", '0.50');
+
+    if ($leaveType === 'maternity') {
+        $response->assertJsonPath("data.balances.{$index}.remaining", '90.00')
+            ->assertJsonPath("data.balances.{$index}.rule", 'per_case');
+    } else {
+        $response->assertJsonPath("data.balances.{$index}.remaining", null)
+            ->assertJsonPath("data.balances.{$index}.is_unlimited", true);
+    }
+})->with([['maternity', 3], ['unpaid', 5]]);
+
 test('hr and ceo default to their own leave balance when employee id is omitted', function (string $role) {
     leaveCompanySettings();
     [$user, $employee] = leaveEmployeeUser($role);

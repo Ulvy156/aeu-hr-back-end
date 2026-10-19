@@ -472,7 +472,7 @@ class LeaveService
             [
                 'leave_type' => 'maternity',
                 'entitlement' => $this->formatDecimal((float) config('hr.leave.entitlements.maternity', 90)),
-                'used' => $this->formatDecimal(0),
+                'used' => $this->formatDecimal($this->approvedLeaveDaysForYear($employee, 'maternity', $year)),
                 'remaining' => $this->formatDecimal((float) config('hr.leave.entitlements.maternity', 90)),
                 'is_unlimited' => false,
                 'rule' => 'per_case',
@@ -488,7 +488,7 @@ class LeaveService
             [
                 'leave_type' => 'unpaid',
                 'entitlement' => null,
-                'used' => null,
+                'used' => $this->formatDecimal($this->approvedLeaveDaysForYear($employee, 'unpaid', $year)),
                 'remaining' => null,
                 'is_unlimited' => true,
                 'rule' => 'unlimited',
