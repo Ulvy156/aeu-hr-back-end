@@ -261,6 +261,9 @@ return [
         'ceo' => [
             'permissions' => [
                 'attendance.view_any',
+                'attendance.view_own',
+                'attendance.clock_in',
+                'attendance.clock_out',
                 'employees.view_any',
                 'employees.view',
                 'employees.search',
