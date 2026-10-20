@@ -1215,7 +1215,7 @@ class AttendanceService
 
     protected function attendanceWindowError(string $action, CarbonInterface $at, CompanySetting $settings): ?string
     {
-        $start = Carbon::parse($at->toDateString().' '.$settings->working_start_time);
+        $start = $at->copy()->startOfDay();
         $end = $this->halfDayMorningEnd($at);
         $afternoon = $this->halfDayAfternoonStart($at);
         if ($action === 'clock_in' && ($at->lt($start) || $at->gt($end))) {
@@ -1256,7 +1256,6 @@ class AttendanceService
             $message = 'You do not have permission to record attendance.';
         }
         $boundaries = [
-            Carbon::parse($date.' '.$settings->working_start_time),
             $this->halfDayMorningEnd($at)->addSecond(),
             $this->halfDayAfternoonStart($at),
             $at->copy()->addDay()->startOfDay(),

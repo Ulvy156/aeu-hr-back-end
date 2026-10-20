@@ -65,6 +65,10 @@ Employees clock in and out using their phone's GPS location, which the
 system checks against the office location (must be within an allowed
 distance). Features include:
 - Clock in / clock out
+- Morning clock-in is allowed from midnight through noon, including early
+  arrivals before work starts. Afternoon clock-out is allowed from 13:00 onward;
+  the lunch gap is blocked. Half-day boundaries are configurable. Early arrivals
+  are present; clock-ins after the configured work start time are late.
 - QR code-based attendance (generate and scan a QR code to clock in)
 - Automatically detecting late arrivals
 - At 9:30 a.m., checking employees expected to work in the morning who have not

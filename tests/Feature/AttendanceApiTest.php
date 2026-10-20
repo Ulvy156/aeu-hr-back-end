@@ -90,6 +90,32 @@ test('employee can clock in within allowed radius and late status is calculated 
         ->and((float) $attendance->clock_in_longitude)->toEqualWithDelta(ATTENDANCE_VALID_GPS['longitude'], 0.00000001);
 });
 
+test('early morning attendance is present through manual and qr check in', function (string $channel, string $time) {
+    Carbon::setTestNow('2026-05-05 '.$time);
+    attendanceCompanySettings();
+    [$user] = attendanceEmployeeUser();
+    $token = $user->createToken('employee-device')->plainTextToken;
+    $endpoint = '/api/attendance/clock-in';
+    $payload = ATTENDANCE_VALID_GPS;
+
+    if ($channel === 'qr') {
+        $qr = app(AttendanceService::class)->generateQrToken($user);
+        $endpoint = '/api/attendance/qr/scan';
+        $payload['token'] = $qr->token;
+    }
+
+    $attendancePath = $channel === 'qr' ? 'data.attendance' : 'data';
+    $this->withToken($token)->postJson($endpoint, $payload)
+        ->assertCreated()
+        ->assertJsonPath($attendancePath.'.status', 'present')
+        ->assertJsonPath($attendancePath.'.is_late', false);
+
+    expect(Attendance::query()->sole()->clock_in_time->format('H:i:s'))->toBe($time);
+
+    $this->withToken($token)->postJson($endpoint, $payload)->assertUnprocessable();
+    expect(Attendance::query()->count())->toBe(1);
+})->with(['manual', 'qr'])->with(['00:00:00', '05:00:00', '07:59:59', '08:00:00']);
+
 test('clock in is rejected outside the allowed radius and when office gps settings are missing', function () {
     Carbon::setTestNow('2026-05-05 08:00:00');
     attendanceCompanySettings([
@@ -1900,7 +1926,9 @@ test('backend controls attendance action windows and rejects out of window reque
     $this->withToken($token)->postJson('/api/attendance/clock-out', ATTENDANCE_VALID_GPS)
         ->assertStatus($action === 'clock_out' ? 200 : 422);
 })->with([
-    'before morning' => ['07:59:59', null],
+    'start of day' => ['00:00:00', 'clock_in'],
+    'early morning' => ['05:00:00', 'clock_in'],
+    'before work starts' => ['07:59:59', 'clock_in'],
     'morning start' => ['08:00:00', 'clock_in'],
     'morning end' => ['12:00:00', 'clock_in'],
     'after morning' => ['12:00:01', null],
@@ -2002,7 +2030,7 @@ test('attendance actions respect configured schedule permissions and date rollov
     config(['hr.leave.half_day_schedule.morning_end_time' => '11:30:00', 'hr.leave.half_day_schedule.afternoon_start_time' => '14:00:00']);
     [$user, $employee] = attendanceEmployeeUser();
     $service = app(AttendanceService::class);
-    expect($service->attendanceActions($user)['available_action'])->toBeNull();
+    expect($service->attendanceActions($user)['available_action'])->toBe('clock_in');
     Carbon::setTestNow('2026-05-05 09:00:00');
     expect($service->attendanceActions($user)['available_action'])->toBe('clock_in');
     Carbon::setTestNow('2026-05-05 11:30:01');
@@ -2059,7 +2087,7 @@ test('qr scans do not record a shift outside attendance windows', function (stri
     $token = $user->createToken('employee-device')->plainTextToken;
     $this->withToken($token)->postJson('/api/attendance/qr/scan', ['token' => $qr->token, ...ATTENDANCE_VALID_GPS])->assertUnprocessable();
     expect(Attendance::query()->count())->toBe(0);
-})->with(['07:59:59', '12:00:01', '12:59:59']);
+})->with(['12:00:01', '12:59:59']);
 
 test('backend attendance actions are unavailable on holidays and non working days', function (bool $holiday) {
     attendanceCompanySettings();
