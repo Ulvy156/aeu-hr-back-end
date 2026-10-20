@@ -1,17 +1,15 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('attendances', function (Blueprint $table): void {
-            $table->enum('status', ['present', 'late', 'absent', 'missing_clock_out', 'missing_clock_in', 'missing_both'])->change();
-        });
+        // PostgreSQL stores Laravel enums as CHECK constraints; alter via drop/add.
+        DB::statement('ALTER TABLE attendances DROP CONSTRAINT IF EXISTS attendances_status_check');
+        DB::statement("ALTER TABLE attendances ADD CONSTRAINT attendances_status_check CHECK (status::text = ANY (ARRAY['present','late','absent','missing_clock_out','missing_clock_in','missing_both']::text[]))");
     }
 
     public function down(): void
@@ -20,8 +18,8 @@ return new class extends Migration
         if (DB::table('attendances')->whereIn('status', ['missing_clock_in', 'missing_both'])->exists()) {
             throw new RuntimeException('Resolve missing clock-in and missing-both records before rolling back this migration.');
         }
-        Schema::table('attendances', function (Blueprint $table): void {
-            $table->enum('status', ['present', 'late', 'absent', 'missing_clock_out'])->change();
-        });
+
+        DB::statement('ALTER TABLE attendances DROP CONSTRAINT IF EXISTS attendances_status_check');
+        DB::statement("ALTER TABLE attendances ADD CONSTRAINT attendances_status_check CHECK (status::text = ANY (ARRAY['present','late','absent','missing_clock_out']::text[]))");
     }
 };
