@@ -48,7 +48,8 @@ class HrDashboardService
             ->selectRaw('COUNT(*) as total_records')
             ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present_count")
             ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late_count")
-            ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out_count")
+            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_out', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_out_count")
+            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_in', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_in_count")
             ->first();
 
         $absentRecords = Attendance::query()
@@ -56,8 +57,8 @@ class HrDashboardService
             ->where('status', 'absent')
             ->get(['employee_id', 'attendance_date', 'status', 'absent_periods']);
         $recordedAbsences = $this->attendanceService->countRecordedAbsenceDays($absentRecords);
-        $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today, includeCurrentDayAfterStart: true);
-        $unrecordedAbsenceRecords = $this->attendanceService->countUnrecordedAbsenceRecords($today, $today, includeCurrentDayAfterStart: true);
+        $unrecordedAbsences = $this->attendanceService->countUnrecordedAbsences($today, $today);
+        $unrecordedAbsenceRecords = $this->attendanceService->countUnrecordedAbsenceRecords($today, $today);
 
         return [
             'total_records' => (int) ($summary?->total_records ?? 0) + $unrecordedAbsenceRecords,
@@ -65,6 +66,7 @@ class HrDashboardService
             'late_count' => (int) ($summary?->late_count ?? 0),
             'absent_count' => $recordedAbsences + $unrecordedAbsences,
             'missing_clock_out_count' => (int) ($summary?->missing_clock_out_count ?? 0),
+            'missing_clock_in_count' => (int) ($summary?->missing_clock_in_count ?? 0),
         ];
     }
 

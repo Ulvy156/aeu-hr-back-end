@@ -43,7 +43,7 @@ class AttendanceService
             ->when($filters['date_to'] ?? null, fn (Builder $query, string $dateTo) => $query->whereDate('attendance_date', '<=', $dateTo))
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $status === 'late'
                 ? $query->where(fn (Builder $lateQuery) => $lateQuery->where('status', 'late')->orWhere('is_late', true))
-                : $query->where('status', $status))
+                : ($status === 'needs_review' ? $query->whereIn('status', Attendance::MISSING_STATUSES) : $query->where('status', $status)))
             ->orderByDesc('attendance_date')
             ->orderByDesc('id');
 
@@ -220,38 +220,32 @@ class AttendanceService
         });
     }
 
-    /** Reconcile recorded absent periods when retroactive leave is approved. */
+    /** Clear provisional flags or recorded absence covered by approved leave. */
     public function reconcileApprovedLeave(int $employeeId, CarbonInterface $startDate, CarbonInterface $endDate): int
     {
-        $updated = 0;
-        $records = Attendance::query()
-            ->where('employee_id', $employeeId)
-            ->where('status', 'absent')
-            ->whereDate('attendance_date', '>=', $startDate->toDateString())
-            ->whereDate('attendance_date', '<=', $endDate->toDateString())
-            ->get();
-
-        foreach ($records as $record) {
-            $periods = $record->absent_periods ?? ['morning', 'afternoon'];
-            $leavePeriods = $this->approvedLeavePeriods($employeeId, $record->attendance_date->toDateString());
-            $remaining = array_values(array_diff($periods, $leavePeriods));
-
-            if ($remaining === []) {
-                if ($record->clock_in_time) {
-                    $record->update([
-                        'status' => $this->isLateForTime($record->clock_in_time, 'present', $this->companySettingService->current()) ? 'late' : 'present',
-                        'absent_periods' => [],
-                    ]);
+        return DB::transaction(function () use ($employeeId, $startDate, $endDate): int {
+            Employee::query()->whereKey($employeeId)->lockForUpdate()->firstOrFail();
+            $records = Attendance::query()->where('employee_id', $employeeId)
+                ->whereIn('status', ['absent', ...Attendance::MISSING_STATUSES])
+                ->whereDate('attendance_date', '>=', $startDate->toDateString())
+                ->whereDate('attendance_date', '<=', $endDate->toDateString())
+                ->lockForUpdate()->get();
+            foreach ($records as $record) {
+                if (in_array($record->status, Attendance::MISSING_STATUSES, true)) {
+                    [$status, $periods] = $this->automaticAttendanceState($record);
                 } else {
-                    $record->delete();
+                    $periods = array_values(array_diff($record->absent_periods ?? ['morning', 'afternoon'], $this->approvedLeavePeriods($employeeId, $record->attendance_date->toDateString())));
+                    $status = $periods !== [] ? 'absent' : ($record->is_late ? 'late' : 'present');
                 }
-            } else {
-                $record->update(['absent_periods' => $remaining]);
+                if ($status === 'present' && ! $record->clock_in_time && ! $record->clock_out_time) {
+                    $record->delete();
+                } else {
+                    $record->update(['status' => $status, 'absent_periods' => $periods]);
+                }
             }
-            $updated++;
-        }
 
-        return $updated;
+            return $records->count();
+        });
     }
 
     /**
@@ -262,7 +256,7 @@ class AttendanceService
         $date = $attendanceDate ? Carbon::parse($attendanceDate)->startOfDay() : today();
         $settings = $this->companySettingService->current();
 
-        if (! $this->isWorkingDay($date, $settings) || $this->isPublicHoliday($date)) {
+        if (! $this->attendanceFinalized($date) || ! $this->isWorkingDay($date, $settings) || $this->isPublicHoliday($date)) {
             return [
                 'attendance_date' => $date->toDateString(),
                 'created_count' => 0,
@@ -278,7 +272,7 @@ class AttendanceService
                         ->whereNull('last_working_date')
                         ->orWhereDate('last_working_date', '>=', $date->toDateString());
                 })
-                ->get(['id']);
+                ->orderBy('id')->lockForUpdate()->get(['id']);
             $employeeIds = $employees->modelKeys();
             $attendanceByEmployee = Attendance::query()
                 ->whereIn('employee_id', $employeeIds)
@@ -306,8 +300,8 @@ class AttendanceService
                 $absentPeriods = $this->absentPeriodsForAttendance($attendance, $date, $settings, $leavePeriods);
 
                 if ($absentPeriods === []) {
-                    if ($attendance?->status === 'absent') {
-                        if ($attendance->clock_in_time) {
+                    if ($attendance && in_array($attendance->status, ['absent', ...Attendance::MISSING_STATUSES], true)) {
+                        if ($attendance->clock_in_time || $attendance->clock_out_time) {
                             $attendance->update([
                                 'status' => $this->isLateForTime($attendance->clock_in_time, 'present', $settings) ? 'late' : 'present',
                                 'absent_periods' => [],
@@ -322,8 +316,11 @@ class AttendanceService
                 }
 
                 if ($attendance) {
-                    $attendance->update(['status' => 'absent', 'absent_periods' => $absentPeriods]);
-                    $updated++;
+                    $attendance->fill(['status' => 'absent', 'absent_periods' => $absentPeriods]);
+                    if ($attendance->isDirty()) {
+                        $attendance->save();
+                        $updated++;
+                    }
                 } else {
                     Attendance::query()->create([
                         'employee_id' => $employee->id,
@@ -354,175 +351,91 @@ class AttendanceService
     public function checkMissingClockIn(?string $attendanceDate = null): array
     {
         $date = $attendanceDate ? Carbon::parse($attendanceDate)->startOfDay() : today();
-        $settings = $this->companySettingService->current();
 
-        if (! $this->isWorkingDay($date, $settings) || $this->isPublicHoliday($date)) {
-            return ['attendance_date' => $date->toDateString(), 'updated_count' => 0];
-        }
-
-        $updatedCount = DB::transaction(function () use ($date): int {
-            $employees = Employee::query()
-                ->whereDate('join_date', '<=', $date->toDateString())
-                ->where(fn (Builder $query) => $query->whereNull('last_working_date')->orWhereDate('last_working_date', '>=', $date->toDateString()))
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get(['id']);
-            $employeeIds = $employees->modelKeys();
-            $attendances = Attendance::query()
-                ->whereIn('employee_id', $employeeIds)
-                ->whereDate('attendance_date', $date->toDateString())
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('employee_id');
-            $leaves = LeaveRequest::query()
-                ->whereIn('employee_id', $employeeIds)
-                ->where('status', 'approved')
-                ->whereDate('start_date', '<=', $date->toDateString())
-                ->whereDate('end_date', '>=', $date->toDateString())
-                ->get()
-                ->groupBy('employee_id');
-
-            $updated = 0;
-            foreach ($employees as $employee) {
-                $leavePeriods = $this->approvedLeavePeriodsFromCollection($leaves->get($employee->id, collect()));
-                if (in_array('morning', $leavePeriods, true)) {
-                    continue;
-                }
-
-                $attendance = $attendances->get($employee->id);
-                if ($attendance?->clock_in_time || $attendance?->corrected_at) {
-                    continue;
-                }
-
-                $absentPeriods = array_values(array_unique([...(array) ($attendance?->absent_periods ?? []), 'morning']));
-                if ($attendance) {
-                    if ($attendance->status === 'absent' && $attendance->absent_periods === $absentPeriods) {
-                        continue;
-                    }
-                    $attendance->update(['status' => 'absent', 'absent_periods' => $absentPeriods]);
-                } else {
-                    Attendance::query()->create([
-                        'employee_id' => $employee->id,
-                        'attendance_date' => $date->toDateString(),
-                        'status' => 'absent',
-                        'absent_periods' => $absentPeriods,
-                        'is_late' => false,
-                    ]);
-                }
-                $updated++;
-            }
-
-            return $updated;
-        });
-
-        return ['attendance_date' => $date->toDateString(), 'updated_count' => $updatedCount];
+        return ['attendance_date' => $date->toDateString(), 'updated_count' => $this->flagMissingAttendance($date, '09:30')];
     }
 
-    /**
-     * Flag afternoon attendance issues for HR follow-up. Scheduled runs also flag employees
-     * who were expected to work in the afternoon but did not record afternoon attendance.
-     *
-     * @return array{attendance_date: string|null, updated_count: int}
-     */
     public function markMissingClockOut(?string $attendanceDate = null, bool $scheduledFollowUp = false): array
     {
-        $settings = $this->companySettingService->current();
-        $graceHours = $this->missingClockOutGraceHours();
-        $date = $attendanceDate ? Carbon::parse($attendanceDate)->toDateString() : ($scheduledFollowUp ? today()->toDateString() : null);
-
-        $updatedCount = DB::transaction(function () use ($settings, $graceHours, $date, $scheduledFollowUp): int {
-            $query = Attendance::query()
-                ->whereNotNull('clock_in_time')
-                ->whereNull('clock_out_time')
-                ->whereIn('status', ['present', 'late'])
-                ->when($date, fn (Builder $query) => $query->whereDate('attendance_date', $date))
-                ->lockForUpdate()
-                ->orderBy('id');
-
-            $updated = 0;
-
-            foreach ($query->get() as $attendance) {
-                if (in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, (string) $attendance->attendance_date->toDateString()), true)) {
-                    continue;
-                }
-
-                if (! $scheduledFollowUp && ! $this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
-                    continue;
-                }
-
-                $attendance->update([
-                    'status' => 'missing_clock_out',
-                    'is_late' => $attendance->is_late || $attendance->status === 'late',
-                ]);
-                $updated++;
+        $date = $attendanceDate ? Carbon::parse($attendanceDate)->startOfDay() : today();
+        $threshold = '17:30';
+        if (! $scheduledFollowUp) {
+            $settings = $this->companySettingService->current();
+            $deadline = Carbon::parse($date->toDateString().' '.$settings->working_end_time)
+                ->addHours(max(0, (int) config('hr.attendance.missing_clock_out_grace_hours', 2)));
+            if (now()->lt($deadline)) {
+                return ['attendance_date' => $date->toDateString(), 'updated_count' => 0];
             }
+        }
 
-            if ($scheduledFollowUp && $date && $this->isWorkingDay(Carbon::parse($date), $settings) && ! $this->isPublicHoliday(Carbon::parse($date))) {
-                $employees = Employee::query()
-                    ->whereDate('join_date', '<=', $date)
-                    ->where(fn (Builder $query) => $query->whereNull('last_working_date')->orWhereDate('last_working_date', '>=', $date))
-                    ->get(['id']);
-                $employeeIds = $employees->modelKeys();
-                $attendances = Attendance::query()->whereIn('employee_id', $employeeIds)->whereDate('attendance_date', $date)->lockForUpdate()->get()->keyBy('employee_id');
-                $leaves = LeaveRequest::query()->whereIn('employee_id', $employeeIds)->where('status', 'approved')
-                    ->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->get()->groupBy('employee_id');
+        return ['attendance_date' => $date->toDateString(), 'updated_count' => $this->flagMissingAttendance($date, $threshold)];
+    }
 
-                foreach ($employees as $employee) {
-                    $leavePeriods = $this->approvedLeavePeriodsFromCollection($leaves->get($employee->id, collect()));
-                    if (in_array('afternoon', $leavePeriods, true)) {
-                        continue;
-                    }
+    private function flagMissingAttendance(CarbonInterface $date, string $threshold): int
+    {
+        $settings = $this->companySettingService->current();
+        if (! $date->isToday() || now()->lt(Carbon::parse($date->toDateString().' '.$threshold))
+            || $this->attendanceFinalized($date) || ! $this->isWorkingDay($date, $settings) || $this->isPublicHoliday($date)) {
+            return 0;
+        }
 
-                    $attendance = $attendances->get($employee->id);
-                    if ($attendance?->corrected_at) {
-                        continue;
-                    }
-
-                    if ($attendance?->clock_in_time && ! $attendance->clock_out_time) {
-                        // Open clock-ins were flagged above. Morning leave does not excuse
-                        // a missing clock-out for an afternoon shift.
-                        if ($attendance->status !== 'missing_clock_out') {
-                            $attendance->update([
-                                'status' => 'missing_clock_out',
-                                'is_late' => $attendance->is_late || $attendance->status === 'late',
-                            ]);
-                            $updated++;
-                        }
-
-                        continue;
-                    }
-
-                    $attendedPeriods = $attendance ? $this->attendedPeriodsForAttendance($attendance, $settings) : [];
-                    if (in_array('afternoon', $attendedPeriods, true)) {
-                        continue;
-                    }
-
-                    $absentPeriods = array_values(array_unique([...(array) ($attendance?->absent_periods ?? []), 'afternoon']));
-                    if ($attendance) {
-                        if ($attendance->status !== 'absent' || $attendance->absent_periods !== $absentPeriods) {
-                            $attendance->update(['status' => 'absent', 'absent_periods' => $absentPeriods]);
-                            $updated++;
-                        }
-                    } else {
-                        Attendance::query()->create([
-                            'employee_id' => $employee->id,
-                            'attendance_date' => $date,
-                            'status' => 'absent',
-                            'absent_periods' => ['afternoon'],
-                            'is_late' => false,
-                        ]);
-                        $updated++;
-                    }
+        return DB::transaction(function () use ($date, $settings): int {
+            // Use the same employee-first lock order as live attendance actions.
+            $employees = Employee::query()->whereDate('join_date', '<=', $date->toDateString())
+                ->where(fn (Builder $query) => $query->whereNull('last_working_date')->orWhereDate('last_working_date', '>=', $date->toDateString()))
+                ->orderBy('id')->lockForUpdate()->get(['id']);
+            $employeeIds = $employees->modelKeys();
+            $records = Attendance::query()->whereIn('employee_id', $employeeIds)
+                ->whereDate('attendance_date', $date->toDateString())->lockForUpdate()->get()->keyBy('employee_id');
+            $leaves = LeaveRequest::query()->whereIn('employee_id', $employeeIds)->where('status', 'approved')
+                ->whereDate('start_date', '<=', $date->toDateString())->whereDate('end_date', '>=', $date->toDateString())
+                ->get()->groupBy('employee_id');
+            $updated = 0;
+            foreach ($employees as $employee) {
+                $record = $records->get($employee->id);
+                if ($record?->corrected_at || $record?->status === 'absent') {
+                    continue;
+                }
+                $record ??= new Attendance(['employee_id' => $employee->id, 'attendance_date' => $date->toDateString()]);
+                [$status] = $this->automaticAttendanceState($record, $settings, $this->approvedLeavePeriodsFromCollection($leaves->get($employee->id, collect())));
+                if (! in_array($status, Attendance::MISSING_STATUSES, true)) {
+                    continue;
+                }
+                $record->fill(['status' => $status, 'absent_periods' => [], 'is_late' => $record->is_late || $record->status === 'late']);
+                if ($record->isDirty()) {
+                    $record->save();
+                    $updated++;
                 }
             }
 
             return $updated;
         });
+    }
 
-        return [
-            'attendance_date' => $date,
-            'updated_count' => $updatedCount,
-        ];
+    private function attendanceFinalized(CarbonInterface $date): bool
+    {
+        return now()->gte(Carbon::parse($date->toDateString().' 23:00:00'));
+    }
+
+    /** @return array{0: string, 1: array<int, string>} */
+    private function automaticAttendanceState(Attendance $record, ?CompanySetting $settings = null, ?array $leavePeriods = null): array
+    {
+        $settings ??= $this->companySettingService->current();
+        $periods = $this->absentPeriodsForAttendance($record, $record->attendance_date, $settings, $leavePeriods);
+        if ($this->attendanceFinalized($record->attendance_date) && $periods !== []) {
+            return ['absent', $periods];
+        }
+        $day = $record->attendance_date->toDateString();
+        $morningMissing = in_array('morning', $periods, true) && now()->gte(Carbon::parse($day.' 09:30:00'));
+        $afternoonMissing = in_array('afternoon', $periods, true) && now()->gte(Carbon::parse($day.' 17:30:00'));
+        $status = match (true) {
+            $morningMissing && $afternoonMissing => 'missing_both',
+            $morningMissing => 'missing_clock_in',
+            $afternoonMissing => 'missing_clock_out',
+            default => ($record->is_late || $this->isLateForTime($record->clock_in_time, 'present', $settings)) ? 'late' : 'present',
+        };
+
+        return [$status, []];
     }
 
     public function proxyClockIn(
@@ -615,8 +528,6 @@ class AttendanceService
         $periodEnd = $periodStart->copy()->endOfMonth();
         $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
 
-        $this->reconcileMissingClockOutForEmployee($employee->id, $periodStart, $effectiveTo);
-
         $records = Attendance::query()
             ->whereBelongsTo($employee)
             ->whereDate('attendance_date', '>=', $periodStart->toDateString())
@@ -628,7 +539,8 @@ class AttendanceService
         $late = $records->filter(fn (Attendance $record) => $record->status === 'late' || $record->is_late)->count();
         $absent = ($this->recordedAbsenceDaysByEmployee($records)[$employee->id] ?? 0.0)
             + $this->countUnrecordedAbsences($periodStart, $effectiveTo, $employee->id);
-        $missingClockOut = $records->where('status', 'missing_clock_out')->count();
+        $missingClockOut = $records->whereIn('status', ['missing_clock_out', 'missing_both'])->count();
+        $missingClockIn = $records->whereIn('status', ['missing_clock_in', 'missing_both'])->count();
         $attendedDays = $records
             ->sum(fn (Attendance $record): float => $this->recordedAttendanceDays($record, $this->companySettingService->current()));
 
@@ -671,6 +583,7 @@ class AttendanceService
                 'late' => $late,
                 'absent' => $absent,
                 'missing_clock_out' => $missingClockOut,
+                'missing_clock_in' => $missingClockIn,
                 'attended_days' => $attendedDays,
                 'working_days_in_period' => $workingDaysCount,
                 'attendance_rate' => $attendanceRate,
@@ -698,7 +611,8 @@ class AttendanceService
             ->selectRaw('COUNT(*) as total_records')
             ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present")
             ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late")
-            ->selectRaw("SUM(CASE WHEN status = 'missing_clock_out' THEN 1 ELSE 0 END) as missing_clock_out")
+            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_out', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_out")
+            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_in', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_in")
             ->first();
 
         $absentRecords = Attendance::query()
@@ -723,6 +637,7 @@ class AttendanceService
                 'late' => (int) ($counts?->late ?? 0),
                 'absent' => $recordedAbsences + $unrecordedAbsences,
                 'missing_clock_out' => (int) ($counts?->missing_clock_out ?? 0),
+                'missing_clock_in' => (int) ($counts?->missing_clock_in ?? 0),
             ],
         ];
     }
@@ -731,14 +646,13 @@ class AttendanceService
         CarbonInterface $from,
         CarbonInterface $to,
         ?int $employeeId = null,
-        bool $includeCurrentDayAfterStart = false,
     ): float {
         $settings = $this->companySettingService->current();
         $count = 0;
         $date = Carbon::parse($from->toDateString())->startOfDay();
 
         while ($date->lte($to)) {
-            $todayThreshold = $includeCurrentDayAfterStart ? $settings->working_start_time : $settings->working_end_time;
+            $todayThreshold = '23:00:00';
             $isCompleted = $date->lt(today())
                 || ($date->isToday() && now()->greaterThanOrEqualTo(Carbon::parse($date->toDateString().' '.$todayThreshold)));
 
@@ -767,7 +681,6 @@ class AttendanceService
         CarbonInterface $from,
         CarbonInterface $to,
         ?int $employeeId = null,
-        bool $includeCurrentDayAfterStart = false,
     ): int {
         $settings = $this->companySettingService->current();
         $count = 0;
@@ -775,7 +688,7 @@ class AttendanceService
 
         while ($date->lte($to)) {
             $day = $date->toDateString();
-            $todayThreshold = $includeCurrentDayAfterStart ? $settings->working_start_time : $settings->working_end_time;
+            $todayThreshold = '23:00:00';
             $isCompleted = $date->lt(today())
                 || ($date->isToday() && now()->greaterThanOrEqualTo(Carbon::parse($day.' '.$todayThreshold)));
 
@@ -931,7 +844,7 @@ class AttendanceService
     }
 
     /** @return array{0: string, 1: array<int, string>} */
-    protected function statusAfterClockOut(Attendance $attendance, CarbonInterface $clockOut, CompanySetting $settings): array
+    protected function statusAfterClockOut(Attendance $attendance, CarbonInterface $clockOut): array
     {
         $record = Attendance::make([
             'employee_id' => $attendance->employee_id,
@@ -939,21 +852,9 @@ class AttendanceService
             'clock_in_time' => $attendance->clock_in_time,
             'clock_out_time' => $clockOut,
         ]);
-        $absentPeriods = $this->absentPeriodsForAttendance(
-            $record,
-            $attendance->attendance_date,
-            $settings,
-            $this->approvedLeavePeriods($attendance->employee_id, $attendance->attendance_date->toDateString()),
-        );
+        $record->is_late = $attendance->is_late;
 
-        if ($absentPeriods !== []) {
-            return ['absent', $absentPeriods];
-        }
-
-        return [
-            $this->isLateForTime($attendance->clock_in_time, 'present', $settings) ? 'late' : 'present',
-            [],
-        ];
+        return $this->automaticAttendanceState($record);
     }
 
     public function generateQrToken(User $actor): AttendanceQrToken
@@ -1122,17 +1023,14 @@ class AttendanceService
                 throw ApiException::unprocessable($duplicateMessage);
             }
 
-            $attendedPeriods = $this->attendedPeriodsForAttendance(Attendance::make([
-                'attendance_date' => $date,
-                'clock_in_time' => $attributes['clock_in_time'],
-                'clock_out_time' => $attendance?->clock_out_time,
-            ]), $this->companySettingService->current());
-            $attributes['absent_periods'] = array_values(array_diff($attendance?->absent_periods ?? [], $attendedPeriods));
-            if ($attributes['absent_periods'] !== []) {
-                $attributes['status'] = 'absent';
-            }
-
             $attendance ??= new Attendance(['employee_id' => $employee->id, 'attendance_date' => $date]);
+            $attendance->fill($attributes);
+            if (! $attendance->corrected_at) {
+                [$attributes['status'], $attributes['absent_periods']] = $this->automaticAttendanceState($attendance);
+            } else {
+                $attributes['absent_periods'] = array_values(array_diff($attendance->absent_periods ?? [], ['morning']));
+                $attributes['status'] = $attributes['absent_periods'] !== [] ? 'absent' : ($attendance->is_late ? 'late' : 'present');
+            }
             $attendance->fill($attributes)->save();
 
             return $attendance->fresh(['employee', 'correctedBy', 'proxiedClockInBy', 'proxiedClockOutBy']);
@@ -1286,7 +1184,11 @@ class AttendanceService
                 throw ApiException::unprocessable($duplicateMessage);
             }
             $attendance ??= new Attendance(['employee_id' => $employee->id, 'attendance_date' => $date]);
-            [$status, $absentPeriods] = $this->statusAfterClockOut($attendance, Carbon::parse($attributes['clock_out_time']), $this->companySettingService->current());
+            [$status, $absentPeriods] = $this->statusAfterClockOut($attendance, Carbon::parse($attributes['clock_out_time']));
+            if ($attendance->corrected_at) {
+                $absentPeriods = array_values(array_diff($attendance->absent_periods ?? [], ['afternoon']));
+                $status = $absentPeriods !== [] ? 'absent' : ($attendance->is_late ? 'late' : 'present');
+            }
             $attendance->fill($attributes + [
                 'status' => $status,
                 'absent_periods' => $absentPeriods,
@@ -1399,68 +1301,6 @@ class AttendanceService
             ->exists();
     }
 
-    protected function missingClockOutGraceHours(): int
-    {
-        return max(0, (int) config('hr.attendance.missing_clock_out_grace_hours', 2));
-    }
-
-    protected function missingClockOutDeadline(
-        CarbonInterface|string $attendanceDate,
-        CompanySetting $settings,
-        ?int $graceHours = null,
-    ): CarbonInterface {
-        $date = $attendanceDate instanceof CarbonInterface
-            ? $attendanceDate->toDateString()
-            : Carbon::parse($attendanceDate)->toDateString();
-
-        return Carbon::parse($date.' '.$settings->working_end_time)
-            ->addHours($graceHours ?? $this->missingClockOutGraceHours());
-    }
-
-    protected function hasPassedMissingClockOutDeadline(
-        Attendance $attendance,
-        CompanySetting $settings,
-        ?int $graceHours = null,
-    ): bool {
-        if (! $attendance->attendance_date || ! $attendance->clock_in_time || $attendance->clock_out_time) {
-            return false;
-        }
-
-        return now()->greaterThanOrEqualTo(
-            $this->missingClockOutDeadline($attendance->attendance_date, $settings, $graceHours)
-        );
-    }
-
-    protected function reconcileMissingClockOutForEmployee(
-        int $employeeId,
-        CarbonInterface $from,
-        CarbonInterface $to,
-    ): void {
-        $settings = $this->companySettingService->current();
-        $graceHours = $this->missingClockOutGraceHours();
-
-        Attendance::query()
-            ->where('employee_id', $employeeId)
-            ->whereDate('attendance_date', '>=', $from->toDateString())
-            ->whereDate('attendance_date', '<=', $to->toDateString())
-            ->whereNotNull('clock_in_time')
-            ->whereNull('clock_out_time')
-            ->whereIn('status', ['present', 'late'])
-            ->orderBy('id')
-            ->get()
-            ->each(function (Attendance $attendance) use ($settings, $graceHours): void {
-                if (! in_array('afternoon', $this->approvedLeavePeriods((int) $attendance->employee_id, $attendance->attendance_date->toDateString()), true) && $this->hasPassedMissingClockOutDeadline($attendance, $settings, $graceHours)) {
-                    $attendance->update([
-                        'status' => 'missing_clock_out',
-                        'is_late' => $attendance->is_late || $attendance->status === 'late',
-                    ]);
-                }
-            });
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     protected function auditAttributes(Attendance $attendance): array
     {
         return [

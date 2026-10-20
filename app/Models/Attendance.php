@@ -31,6 +31,8 @@ class Attendance extends Model
 {
     use HasFactory;
 
+    public const MISSING_STATUSES = ['missing_clock_in', 'missing_clock_out', 'missing_both'];
+
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);

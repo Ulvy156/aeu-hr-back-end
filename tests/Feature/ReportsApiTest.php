@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
 use App\Models\User;
+use App\Services\Reports\AttendanceReportService;
 use App\Services\Reports\PayrollReportService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
@@ -326,4 +327,29 @@ test('payroll report exports align NSSF and net salary columns', function () {
             expect((float) $row[array_search('Net Salary', $export->headings())])->toBe(2994.0);
         }
     }
+});
+
+test('attendance reports and exports include both missing issues without absence', function () {
+    Carbon::setTestNow('2026-05-05 17:30:00');
+    reportCompanySettings();
+    $hr = reportManagerUser('hr');
+    [, $employee] = reportEmployeeUser();
+    Attendance::query()->create([
+        'employee_id' => $employee->id, 'attendance_date' => today(),
+        'status' => 'missing_both', 'absent_periods' => [],
+    ]);
+    Sanctum::actingAs($hr);
+    foreach (['daily_list', 'monthly_summary'] as $type) {
+        $this->getJson("/api/reports/attendance?report_type={$type}&month=5&year=2026&status=needs_review")
+            ->assertSuccessful()->assertJsonPath('data.summary.missing_clock_in_count', 1)
+            ->assertJsonPath('data.summary.missing_clock_out_count', 1)->assertJsonPath('data.summary.absent_count', 0);
+    }
+    $export = app(AttendanceReportService::class)->export([
+        'report_type' => 'monthly_summary', 'month' => 5, 'year' => 2026,
+    ])['export'];
+    expect($export->headings())->toHaveCount(9)
+        ->and($export->array()[0])->toHaveCount(9)
+        ->and($export->headings()[6])->toBe('Missing Clock Out Count')
+        ->and($export->headings()[7])->toBe('Missing Clock In Count')
+        ->and($export->array()[0][6])->toBe(1)->and($export->array()[0][7])->toBe(1);
 });

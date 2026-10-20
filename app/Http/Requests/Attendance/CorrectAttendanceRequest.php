@@ -23,7 +23,7 @@ class CorrectAttendanceRequest extends FormRequest
         return [
             'clock_in_time' => ['sometimes', 'nullable', 'date'],
             'clock_out_time' => ['sometimes', 'nullable', 'date'],
-            'status' => ['sometimes', 'required', Rule::in(['present', 'late', 'absent', 'missing_clock_out'])],
+            'status' => ['sometimes', 'required', Rule::in(['present', 'late', 'absent', 'missing_clock_out', 'missing_clock_in', 'missing_both'])],
             'correction_reason' => ['required', 'string'],
             'clock_in_latitude' => ['prohibited'],
             'clock_in_longitude' => ['prohibited'],

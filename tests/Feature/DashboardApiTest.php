@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
 use App\Models\User;
+use App\Services\AttendanceService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -320,8 +321,8 @@ test('hr dashboard counts a manually marked late status with a false time-based 
         ->assertJsonPath('data.today_attendance_summary.late_count', 1);
 });
 
-test('hr dashboard includes unrecorded absences after the workday ends', function () {
-    Carbon::setTestNow('2026-05-05 18:00:00');
+test('hr dashboard includes unrecorded absences after the final cutoff', function () {
+    Carbon::setTestNow('2026-05-05 23:00:00');
     dashboardCompanySettings();
     $hr = dashboardManagerUser('hr');
     dashboardEmployeeUser();
@@ -336,7 +337,7 @@ test('hr dashboard includes unrecorded absences after the workday ends', functio
     expect(Attendance::query()->count())->toBe(0);
 });
 
-test('hr dashboard counts employees without attendance after work starts and updates when they clock in', function () {
+test('hr dashboard shows missing attendance without counting absence before the cutoff', function () {
     Carbon::setTestNow('2026-10-02 07:59:00');
     dashboardCompanySettings();
     $hr = dashboardManagerUser('hr');
@@ -360,18 +361,20 @@ test('hr dashboard counts employees without attendance after work starts and upd
         ->assertJsonPath('data.today_attendance_summary.absent_count', 0);
 
     Carbon::setTestNow('2026-10-02 10:00:00');
+    $this->artisan('attendance:check-missing-clock-in')->assertSuccessful();
 
     $this->getJson('/api/dashboard/hr')
         ->assertSuccessful()
         ->assertJsonPath('data.today_attendance_summary.total_records', 2)
-        ->assertJsonPath('data.today_attendance_summary.absent_count', 1);
+        ->assertJsonPath('data.today_attendance_summary.absent_count', 0)
+        ->assertJsonPath('data.today_attendance_summary.missing_clock_in_count', 1);
 
-    dashboardAttendance($unclockedEmployee, '2026-10-02', 'late');
+    app(AttendanceService::class)->proxyClockIn($hr, $unclockedEmployee->id, '2026-10-02');
 
     $this->getJson('/api/dashboard/hr')
         ->assertSuccessful()
         ->assertJsonPath('data.today_attendance_summary.total_records', 2)
-        ->assertJsonPath('data.today_attendance_summary.late_count', 1)
+        ->assertJsonPath('data.today_attendance_summary.missing_clock_in_count', 0)
         ->assertJsonPath('data.today_attendance_summary.absent_count', 0);
 });
 

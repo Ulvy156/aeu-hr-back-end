@@ -26,7 +26,7 @@ class IndexAttendanceReportRequest extends FormRequest
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'month' => ['nullable', 'integer', 'between:1,12'],
             'year' => ['nullable', 'integer', 'between:2000,2100'],
-            'status' => ['nullable', Rule::in(['present', 'late', 'absent', 'missing_clock_out'])],
+            'status' => ['nullable', Rule::in(['present', 'late', 'absent', 'missing_clock_out', 'missing_clock_in', 'missing_both', 'needs_review'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

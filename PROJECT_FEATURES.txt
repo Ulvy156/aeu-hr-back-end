@@ -76,20 +76,21 @@ distance). Features include:
   are present; clock-ins after the configured work start time are late.
 - QR code-based attendance (generate and scan a QR code to clock in)
 - Automatically detecting late arrivals
-- At 9:30 a.m., checking employees expected to work in the morning who have not
-  clocked in. Missing clock-ins are recorded as morning-only absences for HR
-  review. Approved full-day and morning half-day leave are excluded; afternoon
-  leave does not excuse a missing morning clock-in. Non-working days and public
-  holidays are skipped. Later GPS, QR, or HR proxy clock-ins reuse the record
-  and clear the absent period when attendance is recorded for that half-day.
-- At 5:30 p.m., checking every employee expected to work in the afternoon.
-  Open clock-ins are flagged as missing clock-out; employees without afternoon
-  attendance are recorded absent for that half-day. Approved afternoon leave is
-  excluded. At 11:00 p.m., attendance is checked for both halves of the day.
-- Example: A morning clock-in with no clock-out counts the afternoon as absent
-  (0.5 day). No attendance and no leave counts as a full absent day (1 day).
-- HR can correct the record later, and the absent day count will update. Approved
-  half-day leave covers that half of the day.
+- At 9:30 a.m., flagging missing morning attendance as "Missing clock in".
+  At 5:30 p.m., flagging missing afternoon attendance as "Missing clock out".
+  If both are missing, the record shows "Missing both". These flags are for
+  HR review and do not count as absence.
+- At 11:00 p.m., checking both halves against recorded attendance and approved
+  leave, then marking each unresolved half-day absent (0.5 day each).
+- All automatic checks skip non-working days, active public holidays, dates
+  outside employment, approved leave for the relevant half, and HR corrections.
+  Pending leave does not excuse attendance. Repeated checks reuse daily records.
+  Morning and afternoon checks do not downgrade finalized absences or past dates.
+- Later GPS, QR, or HR proxy attendance clears the matching missing flag.
+  Later approved leave clears flags or absence only for the covered time.
+  Reading attendance summaries never changes attendance records.
+- HR may mark an employee absent before 11 p.m. by correcting the individual
+  record with a required reason. Automatic checks preserve that decision.
 - HR can manually correct attendance records
 - "Proxy clock" - HR can clock in/out on behalf of an employee if needed
 
