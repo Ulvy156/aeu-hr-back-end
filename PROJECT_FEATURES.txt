@@ -12,16 +12,21 @@ Includes logging out and checking "who am I" (current logged-in user info).
 2. USER ACCOUNTS & ROLES
 --------------------------
 Manages the login accounts of every person in the system (admin, HR, CEO,
-employee). Each user has exactly one role. Admins/HR can create, update,
-disable, delete users, and reset passwords.
+employee). Each user has exactly one role. Admins create, update, disable,
+delete users, reset passwords, and assign access. HR can list/search users.
 
 3. ROLES & PERMISSIONS
 --------------------------
 Controls what each type of user is allowed to do. There are 4 roles:
-- Admin: full access to everything
-- HR: manages employees, attendance, leave, payroll, announcements, etc.
-- CEO: approves leave/payroll/announcements, views reports
+- Admin: user accounts, permissions, settings, backups, and administrative views
+- HR: manages employees, attendance, leave approvals, payroll preparation,
+  draft payroll deletion, recruitment, and announcements; no final payroll approval
+- CEO: approves/rejects leave, payroll, and employee changes; views reports
 - Employee: uses their own attendance, leave, payslips, profile
+GM, Head, and Manager are organizational job levels, not access roles.
+They default to Employee access. Job titles do not automatically grant
+announcement, leave approval, or payroll permissions. Admin, HR, and CEO
+roles are preserved when job levels change.
 Permissions can be viewed and assigned to control access precisely.
 
 4. DEPARTMENTS

@@ -86,7 +86,6 @@ function payrollHrHeadUser(array $overrides = []): User
         'status' => 'active',
     ], $overrides));
     $user->assignRole('hr');
-    $user->givePermissionTo(array_values(array_filter((array) config('hr.job_levels.hr_head_permissions'))));
 
     return $user->fresh();
 }
@@ -936,7 +935,7 @@ test('half-day special sick leave receives a half-day deduction', function () {
     expect($weightedDeduction)->toBe(0.25);
 });
 
-test('head of hr can generate and submit payroll while only ceo can approve or reject', function () {
+test('HR can generate and submit payroll while only CEO can approve or reject', function () {
     payrollCompanySettings();
 
     $hr = payrollManagerUser('hr', [
@@ -957,13 +956,6 @@ test('head of hr can generate and submit payroll while only ceo can approve or r
         makeAttendance($employee, sprintf('2026-04-%02d', $day));
     }
 
-    Sanctum::actingAs($hr);
-
-    $this->postJson('/api/payrolls', [
-        'month' => 4,
-        'year' => 2026,
-    ])->assertForbidden();
-
     Sanctum::actingAs($hrHead);
 
     $batchId = $this->postJson('/api/payrolls', [
@@ -982,7 +974,7 @@ test('head of hr can generate and submit payroll while only ceo can approve or r
     Sanctum::actingAs($hr);
 
     $this->getJson('/api/payrolls')->assertSuccessful();
-    $this->postJson("/api/payrolls/{$batchId}/submit")->assertForbidden();
+    $this->postJson("/api/payrolls/{$batchId}/reject", ['rejection_reason' => 'Check figures.'])->assertForbidden();
     $this->postJson("/api/payrolls/{$batchId}/approve")->assertForbidden();
 
     Sanctum::actingAs($ceo);
@@ -992,11 +984,11 @@ test('head of hr can generate and submit payroll while only ceo can approve or r
         ->assertJsonPath('data.status', 'approved');
 });
 
-test('only head of hr can hard delete a draft payroll and its items', function () {
+test('HR can hard delete draft payroll while employees and CEO cannot', function () {
     payrollCompanySettings();
 
     $hrHead = payrollHrHeadUser(['email' => 'hr.delete@example.com']);
-    $regularHr = payrollManagerUser('hr', ['email' => 'hr.viewer.delete@example.com']);
+    $regularHr = payrollManagerUser('employee', ['email' => 'employee.delete@example.com']);
     $ceo = payrollManagerUser('ceo', ['email' => 'ceo.delete@example.com']);
     $department = Department::query()->create(['name' => 'HR & Admin', 'status' => 'active']);
     $position = Position::query()->create([

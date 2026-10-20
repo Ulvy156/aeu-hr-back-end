@@ -26,7 +26,7 @@ class StoreUserRequest extends FormRequest
             'password' => ['required', 'string', 'max:255', Password::min(8)->letters()->mixedCase()->numbers()->symbols()],
             'status' => ['required', Rule::enum(Status::class)],
             'roles' => ['required', 'array', 'size:1'],
-            'roles.*' => ['required', 'string', 'distinct', 'exists:roles,name'],
+            'roles.*' => ['required', 'string', 'distinct', Rule::in(array_keys(config('hr_permissions.roles'))), 'exists:roles,name'],
         ];
     }
 }

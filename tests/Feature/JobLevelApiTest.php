@@ -3,8 +3,6 @@
 use App\Enums\JobLevel;
 use App\Models\Department;
 use App\Models\Employee;
-use App\Models\PayrollBatch;
-use App\Models\PayrollItem;
 use App\Models\Position;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
@@ -59,23 +57,7 @@ function jobLevelEmployee(User $user, array $overrides = []): Employee
     ], $overrides));
 }
 
-function jobLevelPayrollItem(PayrollBatch $batch, Employee $employee, string $netSalary = '100.00'): PayrollItem
-{
-    return PayrollItem::query()->create([
-        'payroll_batch_id' => $batch->id,
-        'employee_id' => $employee->id,
-        'base_salary' => 1000,
-        'daily_rate' => 40,
-        'working_days' => 22,
-        'present_days' => 22,
-        'gross_salary' => 1000,
-        'taxable_salary' => 1000,
-        'net_salary' => $netSalary,
-        'status' => 'locked',
-    ]);
-}
-
-test('creating an employee with a manager position assigns the manager role', function () {
+test('creating an employee with a manager position keeps the employee role', function () {
     $department = jobLevelDepartment();
     $position = jobLevelPosition($department, 'Sales Manager', JobLevel::Manager);
     $manager = jobLevelEmployee(jobLevelUser('employee', ['email' => 'root.manager@example.com']));
@@ -96,8 +78,7 @@ test('creating an employee with a manager position assigns the manager role', fu
         ->assertCreated()
         ->assertJsonPath('data.position.job_level', 'manager');
 
-    expect($linkedUser->fresh()->hasRole('manager'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasRole('employee'))->toBeFalse();
+    expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue();
 });
 
 test('creating an employee with a supervisor position keeps the employee role', function () {
@@ -145,7 +126,7 @@ test('creating an employee on a manager position does not overwrite the hr role'
         ->assertCreated();
 
     expect($linkedUser->fresh()->hasRole('hr'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasRole('head'))->toBeFalse()
+        ->and($linkedUser->fresh()->getRoleNames()->all())->toBe(['hr'])
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.reject_hr'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.submit'))->toBeTrue()
@@ -182,7 +163,7 @@ test('changing a position job_level syncs assigned users except protected roles'
         ->assertSuccessful()
         ->assertJsonPath('data.job_level', 'manager');
 
-    expect($employeeUser->fresh()->hasRole('manager'))->toBeTrue()
+    expect($employeeUser->fresh()->hasRole('employee'))->toBeTrue()
         ->and($hrUser->fresh()->hasRole('hr'))->toBeTrue();
 });
 
@@ -213,138 +194,10 @@ test('employees can be filtered by job_level', function () {
         ->assertJsonPath('data.0.position.job_level', 'supervisor');
 });
 
-test('a commercial department head only sees payroll and payslips for their department', function () {
-    $commercial = jobLevelDepartment('Commercial');
-    $marketing = jobLevelDepartment('Marketing');
-    $headPosition = jobLevelPosition($commercial, 'Head of Commercial', JobLevel::Head);
-    $staffPosition = jobLevelPosition($commercial, 'Sales Executive', JobLevel::Junior);
-    $otherPosition = jobLevelPosition($marketing, 'Designer', JobLevel::Junior);
-
-    $headUser = jobLevelUser('head', ['email' => 'commercial.head@example.com']);
-    $headEmployee = jobLevelEmployee($headUser, [
-        'department_id' => $commercial->id,
-        'position_id' => $headPosition->id,
-        'employee_id' => 'EMP-90001',
-    ]);
-    $commercialStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'commercial.staff@example.com']), [
-        'department_id' => $commercial->id,
-        'position_id' => $staffPosition->id,
-        'employee_id' => 'EMP-90002',
-    ]);
-    $marketingStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'marketing.staff@example.com']), [
-        'department_id' => $marketing->id,
-        'position_id' => $otherPosition->id,
-        'employee_id' => 'EMP-90003',
-    ]);
-
-    $batch = PayrollBatch::query()->create([
-        'month' => 5,
-        'year' => 2026,
-        'status' => 'approved',
-    ]);
-    $ownItem = jobLevelPayrollItem($batch, $commercialStaff, '200.00');
-    $otherItem = jobLevelPayrollItem($batch, $marketingStaff, '900.00');
-    jobLevelPayrollItem($batch, $headEmployee, '300.00');
-
-    Sanctum::actingAs($headUser);
-
-    $payslipIds = collect($this->getJson('/api/payslips')->assertSuccessful()->json('data'))->pluck('id');
-
-    expect($payslipIds)->toHaveCount(2)
-        ->and($payslipIds)->toContain($ownItem->id)
-        ->and($payslipIds)->not->toContain($otherItem->id);
-
-    $this->getJson("/api/payslips/{$ownItem->id}")->assertSuccessful();
-    $this->getJson("/api/payslips/{$otherItem->id}")->assertForbidden();
-
-    $this->getJson('/api/payrolls')
-        ->assertSuccessful()
-        ->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.0.item_count', 2)
-        ->assertJsonPath('data.0.totals.net_salary', '500.00');
-
-    $this->getJson("/api/payrolls/{$batch->id}")
-        ->assertSuccessful()
-        ->assertJsonPath('data.item_count', 2)
-        ->assertJsonPath('data.totals.net_salary', '500.00');
-});
-
-test('an HR department head can see payroll for every department', function () {
-    $hrDepartment = jobLevelDepartment('HR & Admin');
-    $commercial = jobLevelDepartment('Commercial');
-    $headPosition = jobLevelPosition($hrDepartment, 'Head of HR', JobLevel::Head);
-    $staffPosition = jobLevelPosition($commercial, 'Sales Executive', JobLevel::Junior);
-
-    $headUser = jobLevelUser('head', ['email' => 'hr.head@example.com']);
-    jobLevelEmployee($headUser, [
-        'department_id' => $hrDepartment->id,
-        'position_id' => $headPosition->id,
-        'employee_id' => 'EMP-91001',
-    ]);
-    $commercialStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'hrhead.commercial@example.com']), [
-        'department_id' => $commercial->id,
-        'position_id' => $staffPosition->id,
-        'employee_id' => 'EMP-91002',
-    ]);
-
-    $batch = PayrollBatch::query()->create([
-        'month' => 6,
-        'year' => 2026,
-        'status' => 'approved',
-    ]);
-    $item = jobLevelPayrollItem($batch, $commercialStaff, '900.00');
-
-    Sanctum::actingAs($headUser);
-
-    $this->getJson('/api/payslips')
-        ->assertSuccessful()
-        ->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.0.id', $item->id);
-
-    $this->getJson("/api/payslips/{$item->id}")->assertSuccessful();
-    $this->getJson('/api/payrolls')->assertSuccessful()->assertJsonPath('data.0.item_count', 1);
-});
-
-test('a general manager can see payroll and payslips for every department', function () {
-    $executive = jobLevelDepartment('Executive');
-    $commercial = jobLevelDepartment('Commercial');
-    $gmPosition = jobLevelPosition($executive, 'General Manager', JobLevel::Gm);
-    $staffPosition = jobLevelPosition($commercial, 'Sales Executive', JobLevel::Junior);
-
-    $gmUser = jobLevelUser('gm', ['email' => 'company.gm@example.com']);
-    jobLevelEmployee($gmUser, [
-        'department_id' => $executive->id,
-        'position_id' => $gmPosition->id,
-        'employee_id' => 'EMP-92001',
-    ]);
-    $commercialStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'gm.commercial@example.com']), [
-        'department_id' => $commercial->id,
-        'position_id' => $staffPosition->id,
-        'employee_id' => 'EMP-92002',
-    ]);
-
-    $batch = PayrollBatch::query()->create([
-        'month' => 7,
-        'year' => 2026,
-        'status' => 'approved',
-    ]);
-    $item = jobLevelPayrollItem($batch, $commercialStaff, '900.00');
-
-    Sanctum::actingAs($gmUser);
-
-    $this->getJson('/api/payslips')
-        ->assertSuccessful()
-        ->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.0.id', $item->id);
-
-    $this->getJson("/api/payslips/{$item->id}")->assertSuccessful();
-    $this->getJson('/api/payrolls')->assertSuccessful()->assertJsonPath('data.0.item_count', 1);
-});
-
 test('a manager cannot view payroll batches', function () {
     $department = jobLevelDepartment();
     $position = jobLevelPosition($department, 'Sales Manager', JobLevel::Manager);
-    $managerUser = jobLevelUser('manager', ['email' => 'sales.manager@example.com']);
+    $managerUser = jobLevelUser('employee', ['email' => 'sales.manager@example.com']);
     jobLevelEmployee($managerUser, [
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -357,50 +210,7 @@ test('a manager cannot view payroll batches', function () {
     $this->getJson('/api/payslips')->assertSuccessful()->assertJsonPath('meta.total', 0);
 });
 
-test('a commercial department head only sees their department in payroll reports', function () {
-    $commercial = jobLevelDepartment('Commercial');
-    $marketing = jobLevelDepartment('Marketing');
-    $headPosition = jobLevelPosition($commercial, 'Head of Commercial', JobLevel::Head);
-    $staffPosition = jobLevelPosition($commercial, 'Sales Executive', JobLevel::Junior);
-    $otherPosition = jobLevelPosition($marketing, 'Designer', JobLevel::Junior);
-
-    $headUser = jobLevelUser('head', ['email' => 'commercial.head.report@example.com']);
-    jobLevelEmployee($headUser, [
-        'department_id' => $commercial->id,
-        'position_id' => $headPosition->id,
-        'employee_id' => 'EMP-94001',
-    ]);
-    $commercialStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'commercial.report@example.com']), [
-        'department_id' => $commercial->id,
-        'position_id' => $staffPosition->id,
-        'employee_id' => 'EMP-94002',
-    ]);
-    $marketingStaff = jobLevelEmployee(jobLevelUser('employee', ['email' => 'marketing.report@example.com']), [
-        'department_id' => $marketing->id,
-        'position_id' => $otherPosition->id,
-        'employee_id' => 'EMP-94003',
-    ]);
-
-    $batch = PayrollBatch::query()->create([
-        'month' => 8,
-        'year' => 2026,
-        'status' => 'approved',
-    ]);
-    $ownItem = jobLevelPayrollItem($batch, $commercialStaff, '200.00');
-    $otherItem = jobLevelPayrollItem($batch, $marketingStaff, '900.00');
-
-    Sanctum::actingAs($headUser);
-
-    $itemIds = collect($this->getJson('/api/reports/payroll?report_type=employee_list&month=8&year=2026')
-        ->assertSuccessful()
-        ->assertJsonPath('data.summary.item_count', 1)
-        ->json('data.items'))->pluck('id');
-
-    expect($itemIds)->toContain($ownItem->id)
-        ->and($itemIds)->not->toContain($otherItem->id);
-});
-
-test('updating an employee position_id assigns the new job level role', function () {
+test('updating an employee position_id keeps the employee access role', function () {
     $department = jobLevelDepartment();
     $junior = jobLevelPosition($department, 'Sales Executive', JobLevel::Junior);
     $managerPosition = jobLevelPosition($department, 'Sales Manager', JobLevel::Manager);
@@ -427,8 +237,7 @@ test('updating an employee position_id assigns the new job level role', function
         ->assertSuccessful()
         ->assertJsonPath('data.position.job_level', 'manager');
 
-    expect($linkedUser->fresh()->hasRole('manager'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasRole('employee'))->toBeFalse();
+    expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue();
 });
 
 test('updating an employee without changing position_id does not overwrite the current role', function () {
@@ -458,10 +267,10 @@ test('updating an employee without changing position_id does not overwrite the c
         ->assertSuccessful();
 
     expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasRole('manager'))->toBeFalse();
+        ->and($linkedUser->fresh()->getRoleNames()->all())->toBe(['employee']);
 });
 
-test('head of hr inherits leave and payroll preparation permissions', function () {
+test('a head of HR title does not grant HR access to an employee', function () {
     $department = jobLevelDepartment('HR & Admin');
     $position = jobLevelPosition($department, 'Head of HR Inherit', JobLevel::Head);
     $manager = jobLevelEmployee(jobLevelUser('employee', ['email' => 'hrhead.root@example.com']));
@@ -481,12 +290,12 @@ test('head of hr inherits leave and payroll preparation permissions', function (
         ], ['Accept' => 'application/json'])
         ->assertCreated();
 
-    expect($linkedUser->fresh()->hasRole('head'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.update'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.submit'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.delete'))->toBeTrue()
+    expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.update'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.submit'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.delete'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.reject'))->toBeFalse();
 });
@@ -511,13 +320,13 @@ test('commercial head does not inherit hr leave or payroll approve permissions',
         ], ['Accept' => 'application/json'])
         ->assertCreated();
 
-    expect($linkedUser->fresh()->hasRole('head'))->toBeTrue()
+    expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse();
 });
 
-test('junior hr does not inherit leave or payroll approve permissions', function () {
+test('junior HR receives HR preparation permissions but cannot approve payroll', function () {
     $department = jobLevelDepartment('HR & Admin');
     $position = jobLevelPosition($department, 'HR Officer Inherit', JobLevel::Junior);
     $manager = jobLevelEmployee(jobLevelUser('employee', ['email' => 'junior.hr.root@example.com']));
@@ -538,7 +347,7 @@ test('junior hr does not inherit leave or payroll approve permissions', function
         ->assertCreated();
 
     expect($linkedUser->fresh()->hasRole('hr'))->toBeTrue()
-        ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
-        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
+        ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeTrue()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse();
 });

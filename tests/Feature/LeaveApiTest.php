@@ -93,7 +93,7 @@ function leaveHrHeadUser(array $userOverrides = []): User
     $user = User::factory()->create(array_merge([
         'status' => 'active',
     ], $userOverrides));
-    $user->assignRole('employee');
+    $user->assignRole('hr');
 
     $employee = Employee::query()->create([
         'user_id' => $user->id,
@@ -848,7 +848,7 @@ test('rejection by head of hr or ceo makes the final status rejected', function 
         ->assertJsonPath('data.rejection_reason', 'Insufficient coverage for requested dates.');
 })->with(['hr_head', 'ceo']);
 
-test('regular hr cannot approve or reject leave requests', function () {
+test('HR can approve or reject leave without a head job title', function () {
     leaveCompanySettings();
     [, $employee] = leaveEmployeeUser();
     $leave = makeLeave($employee);
@@ -859,13 +859,14 @@ test('regular hr cannot approve or reject leave requests', function () {
 
     $this->withToken($token)
         ->postJson("/api/leaves/{$leave->id}/approve")
-        ->assertForbidden();
+        ->assertSuccessful();
 
+    $leave = makeLeave($employee, ['start_date' => '2026-05-05', 'end_date' => '2026-05-05']);
     $this->withToken($token)
         ->postJson("/api/leaves/{$leave->id}/reject", [
             'rejection_reason' => 'Not allowed',
         ])
-        ->assertForbidden();
+        ->assertSuccessful();
 });
 
 test('employee cannot approve or reject leave requests', function () {

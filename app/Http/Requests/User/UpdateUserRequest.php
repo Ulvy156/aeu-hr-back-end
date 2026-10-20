@@ -26,7 +26,7 @@ class UpdateUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user?->id)],
             'status' => ['required', Rule::enum(Status::class)],
             'roles' => ['sometimes', 'array', 'size:1'],
-            'roles.*' => ['required_with:roles', 'string', 'distinct', 'exists:roles,name'],
+            'roles.*' => ['required_with:roles', 'string', 'distinct', Rule::in(array_keys(config('hr_permissions.roles'))), 'exists:roles,name'],
         ];
     }
 }

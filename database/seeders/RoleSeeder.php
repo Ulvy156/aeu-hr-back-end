@@ -2,9 +2,12 @@
 
 namespace Database\Seeders;
 
+use App\Enums\JobLevel;
+use App\Models\AnnouncementTarget;
+use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -15,6 +18,11 @@ class RoleSeeder extends Seeder
      * Seed the application's database.
      */
     public function run(): void
+    {
+        DB::transaction(fn () => $this->seedRoles());
+    }
+
+    protected function seedRoles(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
@@ -53,7 +61,64 @@ class RoleSeeder extends Seeder
             $role->syncPermissions($this->permissionsForRole($definition, $groups)->all());
         }
 
+        $this->retireJobLevelRoles($guard);
+
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    protected function retireJobLevelRoles(string $guard): void
+    {
+        $retiredNames = ['gm', 'head', 'manager'];
+        $supportedNames = array_keys(config('hr_permissions.roles'));
+        $retiredRoles = Role::query()->where('guard_name', $guard)->whereIn('name', $retiredNames)->get();
+
+        if ($retiredRoles->isEmpty()) {
+            return;
+        }
+
+        // Keep targeted announcements limited to their existing recipients.
+        foreach ($retiredRoles as $role) {
+            $employeeIds = User::withTrashed()
+                ->whereHas('roles', fn ($query) => $query->where('roles.id', $role->id))
+                ->with('employeeWithTrashed')->get()->pluck('employeeWithTrashed.id')->filter();
+            $targets = AnnouncementTarget::query()->where('target_type', 'role')->where('target_id', $role->id)->get();
+            foreach ($targets as $target) {
+                foreach ($employeeIds as $employeeId) {
+                    AnnouncementTarget::query()->firstOrCreate([
+                        'announcement_id' => $target->announcement_id,
+                        'target_type' => 'employee',
+                        'target_id' => $employeeId,
+                    ]);
+                }
+                $target->delete();
+            }
+        }
+
+        User::withTrashed()->whereHas('roles', fn ($query) => $query
+            ->where('guard_name', $guard)->whereIn('name', $retiredNames))
+            ->each(function (User $user) use ($supportedNames): void {
+                if (! $user->hasAnyRole($supportedNames)) {
+                    $user->assignRole('employee');
+                }
+            });
+
+        $retiredRoles->each->delete();
+
+        // Retire the automatic grants previously issued when an employee became a head.
+        $headGrants = ['announcements.create', 'announcements.update', 'announcements.publish'];
+        $hrHeadGrants = [
+            ...$headGrants, 'payrolls.view_own', 'leaves.approve_hr', 'leaves.reject_hr',
+            'payrolls.generate', 'payrolls.update', 'payrolls.submit', 'payrolls.delete',
+            'payrolls.export', 'payrolls.approve', 'payrolls.reject',
+        ];
+        User::withTrashed()->whereHas('employeeWithTrashed.position', fn ($query) => $query
+            ->where('job_level', JobLevel::Head->value))
+            ->with('employeeWithTrashed.department')
+            ->each(function (User $user) use ($headGrants, $hrHeadGrants): void {
+                $isHr = strcasecmp($user->employeeWithTrashed?->department?->name ?? '', config('hr.hr_department_name')) === 0;
+                $existingNames = $user->permissions()->pluck('name')->all();
+                $user->revokePermissionTo(array_values(array_intersect($existingNames, $isHr ? $hrHeadGrants : $headGrants)));
+            });
     }
 
     protected function removeRetiredAnnouncementPermissions(string $guard): void

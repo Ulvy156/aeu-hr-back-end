@@ -29,13 +29,12 @@ beforeEach(function () {
 test('roles and permissions are seeded with grouped assignments', function () {
     $this->seed(RoleSeeder::class);
 
+    expect(Role::query()->orderBy('name')->pluck('name')->all())->toBe(['admin', 'ceo', 'employee', 'hr']);
+
     expect(Role::findByName('admin', 'web'))->not->toBeNull()
         ->and(Role::findByName('hr', 'web'))->not->toBeNull()
         ->and(Role::findByName('ceo', 'web'))->not->toBeNull()
         ->and(Role::findByName('employee', 'web'))->not->toBeNull()
-        ->and(Role::findByName('manager', 'web'))->not->toBeNull()
-        ->and(Role::findByName('head', 'web'))->not->toBeNull()
-        ->and(Role::findByName('gm', 'web'))->not->toBeNull()
         ->and(Permission::findByName('departments.view_any', 'web'))->not->toBeNull()
         ->and(Permission::findByName('attendance.view_correction', 'web'))->not->toBeNull()
         ->and(Permission::findByName('users.assign_permissions', 'web'))->not->toBeNull()
@@ -46,17 +45,10 @@ test('roles and permissions are seeded with grouped assignments', function () {
         ->and(Role::findByName('admin', 'web')->hasPermissionTo('users.assign_permissions'))->toBeTrue()
         ->and(Role::findByName('ceo', 'web')->hasPermissionTo('audit_logs.view'))->toBeTrue()
         ->and(Role::findByName('hr', 'web')->hasPermissionTo('departments.create'))->toBeTrue()
-        ->and(Role::findByName('manager', 'web')->hasPermissionTo('employees.view_any'))->toBeTrue()
-        ->and(Role::findByName('manager', 'web')->hasPermissionTo('payrolls.view_any'))->toBeFalse()
-        ->and(Role::findByName('head', 'web')->hasPermissionTo('payrolls.view_any'))->toBeTrue()
-        ->and(Role::findByName('head', 'web')->hasPermissionTo('announcements.create'))->toBeTrue()
-        ->and(Role::findByName('head', 'web')->hasPermissionTo('payrolls.approve'))->toBeFalse()
         ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.view_any'))->toBeTrue()
-        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.generate'))->toBeFalse()
-        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.update'))->toBeFalse()
-        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.submit'))->toBeFalse()
-        ->and(Role::findByName('gm', 'web')->hasPermissionTo('audit_logs.view'))->toBeTrue()
-        ->and(Role::findByName('gm', 'web')->hasPermissionTo('payrolls.approve'))->toBeFalse();
+        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.generate'))->toBeTrue()
+        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.update'))->toBeTrue()
+        ->and(Role::findByName('hr', 'web')->hasPermissionTo('payrolls.submit'))->toBeTrue();
 });
 
 test('leave permissions are assigned with least privilege by role', function () {
@@ -72,8 +64,8 @@ test('leave permissions are assigned with least privilege by role', function () 
         ->and($admin->hasPermissionTo('leaves.approve_ceo'))->toBeFalse()
         ->and($admin->hasPermissionTo('leaves.cancel'))->toBeFalse()
         ->and($hr->hasPermissionTo('leaves.view_any'))->toBeTrue()
-        ->and($hr->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
-        ->and($hr->hasPermissionTo('leaves.reject_hr'))->toBeFalse()
+        ->and($hr->hasPermissionTo('leaves.approve_hr'))->toBeTrue()
+        ->and($hr->hasPermissionTo('leaves.reject_hr'))->toBeTrue()
         ->and($hr->hasPermissionTo('leaves.create'))->toBeTrue()
         ->and($hr->hasPermissionTo('leaves.cancel'))->toBeTrue()
         ->and($hr->hasPermissionTo('leaves.approve_ceo'))->toBeFalse()

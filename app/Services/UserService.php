@@ -306,6 +306,8 @@ class UserService
     public function availableRoles(): Collection
     {
         return Role::query()
+            ->where('guard_name', config('hr_permissions.guard', 'web'))
+            ->whereIn('name', array_keys(config('hr_permissions.roles')))
             ->select(['id', 'name'])
             ->orderBy('name')
             ->get();

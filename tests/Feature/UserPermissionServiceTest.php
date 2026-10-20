@@ -10,7 +10,7 @@ uses(RefreshDatabase::class);
 
 test('it returns effective roles and permissions for a user', function () {
     $employeeRole = Role::findOrCreate('employee', 'web');
-    $employeeRole->givePermissionTo([
+    $employeeRole->syncPermissions([
         Permission::findOrCreate('attendance.clock_in', 'web'),
         Permission::findOrCreate('leaves.create', 'web'),
     ]);
