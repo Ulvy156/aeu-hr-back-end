@@ -8,6 +8,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('announcement-categories', AnnouncementCategoryController::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
 
+    Route::get('/announcements/target-options', [AnnouncementController::class, 'targetOptions']);
     Route::apiResource('announcements', AnnouncementController::class)
         ->only(['index', 'store', 'show', 'update']);
     Route::post('/announcements/{announcement}/publish', [AnnouncementController::class, 'publish']);

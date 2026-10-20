@@ -103,7 +103,7 @@ test('managerial job titles retain employee access without payroll or peer paysl
         ->assertJsonPath('data.0.id', $items[0]->id);
     $this->getJson("/api/payslips/{$items[1]->id}")->assertForbidden();
     expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
-        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeFalse();
+        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue();
 })->with([JobLevel::Manager, JobLevel::Head, JobLevel::Gm]);
 
 test('role migration retires automatic head grants while preserving unrelated direct grants', function () {
@@ -123,7 +123,8 @@ test('role migration retires automatic head grants while preserving unrelated di
 
     expect($user->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
         ->and($user->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
-        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeFalse()
+        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue()
+        ->and($user->fresh()->hasDirectPermission('announcements.create'))->toBeFalse()
         ->and($user->fresh()->hasPermissionTo('employees.search'))->toBeTrue();
 });
 

@@ -22,11 +22,17 @@ Controls what each type of user is allowed to do. There are 4 roles:
 - HR: manages employees, attendance, leave approvals, payroll preparation,
   draft payroll deletion, recruitment, and announcements; no final payroll approval
 - CEO: approves/rejects leave, payroll, and employee changes; views reports
+  and manages announcements when assigned the CEO job level
 - Employee: uses their own attendance, leave, payslips, profile
 GM, Head, and Manager are organizational job levels, not access roles.
-They default to Employee access. Job titles do not automatically grant
-announcement, leave approval, or payroll permissions. Admin, HR, and CEO
-roles are preserved when job levels change.
+They default to Employee access. Head means Head of Department. Head, GM,
+Manager, and CEO job levels automatically receive announcement management
+access: create, view drafts, edit, publish, and archive. This follows their
+current position and does not grant extra leave approval or payroll access.
+Separately assigned permissions and Admin, HR, and CEO roles are preserved
+when job levels change. Announcement management for CEO follows the position,
+not the CEO role alone. Admin can grant announcement permissions to an individual
+user separately, and remove those direct grants later.
 Permissions can be viewed and assigned to control access precisely.
 
 4. DEPARTMENTS
@@ -156,9 +162,12 @@ for safekeeping outside the live system.
 
 20. ANNOUNCEMENTS
 --------------------------
-An internal company notice/bulletin board. HR creates announcements which
-go through a workflow: Draft -> Pending Approval -> Published (or
-Rejected) -> Archived. Announcements can be:
+An internal company notice/bulletin board. HR, Admin, CEO, Head of Department,
+GM, and Manager can create, edit, publish, and archive announcements.
+The workflow is Draft -> Published -> Archived, with no separate approval.
+Only drafts can be edited and only published announcements can be archived.
+Announcement audience options show names and IDs without granting access to
+full employee records. Announcements can be:
 - Sent to everyone, a specific role, a specific department, or one person
 - Attached with one file
 - Tracked for which employees have read them

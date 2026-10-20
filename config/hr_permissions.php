@@ -3,6 +3,8 @@
 return [
     'guard' => 'web',
 
+    'announcement_job_levels' => ['head', 'ceo', 'gm', 'manager'],
+
     'groups' => [
         'departments' => [
             'departments.view_any' => 'View the list of departments',

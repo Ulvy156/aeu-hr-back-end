@@ -9,17 +9,50 @@ use App\Http\Requests\Announcement\StoreAnnouncementRequest;
 use App\Http\Requests\Announcement\UpdateAnnouncementRequest;
 use App\Http\Resources\AnnouncementResource;
 use App\Models\Announcement;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
 use App\Services\AnnouncementService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Spatie\Permission\Models\Role;
 
 class AnnouncementController extends Controller
 {
     public function __construct(
         protected AnnouncementService $announcementService,
     ) {}
+
+    /** Minimal audience choices for announcement authors, without employee record access. */
+    public function targetOptions(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasAnyPermission(['announcements.create', 'announcements.update']), 403);
+        $filters = $request->validate([
+            'q' => ['nullable', 'string', 'min:2', 'max:100'],
+            'employee_ids' => ['nullable', 'array', 'max:100'],
+            'employee_ids.*' => ['integer', 'min:1'],
+        ]);
+        $employees = collect();
+        if (! empty($filters['q']) || ! empty($filters['employee_ids'])) {
+            $query = Employee::query()->select(['id', 'employee_id', 'full_name'])->orderBy('full_name')->orderBy('id');
+            if (! empty($filters['q'])) {
+                $query->where(function ($query) use ($filters): void {
+                    $query->where('full_name', 'like', '%'.$filters['q'].'%')
+                        ->orWhere('employee_id', 'like', '%'.$filters['q'].'%');
+                });
+            } else {
+                $query->whereIn('id', $filters['employee_ids']);
+            }
+            $employees = $query->limit(empty($filters['q']) ? 100 : 15)->get();
+        }
+
+        return ApiResponse::success(data: [
+            'roles' => Role::query()->where('guard_name', config('hr_permissions.guard', 'web'))->orderBy('name')->get(['id', 'name']),
+            'departments' => Department::query()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'employees' => $employees,
+        ], message: 'Announcement audience options fetched successfully.');
+    }
 
     public function index(IndexAnnouncementRequest $request): JsonResponse
     {
