@@ -191,7 +191,6 @@ class PayrollReportService
                 $item->payrollBatch?->year,
                 $item->payrollBatch?->status,
                 (string) $item->gross_salary,
-                (string) $item->tax_amount,
                 (string) $item->nssf_deduction,
                 (string) $item->net_salary,
                 $item->status,
@@ -201,7 +200,7 @@ class PayrollReportService
         return [
             'file_name' => 'payroll-employee-list-report.xlsx',
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Month', 'Year', 'Batch Status', 'Gross Salary', 'Tax Amount', 'NSSF Deduction', 'Net Salary', 'Item Status'],
+                headings: ['Employee ID', 'Employee Name', 'Month', 'Year', 'Batch Status', 'Gross Salary', 'NSSF Deduction', 'Net Salary', 'Item Status'],
                 rows: $rows,
             ),
         ];
@@ -220,7 +219,6 @@ class PayrollReportService
                 $batch->status,
                 $batch->items_count,
                 $batch->total_gross_salary ? $this->formatMoney((float) $batch->total_gross_salary) : '0.00',
-                $batch->total_tax_amount ? $this->formatMoney((float) $batch->total_tax_amount) : '0.00',
                 $batch->total_nssf_deduction ? $this->formatMoney((float) $batch->total_nssf_deduction) : '0.00',
                 $batch->total_net_salary ? $this->formatMoney((float) $batch->total_net_salary) : '0.00',
                 $batch->generated_at?->toISOString(),
@@ -231,7 +229,7 @@ class PayrollReportService
         return [
             'file_name' => 'payroll-monthly-summary-report.xlsx',
             'export' => new ArrayReportExport(
-                headings: ['Month', 'Year', 'Status', 'Item Count', 'Gross Salary', 'Tax Amount', 'NSSF Deduction', 'Net Salary', 'Generated At', 'Approved At'],
+                headings: ['Month', 'Year', 'Status', 'Item Count', 'Gross Salary', 'NSSF Deduction', 'Net Salary', 'Generated At', 'Approved At'],
                 rows: $rows,
             ),
         ];
@@ -249,7 +247,6 @@ class PayrollReportService
                 $row['batch_count'],
                 $row['item_count'],
                 $row['gross_salary'],
-                $row['tax_amount'],
                 $row['nssf_deduction'],
                 $row['net_salary'],
             ])
@@ -258,7 +255,7 @@ class PayrollReportService
         return [
             'file_name' => 'payroll-status-summary-report.xlsx',
             'export' => new ArrayReportExport(
-                headings: ['Status', 'Batch Count', 'Item Count', 'Gross Salary', 'Tax Amount', 'NSSF Deduction', 'Net Salary'],
+                headings: ['Status', 'Batch Count', 'Item Count', 'Gross Salary', 'NSSF Deduction', 'Net Salary'],
                 rows: $rows,
             ),
         ];

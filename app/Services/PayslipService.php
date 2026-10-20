@@ -34,7 +34,8 @@ class PayslipService
             ->select('payroll_items.*')
             ->join('payroll_batches', 'payroll_batches.id', '=', 'payroll_items.payroll_batch_id')
             ->with([
-                'employee:id,user_id,employee_id,full_name',
+                'employee:id,user_id,employee_id,full_name,position_id',
+                'employee.position:id,name',
                 'payrollBatch:id,month,year,status,generated_at,submitted_at,approved_at,rejected_at',
             ])
             ->when($filters['employee_id'] ?? null, fn (Builder $query, int $employeeId) => $query->where('payroll_items.employee_id', $employeeId))
@@ -84,7 +85,8 @@ class PayslipService
     public function loadPayslip(PayrollItem $payrollItem): PayrollItem
     {
         return $payrollItem->load([
-            'employee:id,user_id,employee_id,full_name',
+            'employee:id,user_id,employee_id,full_name,position_id',
+            'employee.position:id,name',
             'payrollBatch:id,month,year,status,generated_at,submitted_at,approved_at,rejected_at',
         ]);
     }

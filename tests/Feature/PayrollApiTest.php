@@ -235,7 +235,7 @@ test('an employee leaving in a 31-day month receives a calendar-proportional sal
         ->and($item->absent_days)->toBe('0.00');
 });
 
-test('head of hr can generate payroll with proration deductions and configured tax brackets', function () {
+test('head of hr can generate payroll with proration deductions and NSSF only', function () {
     payrollCompanySettings();
 
     $hr = payrollHrHeadUser([
@@ -298,13 +298,11 @@ test('head of hr can generate payroll with proration deductions and configured t
         ->and($fullEmployeeItem->absent_days)->toBe('0.00')
         ->and($fullEmployeeItem->gross_salary)->toBe('3000.00')
         ->and($fullEmployeeItem->unpaid_deduction)->toBe('100.00')
-        ->and($fullEmployeeItem->tax_rate)->toBe('0.0983')
-        ->and($fullEmployeeItem->tax_amount)->toBe('285.00')
+        ->and($fullEmployeeItem->tax_rate)->toBe('0.0000')
+        ->and($fullEmployeeItem->tax_amount)->toBe('0.00')
         ->and($fullEmployeeItem->nssf_deduction)->toBe('6.00')
-        ->and($fullEmployeeItem->net_salary)->toBe('2609.00')
-        ->and(data_get($fullEmployeeItem->tax_breakdown, '0.tax_amount'))->toBe('0.00')
-        ->and(data_get($fullEmployeeItem->tax_breakdown, '1.tax_amount'))->toBe('6.25')
-        ->and(data_get($fullEmployeeItem->tax_breakdown, '3.tax_amount'))->toBe('116.25');
+        ->and($fullEmployeeItem->net_salary)->toBe('2894.00')
+        ->and($fullEmployeeItem->tax_breakdown)->toBe([]);
 
     expect($joinedMidMonthItem)->not->toBeNull()
         ->and($joinedMidMonthItem->working_days)->toBe('15.00')
@@ -312,10 +310,10 @@ test('head of hr can generate payroll with proration deductions and configured t
         ->and($joinedMidMonthItem->absent_days)->toBe('1.00')
         ->and($joinedMidMonthItem->gross_salary)->toBe('1500.00')
         ->and($joinedMidMonthItem->absence_deduction)->toBe('100.00')
-        ->and($joinedMidMonthItem->tax_rate)->toBe('0.0688')
-        ->and($joinedMidMonthItem->tax_amount)->toBe('96.25')
+        ->and($joinedMidMonthItem->tax_rate)->toBe('0.0000')
+        ->and($joinedMidMonthItem->tax_amount)->toBe('0.00')
         ->and($joinedMidMonthItem->nssf_deduction)->toBe('6.00')
-        ->and($joinedMidMonthItem->net_salary)->toBe('1297.75');
+        ->and($joinedMidMonthItem->net_salary)->toBe('1394.00');
 
     expect(Activity::query()->where('log_name', 'payrolls')->where('description', 'generate')->exists())->toBeTrue();
 
@@ -433,7 +431,6 @@ test('hr can review submit and ceo can approve payroll while approved batches re
             [
                 'id' => $itemId,
                 'unpaid_leave_days' => 2,
-                'tax_amount' => 50,
             ],
         ],
     ])
@@ -445,10 +442,10 @@ test('hr can review submit and ceo can approve payroll while approved batches re
 
     expect($updatedItem->unpaid_leave_days)->toBe('2.00')
         ->and($updatedItem->unpaid_deduction)->toBe('200.00')
-        ->and($updatedItem->tax_rate)->toBe('0.0964')
-        ->and($updatedItem->tax_amount)->toBe('270.00')
+        ->and($updatedItem->tax_rate)->toBe('0.0000')
+        ->and($updatedItem->tax_amount)->toBe('0.00')
         ->and($updatedItem->nssf_deduction)->toBe('6.00')
-        ->and($updatedItem->net_salary)->toBe('2524.00');
+        ->and($updatedItem->net_salary)->toBe('2794.00');
 
     $this->postJson("/api/payrolls/{$batchId}/submit")
         ->assertSuccessful()
@@ -570,7 +567,7 @@ test('rejection requires a reason and rejected payroll can be revised back to dr
         ->and(data_get($activity?->properties->toArray(), 'new_values.items'))->toBeNull();
 });
 
-test('tax snapshot remains stable after config changes and payslip reads stored values', function () {
+test('NSSF snapshot remains stable after config changes and payslip reads stored values', function () {
     payrollCompanySettings();
 
     $hr = payrollHrHeadUser([
@@ -608,25 +605,23 @@ test('tax snapshot remains stable after config changes and payslip reads stored 
         ->where('employee_id', $employee->id)
         ->sole();
 
-    expect($item->tax_rate)->toBe('0.1000')
-        ->and($item->tax_amount)->toBe('300.00')
+    expect($item->tax_rate)->toBe('0.0000')
+        ->and($item->tax_amount)->toBe('0.00')
         ->and($item->nssf_deduction)->toBe('6.00')
-        ->and(data_get($item->tax_breakdown, '1.tax_amount'))->toBe('6.25');
+        ->and($item->tax_breakdown)->toBe([]);
 
-    config()->set('hr.payroll.tax_brackets', [
-        ['up_to' => null, 'rate' => 0.50],
-    ]);
+    config()->set('hr.payroll.nssf.higher_deduction', 10);
 
     Sanctum::actingAs($employeeUser);
 
     $this->getJson("/api/payslips/{$item->id}")
         ->assertSuccessful()
-        ->assertJsonPath('data.tax_amount', '300.00')
+        ->assertJsonPath('data.tax_amount', '0.00')
         ->assertJsonPath('data.nssf_deduction', '6.00')
-        ->assertJsonPath('data.tax_breakdown.1.tax_amount', '6.25');
+        ->assertJsonPath('data.tax_breakdown', []);
 
-    expect($item->fresh()->tax_rate)->toBe('0.1000')
-        ->and($item->fresh()->tax_amount)->toBe('300.00')
+    expect($item->fresh()->tax_rate)->toBe('0.0000')
+        ->and($item->fresh()->tax_amount)->toBe('0.00')
         ->and($item->fresh()->nssf_deduction)->toBe('6.00');
 });
 
@@ -723,7 +718,7 @@ test('employees can view and download only their own approved payslips while man
         ->assertSuccessful()
         ->assertJsonPath('data.id', $approvedOwnPayslip->id)
         ->assertJsonPath('data.nssf_deduction', '6.00')
-        ->assertJsonPath('data.tax_breakdown.1.tax_amount', '6.25');
+        ->assertJsonPath('data.tax_breakdown', []);
 
     $this->getJson("/api/payslips/{$draftOwnPayslip->id}")
         ->assertForbidden();
@@ -802,14 +797,14 @@ test('maternity leave deducts 50% of daily rate for employees with at least 1 ye
         ->and($item->absence_deduction)->toBe('0.00')
         ->and($item->maternity_deduction)->toBe('2500.00')
         ->and($item->taxable_salary)->toBe('2500.00')
-        ->and($item->tax_amount)->toBe('225.00')
-        ->and($item->tax_rate)->toBe('0.0900')
+        ->and($item->tax_amount)->toBe('0.00')
+        ->and($item->tax_rate)->toBe('0.0000')
         ->and($item->nssf_deduction)->toBe('6.00')
-        ->and($item->net_salary)->toBe('2269.00');
+        ->and($item->net_salary)->toBe('2494.00');
 
     $item->update([
         'special_sick_deduction' => '25.00',
-        'net_salary' => '2244.00',
+        'net_salary' => '2469.00',
     ]);
 
     $this->getJson('/api/payrolls?month=4&year=2026')
@@ -1053,4 +1048,85 @@ test('only head of hr can hard delete a draft payroll and its items', function (
         ->and(Activity::query()->where('log_name', 'payrolls')->where('description', 'delete')->exists())->toBeTrue();
 
     $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])->assertCreated();
+});
+
+test('NSSF-only payroll handles thresholds and rejects manual tax overrides', function (float $salary, string $nssf, string $net) {
+    payrollCompanySettings();
+    [, $employee] = payrollEmployeeUser(employeeOverrides: ['base_salary' => $salary]);
+    foreach (range(1, 30) as $day) {
+        makeAttendance($employee, sprintf('2026-04-%02d', $day));
+    }
+    Sanctum::actingAs(payrollHrHeadUser());
+    $batchId = $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])->assertCreated()->json('data.id');
+    $item = PayrollItem::query()->where('employee_id', $employee->id)->sole();
+    expect($item->tax_amount)->toBe('0.00')
+        ->and($item->tax_rate)->toBe('0.0000')
+        ->and($item->tax_breakdown)->toBe([])
+        ->and($item->nssf_deduction)->toBe($nssf)
+        ->and($item->net_salary)->toBe($net);
+    $this->putJson("/api/payrolls/{$batchId}", ['items' => [['id' => $item->id, 'tax_amount' => 50]]])
+        ->assertUnprocessable()->assertJsonValidationErrors('items.0.tax_amount');
+})->with([
+    'zero' => [0.0, '0.00', '0.00'],
+    'net floor' => [3.0, '4.00', '0.00'],
+    'below threshold' => [299.99, '4.00', '295.99'],
+    'at threshold' => [300.0, '6.00', '294.00'],
+    'above threshold' => [3000.0, '6.00', '2994.00'],
+]);
+
+test('NSSF correction preserves workflow and salary snapshots across all statuses', function () {
+    payrollCompanySettings();
+    [, $employee] = payrollEmployeeUser();
+    $hr = payrollHrHeadUser();
+    Sanctum::actingAs($hr);
+    $batchId = $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])->assertCreated()->json('data.id');
+    $template = PayrollItem::query()->where('payroll_batch_id', $batchId)->sole();
+    $batches = collect(['draft', 'rejected', 'pending_approval', 'approved'])->map(function ($status, $index) use ($template) {
+        $batch = PayrollBatch::query()->create([
+            'month' => $index + 5, 'year' => 2026, 'status' => $status,
+            'approved_at' => $status === 'approved' ? now() : null,
+        ]);
+        $item = $template->replicate();
+        $item->fill([
+            'payroll_batch_id' => $batch->id, 'status' => $status === 'approved' ? 'locked' : 'draft',
+            'gross_salary' => 500, 'taxable_salary' => 421, 'tax_amount' => 20,
+            'tax_rate' => 0.05, 'tax_breakdown' => [['tax_amount' => '20.00']], 'net_salary' => 395,
+        ])->save();
+
+        return $batch;
+    });
+    $before = $batches->map(fn ($batch) => $batch->fresh()->getAttributes());
+    $migration = require database_path('migrations/2026_10_20_000001_apply_nssf_only_payroll.php');
+    $migration->up();
+    $migration->up();
+    foreach ($batches as $index => $batch) {
+        expect($batch->fresh()->getAttributes())->toBe($before[$index]);
+        $item = $batch->items()->sole();
+        expect($item->tax_amount)->toBe('0.00')->and($item->tax_rate)->toBe('0.0000')
+            ->and($item->tax_breakdown)->toBe([])->and($item->nssf_deduction)->toBe('6.00')
+            ->and($item->net_salary)->toBe('415.00')->and($item->gross_salary)->toBe('500.00')
+            ->and($item->status)->toBe($batch->status === 'approved' ? 'locked' : 'draft');
+        $export = app(PayrollService::class)->exportBatch($batch, $hr)['export'];
+        expect($export->headings())->toContain('NSSF Deduction')->not->toContain('Tax Amount', 'Tax Rate');
+        foreach ($export->array() as $row) {
+            expect(count($row))->toBe(count($export->headings()));
+            expect($row[array_search('Net Salary', $export->headings())])->toBe(415.0);
+        }
+    }
+});
+
+test('company payslip template shows NSSF and USD KHR totals without income tax', function () {
+    $settings = payrollCompanySettings();
+    [, $employee] = payrollEmployeeUser();
+    $position = Position::query()->create(['name' => 'Administration']);
+    $employee->position()->associate($position);
+    $item = new PayrollItem([
+        'gross_salary' => 500, 'unpaid_deduction' => 79, 'unpaid_leave_days' => 4,
+        'nssf_deduction' => 6, 'net_salary' => 415,
+    ]);
+    $item->setRelation('employee', $employee);
+    $item->setRelation('payrollBatch', new PayrollBatch(['month' => 3, 'year' => 2026]));
+    $html = view('payslips.pdf', ['companySetting' => $settings, 'payslip' => $item, 'companyLogoDataUri' => null])->render();
+    expect($html)->toContain('Administration', 'CEO', 'NSSF', 'USD 415.00', 'KHR 1,660,000', '01-03-2026', '31-03-2026', '($ 6.00)')
+        ->not->toContain('Tax Amount', 'Tax Bracket', 'Tax Rate');
 });

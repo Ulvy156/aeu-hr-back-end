@@ -83,13 +83,6 @@ return [
         ],
     ],
     'payroll' => [
-        'tax_brackets' => [
-            ['up_to' => 375.00, 'rate' => 0.00],
-            ['up_to' => 500.00, 'rate' => 0.05],
-            ['up_to' => 2125.00, 'rate' => 0.10],
-            ['up_to' => 3125.00, 'rate' => 0.15],
-            ['up_to' => null, 'rate' => 0.20],
-        ],
         'nssf' => [
             'salary_threshold' => 300.00,
             'lower_deduction' => 4.00,

@@ -28,6 +28,8 @@ class PayslipResource extends JsonResource
             'gross_salary' => (string) $this->gross_salary,
             'unpaid_deduction' => (string) $this->unpaid_deduction,
             'absence_deduction' => (string) $this->absence_deduction,
+            'special_sick_leave_days' => (string) $this->special_sick_leave_days,
+            'special_sick_deduction' => (string) $this->special_sick_deduction,
             'maternity_deduction' => (string) $this->maternity_deduction,
             'taxable_salary' => (string) $this->taxable_salary,
             'tax_rate' => (string) $this->tax_rate,

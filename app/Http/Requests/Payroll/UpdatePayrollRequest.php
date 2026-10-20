@@ -28,7 +28,7 @@ class UpdatePayrollRequest extends FormRequest
             'items.*.present_days' => ['sometimes', 'numeric', 'min:0'],
             'items.*.absent_days' => ['sometimes', 'numeric', 'min:0'],
             'items.*.unpaid_leave_days' => ['sometimes', 'numeric', 'min:0'],
-            'items.*.tax_amount' => ['sometimes', 'numeric', 'min:0'],
+            'items.*.tax_amount' => ['prohibited'],
             'items.*.employee_id' => ['prohibited'],
             'items.*.daily_rate' => ['prohibited'],
             'items.*.gross_salary' => ['prohibited'],

@@ -7,6 +7,7 @@ use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
 use App\Models\User;
+use App\Services\Reports\PayrollReportService;
 use Carbon\Carbon;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -99,9 +100,10 @@ function reportPayrollItem(PayrollBatch $batch, Employee $employee, array $overr
         'unpaid_deduction' => 0,
         'absence_deduction' => 0,
         'taxable_salary' => 3000,
-        'tax_rate' => 0.0667,
-        'tax_amount' => 200,
-        'net_salary' => 2800,
+        'tax_rate' => 0,
+        'tax_amount' => 0,
+        'nssf_deduction' => 6,
+        'net_salary' => 2994,
         'status' => 'locked',
     ], $overrides));
 }
@@ -308,4 +310,20 @@ test('leave reports support pending approval lists leave balance exports and per
 
     $this->getJson('/api/reports/leave?report_type=request_list')
         ->assertForbidden();
+});
+
+test('payroll report exports align NSSF and net salary columns', function () {
+    reportCompanySettings();
+    $hr = reportManagerUser('hr');
+    [, $employee] = reportEmployeeUser();
+    reportPayrollItem(reportPayrollBatch(), $employee);
+    foreach (['employee_list', 'monthly_summary', 'status_summary'] as $type) {
+        $export = app(PayrollReportService::class)->export(['report_type' => $type], $hr)['export'];
+        expect($export->headings())->toContain('NSSF Deduction')->not->toContain('Tax Amount');
+        foreach ($export->array() as $row) {
+            expect(count($row))->toBe(count($export->headings()));
+            expect((float) $row[array_search('NSSF Deduction', $export->headings())])->toBe(6.0);
+            expect((float) $row[array_search('Net Salary', $export->headings())])->toBe(2994.0);
+        }
+    }
 });

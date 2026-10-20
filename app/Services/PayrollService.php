@@ -547,8 +547,6 @@ class PayrollService
             (float) $item->maternity_deduction,
             (float) $item->special_sick_deduction,
             (float) $item->taxable_salary,
-            (float) $item->tax_rate,
-            (float) $item->tax_amount,
             (float) $item->nssf_deduction,
             (float) $item->net_salary,
             $item->status,
@@ -561,7 +559,6 @@ class PayrollService
             'maternity_deduction' => (float) $payrollBatch->items->sum('maternity_deduction'),
             'special_sick_deduction' => (float) $payrollBatch->items->sum('special_sick_deduction'),
             'taxable_salary' => (float) $payrollBatch->items->sum('taxable_salary'),
-            'tax_amount' => (float) $payrollBatch->items->sum('tax_amount'),
             'nssf_deduction' => (float) $payrollBatch->items->sum('nssf_deduction'),
             'net_salary' => (float) $payrollBatch->items->sum('net_salary'),
         ];
@@ -573,8 +570,6 @@ class PayrollService
             $totals['maternity_deduction'],
             $totals['special_sick_deduction'],
             $totals['taxable_salary'],
-            null,
-            $totals['tax_amount'],
             $totals['nssf_deduction'],
             $totals['net_salary'],
             null,
@@ -589,8 +584,7 @@ class PayrollService
                     'Month', 'Year', 'Batch Status', 'Employee ID', 'Employee Name', 'Base Salary',
                     'Paid Days', 'Present Days', 'Absent Days', 'Unpaid Leave Days', 'Maternity Leave Days',
                     'Special Sick Leave Days', 'Gross Salary', 'Unpaid Deduction', 'Absence Deduction',
-                    'Maternity Deduction', 'Special Sick Deduction', 'Taxable Salary', 'Tax Rate',
-                    'Tax Amount', 'NSSF Deduction', 'Net Salary', 'Item Status',
+                    'Maternity Deduction', 'Special Sick Deduction', 'Salary after attendance and leave deductions', 'NSSF Deduction', 'Net Salary', 'Item Status',
                 ],
                 rows: $rows,
             ),
@@ -779,11 +773,9 @@ class PayrollService
             maternityDeductionRate: $maternityDeductionRate,
             specialSickDeductionWeighted: $specialSickDeductionWeighted,
         );
-        $tax = $this->calculateTax($deductions['taxable_salary']);
         $nssfDeduction = $this->calculateNssfDeduction($deductions['taxable_salary']);
         $netSalary = $this->calculateNetSalary(
             taxableSalary: $deductions['taxable_salary'],
-            taxAmount: $tax['tax_amount'],
             nssfDeduction: $nssfDeduction,
         );
 
@@ -802,10 +794,10 @@ class PayrollService
             'maternity_deduction' => $deductions['maternity_deduction'],
             'special_sick_deduction' => $deductions['special_sick_deduction'],
             'taxable_salary' => $deductions['taxable_salary'],
-            'tax_rate' => $tax['tax_rate'],
-            'tax_amount' => $tax['tax_amount'],
+            'tax_rate' => 0.0,
+            'tax_amount' => 0.0,
             'nssf_deduction' => $nssfDeduction,
-            'tax_breakdown' => $tax['tax_breakdown'],
+            'tax_breakdown' => [],
             'net_salary' => $netSalary,
         ];
     }
@@ -1155,90 +1147,6 @@ class PayrollService
         return $totalDeductionWeighted;
     }
 
-    /**
-     * @return array{tax_rate: float, tax_amount: float, tax_breakdown: array<int, array<string, float|string|null>>}
-     */
-    protected function calculateTax(float $taxableSalary): array
-    {
-        if ($taxableSalary <= 0) {
-            return [
-                'tax_rate' => 0.0,
-                'tax_amount' => 0.0,
-                'tax_breakdown' => [],
-            ];
-        }
-
-        /** @var Collection<int, array{up_to: float|null, rate: float}> $brackets */
-        $brackets = collect((array) config('hr.payroll.tax_brackets', []))
-            ->map(function (array $bracket): array {
-                return [
-                    'up_to' => array_key_exists('up_to', $bracket) && $bracket['up_to'] !== null
-                        ? (float) $bracket['up_to']
-                        : null,
-                    'rate' => (float) ($bracket['rate'] ?? 0),
-                ];
-            })
-            ->sortBy(fn (array $bracket) => $bracket['up_to'] ?? PHP_FLOAT_MAX)
-            ->values();
-
-        if ($brackets->isEmpty()) {
-            return [
-                'tax_rate' => 0.0,
-                'tax_amount' => 0.0,
-                'tax_breakdown' => [],
-            ];
-        }
-
-        $tax = 0.0;
-        $previousCap = 0.0;
-        $breakdown = [];
-
-        foreach ($brackets as $bracket) {
-            $currentCap = $bracket['up_to'];
-            $rate = $bracket['rate'];
-
-            if ($currentCap === null) {
-                $taxableSegment = max(0, $taxableSalary - $previousCap);
-
-                $tax += $taxableSegment * $rate;
-                $breakdown[] = $this->taxBreakdownRow(
-                    from: $previousCap,
-                    to: null,
-                    rate: $rate,
-                    taxableAmount: $taxableSegment,
-                );
-
-                break;
-            }
-
-            if ($taxableSalary <= $previousCap) {
-                break;
-            }
-
-            $taxableSegment = min($taxableSalary, $currentCap) - $previousCap;
-
-            if ($taxableSegment > 0) {
-                $tax += $taxableSegment * $rate;
-                $breakdown[] = $this->taxBreakdownRow(
-                    from: $previousCap,
-                    to: $currentCap,
-                    rate: $rate,
-                    taxableAmount: $taxableSegment,
-                );
-            }
-
-            $previousCap = $currentCap;
-        }
-
-        $taxAmount = $this->roundMoney($tax);
-
-        return [
-            'tax_rate' => $taxableSalary > 0 ? round($taxAmount / $taxableSalary, 4) : 0.0,
-            'tax_amount' => min($this->roundMoney($taxableSalary), $taxAmount),
-            'tax_breakdown' => $breakdown,
-        ];
-    }
-
     protected function calculateNssfDeduction(float $taxableSalary): float
     {
         if ($taxableSalary <= 0) {
@@ -1252,9 +1160,9 @@ class PayrollService
         return $this->roundMoney($taxableSalary < $threshold ? $lowerDeduction : $higherDeduction);
     }
 
-    protected function calculateNetSalary(float $taxableSalary, float $taxAmount, float $nssfDeduction): float
+    protected function calculateNetSalary(float $taxableSalary, float $nssfDeduction): float
     {
-        return $this->roundMoney(max(0, $taxableSalary - $taxAmount - $nssfDeduction));
+        return $this->roundMoney(max(0, $taxableSalary - $nssfDeduction));
     }
 
     /**
@@ -1304,25 +1212,6 @@ class PayrollService
     protected function roundMetric(float $value): float
     {
         return round($value, 2);
-    }
-
-    /**
-     * @return array{bracket: string, from: string, to: string|null, rate: string, taxable_amount: string, tax_amount: string}
-     */
-    protected function taxBreakdownRow(float $from, ?float $to, float $rate, float $taxableAmount): array
-    {
-        $taxAmount = $this->roundMoney($taxableAmount * $rate);
-
-        return [
-            'bracket' => $to === null
-                ? sprintf('%.2f+ @ %.2f%%', $from, $rate * 100)
-                : sprintf('%.2f - %.2f @ %.2f%%', $from, $to, $rate * 100),
-            'from' => $this->formatMoney($from),
-            'to' => $to === null ? null : $this->formatMoney($to),
-            'rate' => number_format($rate, 4, '.', ''),
-            'taxable_amount' => $this->formatMoney($taxableAmount),
-            'tax_amount' => $this->formatMoney($taxAmount),
-        ];
     }
 
     protected function formatMoney(float $value): string

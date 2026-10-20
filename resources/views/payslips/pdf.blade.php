@@ -4,226 +4,90 @@
     <meta charset="utf-8">
     <title>Payslip</title>
     <style>
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            color: #1f2937;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-
-        .header-table {
-            width: 100%;
-            border: none;
-            margin-bottom: 16px;
-        }
-
-        .header-table td {
-            border: none;
-            padding: 0;
-            vertical-align: top;
-        }
-
-        .logo-cell {
-            width: 120px;
-            padding-left: 16px;
-            text-align: right;
-        }
-
-        .logo {
-            max-width: 100px;
-            max-height: 60px;
-        }
-
-        .header,
-        .section,
-        .totals {
-            margin-bottom: 20px;
-        }
-
-        .title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 4px;
-        }
-
-        .muted {
-            color: #6b7280;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            padding: 8px 10px;
-            border: 1px solid #d1d5db;
-            text-align: left;
-        }
-
-        th {
-            background: #f3f4f6;
-        }
-
-        .right {
-            text-align: right;
-        }
+        @page { margin: 35px 38px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #111; }
+        table { width: 100%; border-collapse: collapse; }
+        .header td { vertical-align: top; }
+        .brand { width: 37%; text-align: center; font-size: 10px; }
+        .logo { max-width: 145px; max-height: 105px; margin-bottom: 8px; }
+        .heading { text-align: center; font-family: DejaVu Serif, serif; font-size: 21px; font-weight: bold; padding-top: 20px; }
+        .details { margin: 35px 0 12px; line-height: 1.8; }
+        .details th { width: 75px; text-align: left; font-weight: normal; }
+        .items th, .items td { border: 1px solid #222; padding: 7px 8px; }
+        .items th { font-size: 10px; }
+        .right { text-align: right; white-space: nowrap; }
+        .center { text-align: center; }
+        .net { font-weight: bold; }
+        .rate { text-align: right; font-size: 9px; margin-top: 7px; color: #555; }
+        .signatures { margin-top: 55px; text-align: center; line-height: 2; }
     </style>
 </head>
 <body>
-    @php
-        $currency = $companySetting->salary_currency ?? 'USD';
-        $batch = $payslip->payrollBatch;
-        $employee = $payslip->employee;
-        $payPeriod = sprintf('%04d-%02d', $batch?->year ?? now()->year, $batch?->month ?? now()->month);
-        $taxBreakdown = collect($payslip->tax_breakdown ?? []);
-    @endphp
-
-    <div class="header">
-        <table class="header-table">
-            <tr>
-                <td>
-                    <div class="title">{{ $companySetting->company_name }}</div>
-                    <div class="muted">Payslip for {{ $payPeriod }}</div>
-                    @if ($companySetting->company_address)
-                        <div>{{ $companySetting->company_address }}</div>
-                    @endif
-                    @if ($companySetting->company_email)
-                        <div>{{ $companySetting->company_email }}</div>
-                    @endif
-                </td>
-                @if (! empty($companyLogoDataUri))
-                    <td class="logo-cell">
-                        <img src="{{ $companyLogoDataUri }}" alt="Company Logo" class="logo">
-                    </td>
-                @endif
-            </tr>
-        </table>
-    </div>
-
-    <div class="section">
-        <table>
-            <tr>
-                <th>Employee</th>
-                <td>{{ $employee?->full_name }}</td>
-                <th>Employee ID</th>
-                <td>{{ $employee?->employee_id }}</td>
-            </tr>
-            <!-- <tr>
-                <th>Payroll Status</th>
-                <td>{{ strtoupper((string) $batch?->status) }}</td>
-                <th>Approved At</th>
-                <td>{{ $batch?->approved_at?->format('Y-m-d H:i:s') }}</td>
-            </tr> -->
-        </table>
-    </div>
-
-    <div class="section">
-        <table>
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th class="right">Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- <tr>
-                    <td>Base Salary</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->base_salary, 2) }}</td>
-                </tr> -->
-                <!-- <tr>
-                    <td>Daily Rate</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->daily_rate, 2) }}</td>
-                </tr> -->
-                <tr>
-                    <td>Gross Salary</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->gross_salary, 2) }}</td>
-                </tr>
-                <tr>
-                    <td>Unpaid Leave Deduction</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->unpaid_deduction, 2) }}</td>
-                </tr>
-                <tr>
-                    <td>Absence Deduction</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->absence_deduction, 2) }}</td>
-                </tr>
-                @if((float) $payslip->maternity_deduction > 0)
-                <tr>
-                    <td>Maternity Leave Deduction</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->maternity_deduction, 2) }}</td>
-                </tr>
-                @endif
-                @if((float) $payslip->special_sick_deduction > 0)
-                <tr>
-                    <td>Special Sick Leave Deduction</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->special_sick_deduction, 2) }}</td>
-                </tr>
-                @endif
-                <tr>
-                    <td>Tax Amount</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->tax_amount, 2) }}</td>
-                </tr>
-                <tr>
-                    <td>NSSF Deduction</td>
-                    <td class="right">{{ $currency }} {{ number_format((float) $payslip->nssf_deduction, 2) }}</td>
-                </tr>
-                <tr>
-                    <th>Net Salary</th>
-                    <th class="right">{{ $currency }} {{ number_format((float) $payslip->net_salary, 2) }}</th>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- <div class="section">
-        <table>
-            <thead>
-                <tr>
-                    <th>Tax Bracket</th>
-                    <th class="right">Taxable Amount</th>
-                    <th class="right">Tax Amount</th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($taxBreakdown as $taxRow)
-                    <tr>
-                        <td>{{ $taxRow['bracket'] ?? 'N/A' }}</td>
-                        <td class="right">{{ $currency }} {{ number_format((float) ($taxRow['taxable_amount'] ?? 0), 2) }}</td>
-                        <td class="right">{{ $currency }} {{ number_format((float) ($taxRow['tax_amount'] ?? 0), 2) }}</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="3">No tax applied for this payroll.</td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div> -->
-
-    <div class="totals">
-        <table>
-            <tr>
-                <th>Working Days</th>
-                <td>{{ number_format((float) $payslip->working_days, 2) }}</td>
-                <th>Present Days</th>
-                <td>{{ number_format((float) $payslip->present_days, 2) }}</td>
-            </tr>
-            <tr>
-                <th>Absent Days</th>
-                <td>{{ number_format((float) $payslip->absent_days, 2) }}</td>
-                <th>Unpaid Leave Days</th>
-                <td>{{ number_format((float) $payslip->unpaid_leave_days, 2) }}</td>
-            </tr>
-            @if((float) $payslip->special_sick_leave_days > 0)
-            <tr>
-                <th>Special Sick Leave Days</th>
-                <td>{{ number_format((float) $payslip->special_sick_leave_days, 2) }}</td>
-                <th></th>
-                <td></td>
-            </tr>
+@php
+    $batch = $payslip->payrollBatch;
+    $employee = $payslip->employee;
+    $start = \Carbon\Carbon::create($batch->year, $batch->month, 1)->startOfMonth();
+    $end = $start->copy()->endOfMonth();
+    $money = fn ($amount) => number_format((float) $amount, 2);
+    $rows = [['Basic Salary', '1 month', $payslip->gross_salary, $payslip->gross_salary, false]];
+    foreach ([
+        ['Unpaid Leave', 'unpaid_leave_days', 'unpaid_deduction'],
+        ['Absence', 'absent_days', 'absence_deduction'],
+        ['Maternity Leave', 'maternity_leave_days', 'maternity_deduction'],
+        ['Special Sick Leave', 'special_sick_leave_days', 'special_sick_deduction'],
+    ] as [$label, $days, $amount]) {
+        if ((float) $payslip->{$amount} > 0) {
+            $rows[] = [$label, rtrim(rtrim(number_format((float) $payslip->{$days}, 2), '0'), '.').' days', null, $payslip->{$amount}, true];
+        }
+    }
+    $rows[] = ['NSSF', '', null, $payslip->nssf_deduction, true];
+    // Preserve reconciliation when the minimum net salary of zero is applied.
+    $rawNet = (float) $payslip->gross_salary;
+    foreach (array_slice($rows, 1) as $row) { $rawNet -= (float) $row[3]; }
+    $adjustment = round((float) $payslip->net_salary - $rawNet, 2);
+    if ($adjustment > 0) { $rows[] = ['Minimum net pay adjustment', '', null, $adjustment, false]; }
+@endphp
+<table class="header">
+    <tr>
+        <td class="brand">
+            @if (!empty($companyLogoDataUri))
+                <img src="{{ $companyLogoDataUri }}" alt="Company logo" class="logo"><br>
             @endif
-        </table>
-    </div>
+            {{ $companySetting->company_address }}
+        </td>
+        <td class="heading">{{ $companySetting->company_name }}'s Family</td>
+    </tr>
+</table>
+<div class="details">
+    <strong>Payslip</strong>
+    <table>
+        <tr><th>Name</th><td>: {{ $employee?->full_name }}</td></tr>
+        <tr><th>Job Title</th><td>: {{ $employee?->position?->name ?? '—' }}</td></tr>
+        <tr><th>ID</th><td>: {{ $employee?->employee_id }}</td></tr>
+        <tr><th>Date</th><td>: {{ $start->format('d-m-Y') }} – {{ $end->format('d-m-Y') }}</td></tr>
+    </table>
+</div>
+<table class="items">
+    <thead><tr>
+        <th style="width: 5%">No.</th><th>Description</th><th style="width: 16%">Days/Month</th>
+        <th style="width: 18%">Rate (USD)</th><th style="width: 21%">Amount (USD)</th>
+    </tr></thead>
+    <tbody>
+        @foreach ($rows as $index => [$label, $quantity, $rate, $amount, $deduction])
+            <tr>
+                <td class="center">{{ $index + 1 }}</td><td>{{ $label }}</td><td class="center">{{ $quantity }}</td>
+                <td class="right">{{ $rate === null ? '—' : '$ '.$money($rate) }}</td>
+                <td class="right">{{ $deduction ? '($ '.$money($amount).')' : '$ '.$money($amount) }}</td>
+            </tr>
+        @endforeach
+        @for ($i = count($rows); $i < 6; $i++)
+            <tr><td class="center">{{ $i + 1 }}</td><td>&nbsp;</td><td></td><td></td><td class="right">—</td></tr>
+        @endfor
+        <tr class="net"><td colspan="4" rowspan="2">TOTAL NET SALARY</td><td class="right">USD {{ $money($payslip->net_salary) }}</td></tr>
+        <tr class="net"><td class="right">KHR {{ number_format(round((float) $payslip->net_salary * 4000), 0) }}</td></tr>
+    </tbody>
+</table>
+<div class="rate">1 USD = 4,000 KHR</div>
+<table class="signatures"><tr><td>Administration<br>Signature</td><td>CEO<br>Signature</td></tr></table>
 </body>
 </html>
