@@ -104,7 +104,56 @@ test('managerial job titles retain employee access without payroll or peer paysl
     $this->getJson("/api/payslips/{$items[1]->id}")->assertForbidden();
     expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
         ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue();
-})->with([JobLevel::Manager, JobLevel::Head, JobLevel::Gm]);
+})->with([JobLevel::Manager, JobLevel::Head]);
+
+test('gm job level grants report view and export while keeping employee payroll access limits', function () {
+    $department = Department::query()->create(['name' => 'Commercial', 'status' => 'active']);
+    $position = Position::query()->create([
+        'name' => 'General Manager', 'department_id' => $department->id,
+        'job_level' => JobLevel::Gm, 'status' => 'active',
+    ]);
+    $user = User::factory()->create()->assignRole('employee');
+    $employee = Employee::query()->create([
+        'user_id' => $user->id, 'employee_id' => 'FOUR-GM-001', 'full_name' => $user->name,
+        'department_id' => $department->id, 'position_id' => $position->id,
+        'join_date' => '2026-01-01', 'base_salary' => 1000, 'employment_status' => 'full-time',
+    ]);
+    app(JobLevelRoleService::class)->syncForEmployee($employee);
+    $peer = Employee::query()->create([
+        'user_id' => User::factory()->create()->assignRole('employee')->id,
+        'employee_id' => 'FOUR-GM-002', 'full_name' => 'Peer', 'department_id' => $department->id,
+        'join_date' => '2026-01-01', 'base_salary' => 1000, 'employment_status' => 'full-time',
+    ]);
+    $batch = PayrollBatch::query()->create(['month' => 5, 'year' => 2026, 'status' => 'approved']);
+    $items = collect([$employee, $peer])->map(fn ($owner) => PayrollItem::query()->create([
+        'payroll_batch_id' => $batch->id, 'employee_id' => $owner->id, 'base_salary' => 1000,
+        'daily_rate' => 40, 'working_days' => 22, 'present_days' => 22,
+        'gross_salary' => 1000, 'taxable_salary' => 1000, 'net_salary' => 1000, 'status' => 'locked',
+    ]));
+
+    Sanctum::actingAs($user);
+    $this->getJson('/api/payrolls')->assertForbidden();
+    $this->getJson('/api/reports/payroll?report_type=employee_list&month=5&year=2026')->assertSuccessful();
+    $export = $this->get('/api/reports/payroll/export?report_type=employee_list&month=5&year=2026');
+    $export->assertOk();
+    expect((string) $export->headers->get('content-disposition'))->toContain('payroll-employee-list-report.xlsx');
+    $this->getJson('/api/payslips')->assertSuccessful()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $items[0]->id);
+    $this->getJson("/api/payslips/{$items[1]->id}")->assertForbidden();
+    expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
+        ->and($user->fresh()->hasDirectPermission('reports.payroll_export'))->toBeTrue()
+        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue();
+
+    $position->update(['job_level' => JobLevel::Junior]);
+    app(JobLevelRoleService::class)->syncForPosition($position->fresh());
+
+    $user = $user->fresh();
+    expect($user->hasDirectPermission('reports.payroll_export'))->toBeFalse()
+        ->and($user->hasPermissionTo('reports.payroll_view'))->toBeFalse();
+
+    Sanctum::actingAs($user);
+    $this->getJson('/api/reports/payroll?report_type=employee_list&month=5&year=2026')->assertForbidden();
+});
 
 test('role migration retires automatic head grants while preserving unrelated direct grants', function () {
     Role::findOrCreate('head', 'web');

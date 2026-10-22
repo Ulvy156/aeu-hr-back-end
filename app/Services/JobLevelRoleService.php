@@ -6,6 +6,7 @@ use App\Enums\JobLevel;
 use App\Models\Employee;
 use App\Models\Position;
 use App\Models\User;
+use Spatie\Permission\PermissionRegistrar;
 
 class JobLevelRoleService
 {
@@ -22,32 +23,72 @@ class JobLevelRoleService
 
     public function syncForPosition(Position $position): void
     {
-        $position->loadMissing(['employees.user', 'employees.position.department', 'employees.department']);
+        $position->loadMissing(['employees.user']);
 
         foreach ($position->employees as $employee) {
-            $this->syncForEmployee($employee);
+            if (! $employee->user) {
+                continue;
+            }
+
+            // Use the position being synced so job_level changes apply immediately.
+            $this->syncForUser($employee->user, $position->job_level);
         }
     }
 
     public function syncForUser(User $user, ?JobLevel $jobLevel): void
     {
-        if ($jobLevel === null) {
-            return;
-        }
-
         $user->loadMissing('roles');
 
         if ($user->hasAnyRole($this->protectedRoles())) {
             return;
         }
 
-        $roleName = $this->defaultRole($jobLevel);
+        if ($jobLevel !== null) {
+            $roleName = $this->defaultRole($jobLevel);
 
-        if ($roleName === null || $user->hasRole($roleName)) {
+            if ($roleName !== null && ! $user->hasRole($roleName)) {
+                $user->syncRoles([$roleName]);
+            }
+        }
+
+        $this->syncReportPermissions($user, $jobLevel);
+    }
+
+    protected function syncReportPermissions(User $user, ?JobLevel $jobLevel): void
+    {
+        $permissionsByLevel = (array) config('hr_permissions.report_job_level_permissions', []);
+        $allReportPermissions = collect($permissionsByLevel)
+            ->flatten()
+            ->filter(fn ($permission) => is_string($permission) && $permission !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($allReportPermissions === []) {
             return;
         }
 
-        $user->syncRoles([$roleName]);
+        $granted = $jobLevel === null
+            ? []
+            : array_values(array_filter(
+                (array) ($permissionsByLevel[$jobLevel->value] ?? []),
+                fn ($permission) => is_string($permission) && $permission !== ''
+            ));
+
+        $toRevoke = array_values(array_intersect(
+            array_diff($allReportPermissions, $granted),
+            $user->getDirectPermissions()->pluck('name')->all()
+        ));
+
+        if ($toRevoke !== []) {
+            $user->revokePermissionTo($toRevoke);
+        }
+
+        if ($granted !== []) {
+            $user->givePermissionTo($granted);
+        }
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     /**

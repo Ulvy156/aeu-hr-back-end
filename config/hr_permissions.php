@@ -5,6 +5,17 @@ return [
 
     'announcement_job_levels' => ['head', 'ceo', 'gm', 'manager'],
 
+    'report_job_level_permissions' => [
+        'gm' => [
+            'reports.payroll_view',
+            'reports.payroll_export',
+            'reports.attendance_view',
+            'reports.attendance_export',
+            'reports.leave_view',
+            'reports.leave_export',
+        ],
+    ],
+
     'groups' => [
         'departments' => [
             'departments.view_any' => 'View the list of departments',
@@ -279,8 +290,11 @@ return [
                 'payslips.view_any',
                 'payslips.download_any',
                 'reports.payroll_view',
+                'reports.payroll_export',
                 'reports.attendance_view',
+                'reports.attendance_export',
                 'reports.leave_view',
+                'reports.leave_export',
                 'audit_logs.view',
                 'company_settings.view',
                 'dashboards.ceo_view',

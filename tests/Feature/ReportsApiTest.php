@@ -137,7 +137,7 @@ function reportLeave(Employee $employee, array $overrides = []): LeaveRequest
     ], $overrides));
 }
 
-test('hr can view and export payroll reports while ceo cannot export them', function () {
+test('hr and ceo can view and export payroll reports', function () {
     reportCompanySettings();
     $hr = reportManagerUser('hr', ['email' => 'hr.report@example.com']);
     $ceo = reportManagerUser('ceo', ['email' => 'ceo.report@example.com']);
@@ -187,8 +187,9 @@ test('hr can view and export payroll reports while ceo cannot export them', func
 
     Sanctum::actingAs($ceo);
 
-    $this->get('/api/reports/payroll/export?report_type=employee_list&month=4&year=2026')
-        ->assertForbidden();
+    $ceoExport = $this->get('/api/reports/payroll/export?report_type=employee_list&month=4&year=2026');
+    $ceoExport->assertOk();
+    expect((string) $ceoExport->headers->get('content-disposition'))->toContain('payroll-employee-list-report.xlsx');
 });
 
 test('attendance reports return monthly summary and correction exports while employees remain forbidden', function () {
