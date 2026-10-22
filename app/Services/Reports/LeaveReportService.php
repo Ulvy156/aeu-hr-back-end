@@ -123,6 +123,7 @@ class LeaveReportService
                 $leave->employee?->employee_id,
                 $leave->employee?->full_name,
                 $leave->leave_type,
+                $this->formatLeaveDuration($leave->duration_type, $leave->half_day_period),
                 $leave->start_date?->toDateString(),
                 $leave->end_date?->toDateString(),
                 (string) $leave->total_days,
@@ -136,10 +137,27 @@ class LeaveReportService
         return [
             'file_name' => "leave-{$suffix}-report.xlsx",
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Leave Type', 'Start Date', 'End Date', 'Total Days', 'Status', 'HR Approval Status', 'CEO Approval Status', 'Rejection Reason'],
+                headings: ['Employee ID', 'Employee Name', 'Leave Type', 'Duration', 'Start Date', 'End Date', 'Total Days', 'Status', 'HR Approval Status', 'CEO Approval Status', 'Rejection Reason'],
                 rows: $rows,
             ),
         ];
+    }
+
+    protected function formatLeaveDuration(?string $durationType, ?string $halfDayPeriod): string
+    {
+        if ($durationType === 'full_day') {
+            return 'Full day';
+        }
+
+        if ($durationType === 'half_day') {
+            return match ($halfDayPeriod) {
+                'morning' => 'Half day · Morning',
+                'afternoon' => 'Half day · Afternoon',
+                default => 'Half day',
+            };
+        }
+
+        return $durationType ?: '—';
     }
 
     /**
