@@ -28,8 +28,6 @@ class AttendanceReportService
 
         return match ($reportType) {
             'monthly_summary' => $this->monthlySummaryReport($filters),
-            'late_employees' => $this->attendanceListReport(array_merge($filters, ['status' => 'late']), 'late_employees'),
-            'absent_employees' => $this->attendanceListReport(array_merge($filters, ['status' => 'absent']), 'absent_employees'),
             'correction_list' => $this->correctionListReport($filters),
             default => $this->attendanceListReport($filters, 'daily_list'),
         };
@@ -46,8 +44,6 @@ class AttendanceReportService
 
         return match ($reportType) {
             'monthly_summary' => $this->exportMonthlySummary($filters),
-            'late_employees' => $this->exportAttendanceList(array_merge($filters, ['status' => 'late']), 'late-employees'),
-            'absent_employees' => $this->exportAttendanceList(array_merge($filters, ['status' => 'absent']), 'absent-employees'),
             'correction_list' => $this->exportCorrectionList($filters),
             default => $this->exportAttendanceList($filters, 'daily-list'),
         };

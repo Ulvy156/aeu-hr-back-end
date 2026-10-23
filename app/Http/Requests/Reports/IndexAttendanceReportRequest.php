@@ -19,7 +19,7 @@ class IndexAttendanceReportRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'report_type' => ['nullable', Rule::in(['daily_list', 'monthly_summary', 'late_employees', 'absent_employees', 'correction_list'])],
+            'report_type' => ['nullable', Rule::in(['daily_list', 'monthly_summary', 'correction_list'])],
             'employee_id' => ['nullable', 'string', 'exists:employees,employee_id'],
             'attendance_date' => ['nullable', 'date'],
             'date_from' => ['nullable', 'date'],

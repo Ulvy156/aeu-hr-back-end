@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PayrollBatch;
 use App\Models\PayrollItem;
+use App\Models\Position;
 use App\Models\User;
 use App\Services\Reports\AttendanceReportService;
 use App\Services\Reports\PayrollReportService;
@@ -249,7 +250,7 @@ test('attendance reports return monthly summary and correction exports while emp
         ->assertForbidden();
 });
 
-test('leave reports support pending approval lists leave balance exports and permission boundaries', function () {
+test('leave reports support status filtered lists leave balance exports and permission boundaries', function () {
     reportCompanySettings();
     $hr = reportManagerUser('hr', ['email' => 'hr.leave.report@example.com']);
     $ceo = reportManagerUser('ceo', ['email' => 'ceo.leave.report@example.com']);
@@ -287,11 +288,11 @@ test('leave reports support pending approval lists leave balance exports and per
 
     Sanctum::actingAs($ceo);
 
-    $this->getJson('/api/reports/leave?report_type=pending_approval')
+    $this->getJson('/api/reports/leave?report_type=request_list&status=pending')
         ->assertSuccessful()
         ->assertJsonPath('message', 'Leave report fetched successfully.')
         ->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.report_type', 'pending_approval')
+        ->assertJsonPath('data.report_type', 'request_list')
         ->assertJsonPath('data.items.0.id', $pendingLeave->id);
 
     Sanctum::actingAs($hr);
@@ -353,4 +354,85 @@ test('attendance reports and exports include both missing issues without absence
         ->and($export->headings()[6])->toBe('Missing Clock Out Count')
         ->and($export->headings()[7])->toBe('Missing Clock In Count')
         ->and($export->array()[0][6])->toBe(1)->and($export->array()[0][7])->toBe(1);
+});
+
+test('monthly leave report returns leave absence totals exports and forbids employees', function () {
+    reportCompanySettings();
+    $hr = reportManagerUser('hr', ['email' => 'hr.monthly.leave@example.com']);
+    [$employeeUser, $employee] = reportEmployeeUser('employee', ['email' => 'employee.monthly.leave@example.com'], [
+        'employee_id' => 'EMP-73001',
+        'full_name' => 'Alpha Monthly Leave',
+        'gender' => 'female',
+        'join_date' => '2025-01-01',
+    ]);
+    [, $formerEmployee] = reportEmployeeUser('employee', ['email' => 'former.monthly.leave@example.com'], [
+        'employee_id' => 'EMP-73002',
+        'full_name' => 'Former Monthly Leave',
+        'join_date' => '2024-01-01',
+        'last_working_date' => '2026-04-30',
+    ]);
+
+    $position = Position::query()->create([
+        'name' => 'Accounting',
+        'status' => 'active',
+    ]);
+    $employee->update(['position_id' => $position->id]);
+
+    reportLeave($employee, [
+        'status' => 'approved',
+        'hr_approval_status' => 'approved',
+        'ceo_approval_status' => 'approved',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-05',
+        'total_days' => 2,
+        'reason' => 'នាំកូនទៅពេទ្យ',
+    ]);
+    reportAttendance($employee, '2026-05-06', 'absent', [
+        'clock_in_time' => null,
+        'clock_out_time' => null,
+        'absent_periods' => ['morning'],
+    ]);
+    reportLeave($formerEmployee, [
+        'status' => 'approved',
+        'hr_approval_status' => 'approved',
+        'ceo_approval_status' => 'approved',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'total_days' => 1,
+        'reason' => 'Should not appear',
+    ]);
+
+    Sanctum::actingAs($hr);
+
+    $response = $this->getJson('/api/reports/monthly-leave?month=5&year=2026')
+        ->assertSuccessful()
+        ->assertJsonPath('message', 'Monthly leave report fetched successfully.')
+        ->assertJsonPath('data.report_type', 'monthly_leave')
+        ->assertJsonPath('data.summary.employee_count', 1)
+        ->assertJsonPath('data.summary.absence_days', '0.5')
+        ->assertJsonPath('data.summary.leave_days', '2')
+        ->assertJsonPath('data.summary.leave_column_label', 'Leave on May')
+        ->assertJsonPath('meta.total', 1)
+        ->assertJsonPath('data.items.0.name', 'Alpha Monthly Leave')
+        ->assertJsonPath('data.items.0.position', 'Accounting')
+        ->assertJsonPath('data.items.0.gender', 'F')
+        ->assertJsonPath('data.items.0.absence_days', '0.5')
+        ->assertJsonPath('data.items.0.leave_days', '2')
+        ->assertJsonPath('data.items.0.reason', '4-5-2026: នាំកូនទៅពេទ្យ; 5-5-2026: នាំកូនទៅពេទ្យ');
+
+    expect($response->json('data.items.0.no'))->toBe(1);
+
+    $excelExport = $this->get('/api/reports/monthly-leave/export?month=5&year=2026');
+    $excelExport->assertOk();
+    expect((string) $excelExport->headers->get('content-disposition'))->toContain('monthly-leave-2026-05.xlsx');
+
+    $pdfExport = $this->get('/api/reports/monthly-leave/export-pdf?month=5&year=2026');
+    $pdfExport->assertOk();
+    expect((string) $pdfExport->headers->get('content-type'))->toContain('application/pdf')
+        ->and((string) $pdfExport->headers->get('content-disposition'))->toContain('monthly-leave-2026-05.pdf');
+
+    Sanctum::actingAs($employeeUser);
+
+    $this->getJson('/api/reports/monthly-leave?month=5&year=2026')
+        ->assertForbidden();
 });

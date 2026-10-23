@@ -29,9 +29,6 @@ class LeaveReportService
         $reportType = (string) ($filters['report_type'] ?? 'request_list');
 
         return match ($reportType) {
-            'pending_approval' => $this->leaveListReport(array_merge($filters, ['status' => 'pending']), 'pending_approval'),
-            'approved' => $this->leaveListReport(array_merge($filters, ['status' => 'approved']), 'approved'),
-            'rejected' => $this->leaveListReport(array_merge($filters, ['status' => 'rejected']), 'rejected'),
             'leave_balance' => $this->leaveBalanceReport($filters),
             default => $this->leaveListReport($filters, 'request_list'),
         };
@@ -47,9 +44,6 @@ class LeaveReportService
         $reportType = (string) ($filters['report_type'] ?? 'request_list');
 
         return match ($reportType) {
-            'pending_approval' => $this->exportLeaveList(array_merge($filters, ['status' => 'pending']), 'pending-approval'),
-            'approved' => $this->exportLeaveList(array_merge($filters, ['status' => 'approved']), 'approved'),
-            'rejected' => $this->exportLeaveList(array_merge($filters, ['status' => 'rejected']), 'rejected'),
             'leave_balance' => $this->exportLeaveBalance($filters),
             default => $this->exportLeaveList($filters, 'request-list'),
         };

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Reports\AttendanceReportController;
 use App\Http\Controllers\Api\Reports\LeaveReportController;
+use App\Http\Controllers\Api\Reports\MonthlyLeaveReportController;
 use App\Http\Controllers\Api\Reports\PayrollReportController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +19,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/leave', [LeaveReportController::class, 'index'])
             ->middleware('permission:reports.leave_view');
         Route::get('/leave/export', [LeaveReportController::class, 'export'])
+            ->middleware('permission:reports.leave_export');
+        Route::get('/monthly-leave', [MonthlyLeaveReportController::class, 'index'])
+            ->middleware('permission:reports.leave_view');
+        Route::get('/monthly-leave/export', [MonthlyLeaveReportController::class, 'export'])
+            ->middleware('permission:reports.leave_export');
+        Route::get('/monthly-leave/export-pdf', [MonthlyLeaveReportController::class, 'exportPdf'])
             ->middleware('permission:reports.leave_export');
     });
 });
