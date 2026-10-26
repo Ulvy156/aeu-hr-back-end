@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Leave\ApproveLeaveRequest;
 use App\Http\Requests\Leave\IndexLeaveBalanceRequest;
 use App\Http\Requests\Leave\IndexLeaveRequest;
+use App\Http\Requests\Leave\IndexLeaveSummaryRequest;
 use App\Http\Requests\Leave\RejectLeaveRequest;
 use App\Http\Requests\Leave\StoreLeaveRequest;
 use App\Http\Resources\LeaveBalanceResource;
@@ -60,12 +61,12 @@ class LeaveController extends Controller
         );
     }
 
-    public function summary(): JsonResponse
+    public function summary(IndexLeaveSummaryRequest $request): JsonResponse
     {
         $this->authorize('viewAny', LeaveRequest::class);
 
         return ApiResponse::success(
-            data: $this->leaveService->monthlySummary(request()->user()),
+            data: $this->leaveService->monthlySummary($request->user(), $request->validated()),
             message: 'Monthly leave summary fetched successfully.',
         );
     }

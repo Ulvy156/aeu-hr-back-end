@@ -56,31 +56,40 @@ class LeaveService
             ->paginate($perPage);
     }
 
-    public function monthlySummary(User $viewer): array
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function monthlySummary(User $viewer, array $filters = []): array
     {
         $today = Carbon::today();
-        $monthStart = $today->copy()->startOfMonth();
-        $monthEnd = $today->copy()->endOfMonth()->startOfDay();
+        [$periodStart, $periodEnd] = $this->resolveSummaryPeriod($filters, $today);
+
         $query = LeaveRequest::query()
             ->whereIn('status', ['approved', 'pending'])
-            ->whereDate('start_date', '<=', $monthEnd->toDateString())
-            ->whereDate('end_date', '>=', $monthStart->toDateString());
+            ->whereDate('start_date', '<=', $periodEnd->toDateString())
+            ->whereDate('end_date', '>=', $periodStart->toDateString())
+            ->when($filters['leave_type'] ?? null, fn (Builder $query, string $leaveType) => $query->where('leave_type', $leaveType));
 
         if (! $this->canViewAllLeaves($viewer)) {
             if (! $this->canViewOwnLeaves($viewer)) {
                 throw ApiException::forbidden();
             }
             $query->whereBelongsTo($this->employeeForUserOrFail($viewer));
+        } else {
+            $employeeId = Employee::resolveId($filters['employee_id'] ?? null);
+            $query->when($employeeId, fn (Builder $query, int $id) => $query->where('employee_id', $id));
         }
 
         $requests = $query->get(['employee_id', 'start_date', 'end_date', 'duration_type', 'status']);
         $approved = $requests->where('status', 'approved');
-        $workingDates = $this->workingDates($monthStart, $monthEnd);
+        $workingDates = $this->workingDates($periodStart, $periodEnd);
         $days = 0.0;
         $onLeaveToday = [];
+        $includesToday = $today->betweenIncluded($periodStart->copy()->startOfDay(), $periodEnd->copy()->endOfDay());
 
         foreach ($approved as $leave) {
-            if ($leave->start_date->lte($today) && $leave->end_date->gte($today)) {
+            if ($includesToday && $leave->start_date->lte($today) && $leave->end_date->gte($today)) {
                 $onLeaveToday[$leave->employee_id] = true;
             }
             foreach ($workingDates as $date) {
@@ -93,14 +102,44 @@ class LeaveService
         }
 
         return [
-            'month' => $today->format('Y-m'),
-            'date_from' => $monthStart->toDateString(),
-            'date_to' => $monthEnd->toDateString(),
+            'month' => $periodStart->format('Y-m'),
+            'date_from' => $periodStart->toDateString(),
+            'date_to' => $periodEnd->toDateString(),
             'today' => $today->toDateString(),
             'on_leave_today' => count($onLeaveToday),
             'employees_taking_leave' => $approved->pluck('employee_id')->unique()->count(),
             'total_leave_days' => $days,
             'awaiting_approval' => $requests->where('status', 'pending')->count(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    protected function resolveSummaryPeriod(array $filters, CarbonInterface $today): array
+    {
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+
+        if (filled($dateFrom) || filled($dateTo)) {
+            $periodStart = filled($dateFrom)
+                ? Carbon::parse($dateFrom)->startOfDay()
+                : Carbon::parse($dateTo)->startOfMonth();
+            $periodEnd = filled($dateTo)
+                ? Carbon::parse($dateTo)->startOfDay()
+                : $today->copy()->startOfDay();
+
+            if ($periodStart->greaterThan($periodEnd)) {
+                $periodEnd = $periodStart->copy();
+            }
+
+            return [$periodStart, $periodEnd];
+        }
+
+        return [
+            $today->copy()->startOfMonth(),
+            $today->copy()->endOfMonth()->startOfDay(),
         ];
     }
 

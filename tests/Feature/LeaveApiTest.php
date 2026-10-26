@@ -523,6 +523,61 @@ test('monthly summary requires authentication and permission to view leave', fun
         ->getJson('/api/leaves/summary')->assertForbidden();
 });
 
+test('monthly summary can filter by date range leave type and employee', function () {
+    leaveCompanySettings();
+    [$hr] = leaveEmployeeUser('hr');
+    [, $alice] = leaveEmployeeUser('employee', ['name' => 'Alice'], ['full_name' => 'Alice', 'employee_id' => 'EMP-ALICE']);
+    [, $bob] = leaveEmployeeUser('employee', ['name' => 'Bob'], ['full_name' => 'Bob', 'employee_id' => 'EMP-BOB']);
+
+    makeLeave($alice, [
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'status' => 'approved',
+        'total_days' => 1,
+    ]);
+    makeLeave($bob, [
+        'leave_type' => 'sick',
+        'start_date' => '2026-05-04',
+        'end_date' => '2026-05-04',
+        'status' => 'approved',
+        'total_days' => 1,
+    ]);
+    makeLeave($alice, [
+        'leave_type' => 'annual',
+        'start_date' => '2026-05-20',
+        'end_date' => '2026-05-20',
+        'status' => 'pending',
+        'total_days' => 1,
+    ]);
+
+    $token = $hr->createToken('hr-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/leaves/summary?date_from=2026-05-04&date_to=2026-05-04')
+        ->assertSuccessful()
+        ->assertJsonPath('data.date_from', '2026-05-04')
+        ->assertJsonPath('data.date_to', '2026-05-04')
+        ->assertJsonPath('data.on_leave_today', 2)
+        ->assertJsonPath('data.employees_taking_leave', 2)
+        ->assertJsonPath('data.total_leave_days', 2)
+        ->assertJsonPath('data.awaiting_approval', 0);
+
+    $this->withToken($token)
+        ->getJson('/api/leaves/summary?date_from=2026-05-01&date_to=2026-05-31&leave_type=sick')
+        ->assertSuccessful()
+        ->assertJsonPath('data.employees_taking_leave', 1)
+        ->assertJsonPath('data.total_leave_days', 1)
+        ->assertJsonPath('data.awaiting_approval', 0);
+
+    $this->withToken($token)
+        ->getJson('/api/leaves/summary?date_from=2026-05-01&date_to=2026-05-31&employee_id=EMP-ALICE')
+        ->assertSuccessful()
+        ->assertJsonPath('data.on_leave_today', 1)
+        ->assertJsonPath('data.employees_taking_leave', 1)
+        ->assertJsonPath('data.awaiting_approval', 1);
+});
+
 test('leave balances are calculated dynamically from approved leave requests and managers can inspect by employee', function () {
     leaveCompanySettings();
     [$employeeUser, $employee] = leaveEmployeeUser();
