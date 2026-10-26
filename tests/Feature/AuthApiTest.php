@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Employee;
+use App\Models\Position;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,10 +34,16 @@ test('a user can login and receive an access token', function () {
 
     $user->assignRole('employee');
 
+    $position = Position::query()->create([
+        'name' => 'Sales Executive',
+        'status' => 'active',
+    ]);
+
     Employee::query()->create([
         'user_id' => $user->id,
         'employee_id' => 'EMP001',
         'full_name' => 'Employee User',
+        'position_id' => $position->id,
         'join_date' => now()->toDateString(),
         'employment_status' => 'full-time',
     ]);
@@ -50,7 +57,9 @@ test('a user can login and receive an access token', function () {
         ->assertJsonPath('data.token_type', 'Bearer')
         ->assertJsonPath('data.user.email', 'employee@example.com')
         ->assertJsonPath('data.user.roles.0', 'employee')
-        ->assertJsonPath('data.user.employee.employee_id', 'EMP001');
+        ->assertJsonPath('data.user.employee.employee_id', 'EMP001')
+        ->assertJsonPath('data.user.employee.position.id', $position->id)
+        ->assertJsonPath('data.user.employee.position.name', 'Sales Executive');
 
     expect($result['response']->json('data.access_token'))->toBeString()->not->toBeEmpty();
     expect($result['response']->json('data.expires_in'))->toBeInt()->toBeGreaterThan(0);
@@ -188,10 +197,16 @@ test('the authenticated user can be fetched from the me endpoint', function () {
 
     $user->assignRole('employee');
 
+    $position = Position::query()->create([
+        'name' => 'Account & Stock',
+        'status' => 'active',
+    ]);
+
     Employee::query()->create([
         'user_id' => $user->id,
         'employee_id' => 'EMP001',
         'full_name' => 'Admin User',
+        'position_id' => $position->id,
         'join_date' => now()->toDateString(),
     ]);
 
@@ -207,7 +222,9 @@ test('the authenticated user can be fetched from the me endpoint', function () {
         ->assertJsonPath('data.email', 'admin@example.com')
         ->assertJsonPath('data.roles.0', 'employee')
         ->assertJsonPath('data.employee.employee_id', 'EMP001')
-        ->assertJsonPath('data.employee.full_name', 'Admin User');
+        ->assertJsonPath('data.employee.full_name', 'Admin User')
+        ->assertJsonPath('data.employee.position.id', $position->id)
+        ->assertJsonPath('data.employee.position.name', 'Account & Stock');
 
     expect($response->json('data.permissions'))
         ->toContain('attendance.clock_in', 'leaves.create', 'payslips.view_own')

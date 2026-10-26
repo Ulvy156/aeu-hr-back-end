@@ -48,6 +48,12 @@ class AuthUserResource extends JsonResource
                     'id' => $this->employee->id,
                     'employee_id' => $this->employee->employee_id,
                     'full_name' => $this->employee->full_name,
+                    'position' => $this->employee->relationLoaded('position') && $this->employee->position
+                        ? [
+                            'id' => $this->employee->position->id,
+                            'name' => $this->employee->position->name,
+                        ]
+                        : null,
                 ]
                 : null,
             'created_at' => $this->created_at?->toISOString(),

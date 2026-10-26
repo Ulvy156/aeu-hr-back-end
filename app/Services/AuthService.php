@@ -58,7 +58,8 @@ class AuthService
     {
         return $user->loadMissing(
             'roles:id,name',
-            'employee:id,user_id,employee_id,full_name',
+            'employee:id,user_id,employee_id,full_name,position_id',
+            'employee.position:id,name',
         );
     }
 
@@ -77,7 +78,8 @@ class AuthService
             'expires_in' => $expirationMinutes * 60,
             'user' => $user->loadMissing(
                 'roles:id,name',
-                'employee:id,user_id,employee_id,full_name',
+                'employee:id,user_id,employee_id,full_name,position_id',
+                'employee.position:id,name',
             ),
         ];
     }
