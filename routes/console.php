@@ -22,7 +22,7 @@ Schedule::command('attendance:mark-absent')
     ->onOneServer()
     ->withoutOverlapping();
 
-Schedule::command('recruitment:close-due-vacancies')
+Schedule::command('recruitment:process-due-vacancies')
     ->dailyAt('00:05')
     ->onOneServer()
     ->withoutOverlapping();

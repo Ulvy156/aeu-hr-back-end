@@ -71,9 +71,32 @@ class StoreCandidateRequest extends FormRequest
 
                 $vacancy = RecruitmentVacancy::query()->find($vacancyId);
 
-                if ($vacancy && $vacancy->status !== 'open') {
-                    $validator->errors()->add('vacancy_id', 'Candidates can only be added to an open vacancy.');
+                if (! $vacancy) {
+                    return;
                 }
+
+                if ($vacancy->acceptsApplications()) {
+                    return;
+                }
+
+                $today = now()->toDateString();
+                $openDate = $vacancy->open_date?->toDateString();
+
+                if (
+                    $vacancy->status === 'scheduled'
+                    || ($openDate !== null && $today < $openDate)
+                ) {
+                    $validator->errors()->add(
+                        'vacancy_id',
+                        $openDate
+                            ? "Applications open on {$openDate}."
+                            : 'Applications are not open for this vacancy yet.',
+                    );
+
+                    return;
+                }
+
+                $validator->errors()->add('vacancy_id', 'Applications are closed for this vacancy.');
             },
         ];
     }

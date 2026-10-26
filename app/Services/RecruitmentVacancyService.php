@@ -31,10 +31,10 @@ class RecruitmentVacancyService
 
     /**
      * Aggregates for the vacancy list UI. Honours search, department, and
-     * target_hiring_date, but ignores status so Open/Closed counts stay stable.
+     * target_hiring_date, but ignores status so status counts stay stable.
      *
      * @param  array<string, mixed>  $filters
-     * @return array{open_count: int, closed_count: int, open_required_headcount: int, open_filled_headcount: int, overdue_open_count: int}
+     * @return array{scheduled_count: int, open_count: int, closed_count: int, open_required_headcount: int, open_filled_headcount: int, overdue_open_count: int}
      */
     public function summary(array $filters = []): array
     {
@@ -47,6 +47,7 @@ class RecruitmentVacancyService
             ->first();
 
         return [
+            'scheduled_count' => (clone $query)->where('status', 'scheduled')->count(),
             'open_count' => (clone $open)->count(),
             'closed_count' => (clone $query)->where('status', 'closed')->count(),
             'open_required_headcount' => (int) ($headcount?->open_required_headcount ?? 0),
@@ -82,15 +83,18 @@ class RecruitmentVacancyService
         ?string $userAgent = null,
     ): RecruitmentVacancy {
         return DB::transaction(function () use ($data, $actor, $ipAddress, $userAgent): RecruitmentVacancy {
+            $openDate = $data['open_date'];
+
             $vacancy = RecruitmentVacancy::query()->create([
                 'title' => $data['title'],
                 'department_id' => $data['department_id'],
                 'description' => $data['description'],
                 'required_headcount' => $data['required_headcount'],
                 'filled_headcount' => 0,
+                'open_date' => $openDate,
                 'target_hiring_date' => $data['target_hiring_date'],
                 'close_date' => $data['close_date'] ?? null,
-                'status' => 'open',
+                'status' => $this->statusFromOpenDate($openDate),
                 'created_by' => $actor->id,
             ]);
 
@@ -124,14 +128,21 @@ class RecruitmentVacancyService
             $vacancy = RecruitmentVacancy::query()->whereKey($vacancy->id)->lockForUpdate()->firstOrFail();
             $oldValues = $this->auditAttributes($vacancy);
 
-            $vacancy->update([
+            $attributes = [
                 'title' => $data['title'],
                 'department_id' => $data['department_id'],
                 'description' => $data['description'],
                 'required_headcount' => $data['required_headcount'],
+                'open_date' => $data['open_date'],
                 'target_hiring_date' => $data['target_hiring_date'],
                 'close_date' => $data['close_date'] ?? null,
-            ]);
+            ];
+
+            if ($vacancy->status !== 'closed') {
+                $attributes['status'] = $this->statusFromOpenDate($data['open_date']);
+            }
+
+            $vacancy->update($attributes);
 
             $vacancy = $vacancy->fresh(['department:id,name', 'creator:id,name']);
 
@@ -189,6 +200,53 @@ class RecruitmentVacancyService
         return $vacancy->load(['department:id,name', 'creator:id,name']);
     }
 
+    /**
+     * Open due scheduled vacancies, then close due open vacancies.
+     *
+     * @return array{opened: int, closed: int}
+     */
+    public function processDue(string $date): array
+    {
+        return [
+            'opened' => $this->openDue($date),
+            'closed' => $this->closeDue($date),
+        ];
+    }
+
+    public function openDue(string $date): int
+    {
+        $openedCount = 0;
+
+        RecruitmentVacancy::query()
+            ->where('status', 'scheduled')
+            ->whereDate('open_date', '<=', $date)
+            ->orderBy('id')
+            ->chunkById(100, function ($vacancies) use (&$openedCount, $date): void {
+                foreach ($vacancies as $vacancy) {
+                    DB::transaction(function () use ($vacancy, &$openedCount, $date): void {
+                        $locked = RecruitmentVacancy::query()->whereKey($vacancy->id)->lockForUpdate()->first();
+
+                        if (! $locked || $locked->status !== 'scheduled' || $locked->open_date?->toDateString() > $date) {
+                            return;
+                        }
+
+                        $oldValues = $this->auditAttributes($locked);
+                        $locked->update(['status' => 'open']);
+                        $this->auditLogService->log(
+                            action: 'scheduled_open',
+                            module: 'recruitment_vacancies',
+                            subject: $locked,
+                            oldValues: $oldValues,
+                            newValues: $this->auditAttributes($locked),
+                        );
+                        $openedCount++;
+                    });
+                }
+            });
+
+        return $openedCount;
+    }
+
     public function closeDue(string $date): int
     {
         $closedCount = 0;
@@ -224,6 +282,11 @@ class RecruitmentVacancyService
         return $closedCount;
     }
 
+    protected function statusFromOpenDate(string $openDate): string
+    {
+        return $openDate > now()->toDateString() ? 'scheduled' : 'open';
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -234,6 +297,7 @@ class RecruitmentVacancyService
             'department_id' => $vacancy->department_id,
             'required_headcount' => $vacancy->required_headcount,
             'filled_headcount' => $vacancy->filled_headcount,
+            'open_date' => $vacancy->open_date?->toDateString(),
             'target_hiring_date' => $vacancy->target_hiring_date?->toDateString(),
             'close_date' => $vacancy->close_date?->toDateString(),
             'status' => $vacancy->status,

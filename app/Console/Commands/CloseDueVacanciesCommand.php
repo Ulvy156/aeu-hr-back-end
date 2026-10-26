@@ -8,8 +8,8 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('recruitment:close-due-vacancies {--date= : Close date cutoff (Y-m-d); defaults to today}')]
-#[Description('Automatically close vacancies whose close date has arrived')]
+#[Signature('recruitment:process-due-vacancies {--date= : Process date cutoff (Y-m-d); defaults to today}')]
+#[Description('Automatically open scheduled vacancies and close vacancies whose close date has arrived')]
 class CloseDueVacanciesCommand extends Command
 {
     public function handle(RecruitmentVacancyService $vacancyService): int
@@ -23,8 +23,8 @@ class CloseDueVacanciesCommand extends Command
             return self::FAILURE;
         }
 
-        $closedCount = $vacancyService->closeDue($date);
-        $this->info("Closed {$closedCount} due vacancy/vacancies for {$date}.");
+        $result = $vacancyService->processDue($date);
+        $this->info("Opened {$result['opened']} and closed {$result['closed']} vacancy/vacancies for {$date}.");
 
         return self::SUCCESS;
     }

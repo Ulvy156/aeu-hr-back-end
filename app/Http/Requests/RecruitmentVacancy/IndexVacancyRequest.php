@@ -21,7 +21,7 @@ class IndexVacancyRequest extends FormRequest
         return [
             'search' => ['nullable', 'string', 'max:255'],
             'department' => ['nullable', 'integer'],
-            'status' => ['nullable', Rule::in(['open', 'closed'])],
+            'status' => ['nullable', Rule::in(['scheduled', 'open', 'closed'])],
             'target_hiring_date' => ['nullable', 'date'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];

@@ -30,6 +30,6 @@ class RecruitmentVacancyPolicy
     public function close(User $user, RecruitmentVacancy $vacancy): bool
     {
         return $user->hasPermissionTo('recruitment.vacancies.close')
-            && $vacancy->status === 'open';
+            && $vacancy->status !== 'closed';
     }
 }

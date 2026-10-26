@@ -65,6 +65,7 @@ function recruitmentCandidateVacancy(array $overrides = [], ?User $creator = nul
         'description' => 'Build APIs.',
         'required_headcount' => 2,
         'filled_headcount' => 0,
+        'open_date' => now()->toDateString(),
         'target_hiring_date' => now()->addMonth()->toDateString(),
         'status' => 'open',
         'created_by' => $creator->id,
@@ -165,7 +166,50 @@ test('candidate cannot be created under a closed vacancy', function () {
             'cv' => UploadedFile::fake()->create('resume.pdf', 100, 'application/pdf'),
         ], ['Accept' => 'application/json'])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('vacancy_id');
+        ->assertJsonValidationErrors('vacancy_id')
+        ->assertJsonPath('errors.vacancy_id.0', 'Applications are closed for this vacancy.');
+});
+
+test('candidate cannot be created under a scheduled vacancy', function () {
+    [, $token] = recruitmentCandidateAdmin();
+    $openDate = now()->addWeek()->toDateString();
+    $vacancy = recruitmentCandidateVacancy([
+        'open_date' => $openDate,
+        'status' => 'scheduled',
+    ]);
+
+    $this->withToken($token)
+        ->post('/api/recruitment/candidates', [
+            'vacancy_id' => $vacancy->id,
+            'full_name' => 'Jane Doe',
+            'phone' => '012345678',
+            'source' => 'linkedin',
+            'cv' => UploadedFile::fake()->create('resume.pdf', 100, 'application/pdf'),
+        ], ['Accept' => 'application/json'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('vacancy_id')
+        ->assertJsonPath('errors.vacancy_id.0', "Applications open on {$openDate}.");
+});
+
+test('candidate cannot be created after the vacancy close date', function () {
+    [, $token] = recruitmentCandidateAdmin();
+    $vacancy = recruitmentCandidateVacancy([
+        'open_date' => now()->subWeek()->toDateString(),
+        'close_date' => now()->subDay()->toDateString(),
+        'status' => 'open',
+    ]);
+
+    $this->withToken($token)
+        ->post('/api/recruitment/candidates', [
+            'vacancy_id' => $vacancy->id,
+            'full_name' => 'Jane Doe',
+            'phone' => '012345678',
+            'source' => 'linkedin',
+            'cv' => UploadedFile::fake()->create('resume.pdf', 100, 'application/pdf'),
+        ], ['Accept' => 'application/json'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('vacancy_id')
+        ->assertJsonPath('errors.vacancy_id.0', 'Applications are closed for this vacancy.');
 });
 
 test('duplicate phone is blocked within the same vacancy but allowed in a different vacancy', function () {

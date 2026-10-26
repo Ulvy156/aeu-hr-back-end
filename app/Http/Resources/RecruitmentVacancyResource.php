@@ -26,9 +26,11 @@ class RecruitmentVacancyResource extends JsonResource
             'description' => $this->description,
             'required_headcount' => $this->required_headcount,
             'filled_headcount' => $this->filled_headcount,
+            'open_date' => $this->open_date?->toDateString(),
             'target_hiring_date' => $this->target_hiring_date?->toDateString(),
             'close_date' => $this->close_date?->toDateString(),
             'status' => $this->status,
+            'accepts_applications' => $this->acceptsApplications(),
             'creator' => $this->whenLoaded('creator', fn () => $this->creator ? [
                 'id' => $this->creator->id,
                 'name' => $this->creator->name,
