@@ -521,12 +521,8 @@ class AttendanceService
     {
         $employee = $this->employeeForUserOrFail($viewer);
 
-        $month = (int) ($filters['month'] ?? now()->month);
-        $year = (int) ($filters['year'] ?? now()->year);
-
-        $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
-        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
+        [$periodStart, $periodEnd, $month, $year] = $this->resolveSummaryPeriod($filters);
+        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd->copy();
 
         $records = Attendance::query()
             ->whereBelongsTo($employee)
@@ -550,10 +546,13 @@ class AttendanceService
             ? number_format(($attendedDays / $workingDaysCount) * 100, 2)
             : '0.00';
 
-        $isCurrentPeriod = $month === now()->month && $year === now()->year;
+        $includesToday = today()->betweenIncluded(
+            $periodStart->copy()->startOfDay(),
+            $periodEnd->copy()->endOfDay(),
+        );
         $todayData = null;
 
-        if ($isCurrentPeriod) {
+        if ($includesToday) {
             $todayRecord = $records->first(
                 fn (Attendance $a) => $a->attendance_date->toDateString() === today()->toDateString()
             );
@@ -588,7 +587,7 @@ class AttendanceService
                 'working_days_in_period' => $workingDaysCount,
                 'attendance_rate' => $attendanceRate,
             ],
-            'today' => $todayData,
+            'today' => $includesToday ? $todayData : null,
             'attendance_actions' => $this->attendanceActions($viewer),
         ];
     }
@@ -599,30 +598,42 @@ class AttendanceService
      */
     public function teamSummary(array $filters = []): array
     {
-        $month = (int) ($filters['month'] ?? now()->month);
-        $year = (int) ($filters['year'] ?? now()->year);
-        $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
-        $periodEnd = $periodStart->copy()->endOfMonth();
-        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd;
+        [$periodStart, $periodEnd, $month, $year, $constrainRecordedDates] = $this->resolveSummaryPeriod($filters);
+        $effectiveTo = $periodEnd->greaterThan(today()) ? today() : $periodEnd->copy();
+        $employeeFilters = [
+            'employee_name' => $filters['employee_name'] ?? null,
+            'department_id' => $filters['department_id'] ?? null,
+        ];
 
-        $counts = Attendance::query()
-            ->whereDate('attendance_date', '>=', $periodStart->toDateString())
-            ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
+        $countsQuery = Attendance::query()
+            ->tap(fn (Builder $query) => $this->applyTeamSummaryAttendanceFilters(
+                $query,
+                $periodStart,
+                $effectiveTo,
+                $constrainRecordedDates,
+                $employeeFilters,
+            ))
             ->selectRaw('COUNT(*) as total_records')
             ->selectRaw("SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) as present")
             ->selectRaw("SUM(CASE WHEN status = 'late' OR is_late = true THEN 1 ELSE 0 END) as late")
             ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_out', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_out")
-            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_in', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_in")
-            ->first();
+            ->selectRaw("SUM(CASE WHEN status IN ('missing_clock_in', 'missing_both') THEN 1 ELSE 0 END) as missing_clock_in");
+
+        $counts = $countsQuery->first();
 
         $absentRecords = Attendance::query()
-            ->whereDate('attendance_date', '>=', $periodStart->toDateString())
-            ->whereDate('attendance_date', '<=', $effectiveTo->toDateString())
+            ->tap(fn (Builder $query) => $this->applyTeamSummaryAttendanceFilters(
+                $query,
+                $periodStart,
+                $effectiveTo,
+                $constrainRecordedDates,
+                $employeeFilters,
+            ))
             ->where('status', 'absent')
             ->get(['employee_id', 'attendance_date', 'status', 'absent_periods']);
         $recordedAbsences = $this->countRecordedAbsenceDays($absentRecords);
-        $unrecordedAbsences = $this->countUnrecordedAbsences($periodStart, $effectiveTo);
-        $unrecordedAbsenceRecords = $this->countUnrecordedAbsenceRecords($periodStart, $effectiveTo);
+        $unrecordedAbsences = $this->countUnrecordedAbsences($periodStart, $effectiveTo, null, $employeeFilters);
+        $unrecordedAbsenceRecords = $this->countUnrecordedAbsenceRecords($periodStart, $effectiveTo, null, $employeeFilters);
 
         return [
             'period' => [
@@ -642,10 +653,95 @@ class AttendanceService
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array{0: Carbon, 1: Carbon, 2: int, 3: int, 4: bool}
+     */
+    protected function resolveSummaryPeriod(array $filters): array
+    {
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+
+        if (filled($dateFrom) || filled($dateTo)) {
+            $periodStart = filled($dateFrom)
+                ? Carbon::parse($dateFrom)->startOfDay()
+                : Carbon::parse($dateTo)->startOfMonth();
+            $periodEnd = filled($dateTo)
+                ? Carbon::parse($dateTo)->endOfDay()
+                : today()->endOfDay();
+
+            if ($periodStart->greaterThan($periodEnd)) {
+                $periodEnd = $periodStart->copy()->endOfDay();
+            }
+
+            return [
+                $periodStart,
+                $periodEnd,
+                (int) $periodStart->month,
+                (int) $periodStart->year,
+                true,
+            ];
+        }
+
+        $month = (int) ($filters['month'] ?? now()->month);
+        $year = (int) ($filters['year'] ?? now()->year);
+        $periodStart = Carbon::create($year, $month, 1)->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
+        return [$periodStart, $periodEnd, $month, $year, true];
+    }
+
+    /**
+     * @param  Builder<Attendance>  $query
+     * @param  array{employee_name?: mixed, department_id?: mixed}  $employeeFilters
+     * @return Builder<Attendance>
+     */
+    protected function applyTeamSummaryAttendanceFilters(
+        Builder $query,
+        CarbonInterface $periodStart,
+        CarbonInterface $effectiveTo,
+        bool $constrainDates,
+        array $employeeFilters,
+    ): Builder {
+        if ($constrainDates) {
+            $query
+                ->whereDate('attendance_date', '>=', $periodStart->toDateString())
+                ->whereDate('attendance_date', '<=', $effectiveTo->toDateString());
+        }
+
+        $query->when(
+            filled($employeeFilters['employee_name'] ?? null),
+            fn (Builder $attendanceQuery) => $attendanceQuery->whereHas(
+                'employee',
+                fn (Builder $employeeQuery) => $employeeQuery->whereRaw(
+                    'LOWER(full_name) LIKE ?',
+                    ['%'.mb_strtolower(trim((string) $employeeFilters['employee_name'])).'%'],
+                ),
+            ),
+        );
+
+        $query->when(
+            filled($employeeFilters['department_id'] ?? null),
+            fn (Builder $attendanceQuery) => $attendanceQuery->whereHas(
+                'employee',
+                fn (Builder $employeeQuery) => $employeeQuery->where(
+                    'department_id',
+                    (int) $employeeFilters['department_id'],
+                ),
+            ),
+        );
+
+        return $query;
+    }
+
+    /**
+     * @param  array{employee_name?: mixed, department_id?: mixed}  $employeeFilters
+     */
     public function countUnrecordedAbsences(
         CarbonInterface $from,
         CarbonInterface $to,
         ?int $employeeId = null,
+        array $employeeFilters = [],
     ): float {
         $settings = $this->companySettingService->current();
         $count = 0;
@@ -658,7 +754,7 @@ class AttendanceService
 
             if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
                 $day = $date->toDateString();
-                $eligibleEmployees = $this->unrecordedAbsenceEmployees($day, $employeeId);
+                $eligibleEmployees = $this->unrecordedAbsenceEmployees($day, $employeeId, $employeeFilters);
                 $halfDayAbsenceCount = (clone $eligibleEmployees)
                     ->whereHas('leaveRequests', fn (Builder $query) => $query
                         ->where('status', 'approved')
@@ -677,10 +773,14 @@ class AttendanceService
         return $count;
     }
 
+    /**
+     * @param  array{employee_name?: mixed, department_id?: mixed}  $employeeFilters
+     */
     public function countUnrecordedAbsenceRecords(
         CarbonInterface $from,
         CarbonInterface $to,
         ?int $employeeId = null,
+        array $employeeFilters = [],
     ): int {
         $settings = $this->companySettingService->current();
         $count = 0;
@@ -693,7 +793,7 @@ class AttendanceService
                 || ($date->isToday() && now()->greaterThanOrEqualTo(Carbon::parse($day.' '.$todayThreshold)));
 
             if ($isCompleted && $this->isWorkingDay($date, $settings) && ! $this->isPublicHoliday($date)) {
-                $count += $this->unrecordedAbsenceEmployees($day, $employeeId)->count();
+                $count += $this->unrecordedAbsenceEmployees($day, $employeeId, $employeeFilters)->count();
             }
 
             $date->addDay();
@@ -702,11 +802,25 @@ class AttendanceService
         return $count;
     }
 
-    /** @return Builder<Employee> */
-    protected function unrecordedAbsenceEmployees(string $day, ?int $employeeId = null): Builder
+    /**
+     * @param  array{employee_name?: mixed, department_id?: mixed}  $employeeFilters
+     * @return Builder<Employee>
+     */
+    protected function unrecordedAbsenceEmployees(string $day, ?int $employeeId = null, array $employeeFilters = []): Builder
     {
         return Employee::query()
             ->when($employeeId !== null, fn (Builder $query) => $query->whereKey($employeeId))
+            ->when(
+                filled($employeeFilters['department_id'] ?? null),
+                fn (Builder $query) => $query->where('department_id', (int) $employeeFilters['department_id']),
+            )
+            ->when(
+                filled($employeeFilters['employee_name'] ?? null),
+                fn (Builder $query) => $query->whereRaw(
+                    'LOWER(full_name) LIKE ?',
+                    ['%'.mb_strtolower(trim((string) $employeeFilters['employee_name'])).'%'],
+                ),
+            )
             ->whereDate('join_date', '<=', $day)
             ->where(function (Builder $query) use ($day): void {
                 $query->whereNull('last_working_date')

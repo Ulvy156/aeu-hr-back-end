@@ -1366,6 +1366,103 @@ test('team summary counts all employee records, including late missing clock out
         ->assertForbidden();
 });
 
+test('personal summary can filter by date range', function () {
+    Carbon::setTestNow('2026-10-26 10:00:00');
+    attendanceCompanySettings();
+
+    [$user, $employee] = attendanceEmployeeUser('employee', [], ['join_date' => '2026-10-01']);
+    $token = $user->createToken('employee-device')->plainTextToken;
+
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-10-26',
+        'status' => 'present',
+        'is_late' => false,
+        'clock_in_time' => '2026-10-26 07:55:00',
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $employee->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'late',
+        'is_late' => true,
+        'clock_in_time' => '2026-10-01 08:30:00',
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/attendance/summary?date_from=2026-10-26&date_to=2026-10-26')
+        ->assertSuccessful()
+        ->assertJsonPath('data.period.from', '2026-10-26')
+        ->assertJsonPath('data.period.to', '2026-10-26')
+        ->assertJsonPath('data.summary.present', 1)
+        ->assertJsonPath('data.summary.late', 0)
+        ->assertJsonPath('data.today.status', 'present');
+});
+
+test('team summary can filter by date range department and employee name', function () {
+    Carbon::setTestNow('2026-10-26 10:00:00');
+    attendanceCompanySettings();
+
+    $hr = User::factory()->create();
+    $hr->assignRole('hr');
+    $hrToken = $hr->createToken('hr-device')->plainTextToken;
+
+    $engineering = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $finance = Department::query()->create(['name' => 'Finance', 'status' => 'active']);
+
+    [, $alice] = attendanceEmployeeUser('employee', ['name' => 'Alice Engineer'], [
+        'full_name' => 'Alice Engineer',
+        'department_id' => $engineering->id,
+        'join_date' => '2026-10-01',
+    ]);
+    [, $bob] = attendanceEmployeeUser('employee', ['name' => 'Bob Finance'], [
+        'full_name' => 'Bob Finance',
+        'department_id' => $finance->id,
+        'join_date' => '2026-10-01',
+    ]);
+
+    Attendance::query()->create([
+        'employee_id' => $alice->id,
+        'attendance_date' => '2026-10-26',
+        'status' => 'present',
+        'is_late' => false,
+        'clock_in_time' => '2026-10-26 07:55:00',
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $bob->id,
+        'attendance_date' => '2026-10-26',
+        'status' => 'late',
+        'is_late' => true,
+        'clock_in_time' => '2026-10-26 08:30:00',
+    ]);
+    Attendance::query()->create([
+        'employee_id' => $alice->id,
+        'attendance_date' => '2026-10-01',
+        'status' => 'absent',
+        'is_late' => false,
+    ]);
+
+    $this->withToken($hrToken)
+        ->getJson('/api/attendance/team-summary?date_from=2026-10-26&date_to=2026-10-26')
+        ->assertSuccessful()
+        ->assertJsonPath('data.period.from', '2026-10-26')
+        ->assertJsonPath('data.period.to', '2026-10-26')
+        ->assertJsonPath('data.summary.present', 1)
+        ->assertJsonPath('data.summary.late', 1)
+        ->assertJsonPath('data.summary.absent', 0);
+
+    $this->withToken($hrToken)
+        ->getJson('/api/attendance/team-summary?date_from=2026-10-26&date_to=2026-10-26&department_id='.$engineering->id)
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.present', 1)
+        ->assertJsonPath('data.summary.late', 0);
+
+    $this->withToken($hrToken)
+        ->getJson('/api/attendance/team-summary?date_from=2026-10-26&date_to=2026-10-26&employee_name=Bob')
+        ->assertSuccessful()
+        ->assertJsonPath('data.summary.present', 0)
+        ->assertJsonPath('data.summary.late', 1);
+});
+
 test('attendance summary does not modify attendance while reading', function () {
     Carbon::setTestNow('2026-05-05 19:00:00');
     attendanceCompanySettings([
