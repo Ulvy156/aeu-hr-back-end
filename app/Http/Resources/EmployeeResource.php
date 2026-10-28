@@ -45,6 +45,7 @@ class EmployeeResource extends JsonResource
                     'name' => $this->user->name,
                     'email' => $this->user->email,
                     'status' => $this->user->status,
+                    'roles' => $this->user->getRoleNames()->values()->all(),
                     'is_ceo' => $this->user->hasRole('ceo'),
                 ]
                 : null),

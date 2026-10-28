@@ -34,7 +34,7 @@ class EmployeeService
         $perPage = (int) ($filters['per_page'] ?? 15);
 
         return Employee::query()
-            ->with(['user:id,name,email,status', 'department', 'position', 'manager'])
+            ->with(['user:id,name,email,status', 'user.roles:id,name', 'department', 'position', 'manager'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $normalizedSearch = '%'.Str::lower($search).'%';
 

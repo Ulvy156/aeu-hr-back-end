@@ -134,7 +134,7 @@ test('admin and hr can create employee with a valid existing user id', function 
         ->assertJsonPath('data.user.email', 'original.linked@example.com')
         ->assertJsonPath('data.user.status', 'active')
         ->assertJsonPath('data.manager.id', $manager->id)
-        ->assertJsonMissingPath('data.user.roles');
+        ->assertJsonPath('data.user.roles', ['employee']);
 
     $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
 
@@ -796,6 +796,8 @@ test('employee response includes only minimal linked user info', function () {
         'status' => 'inactive',
     ]);
 
+    $linkedUser->assignRole('employee');
+
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
@@ -815,7 +817,7 @@ test('employee response includes only minimal linked user info', function () {
         ->assertJsonPath('data.user.name', 'Minimal User')
         ->assertJsonPath('data.user.email', 'minimal.user@example.com')
         ->assertJsonPath('data.user.status', 'inactive')
-        ->assertJsonMissingPath('data.user.roles')
+        ->assertJsonPath('data.user.roles', ['employee'])
         ->assertJsonMissingPath('data.user.password')
         ->assertJsonMissingPath('data.user.remember_token')
         ->assertJsonMissingPath('data.user.email_verified_at');
@@ -1182,7 +1184,7 @@ test('employee update syncs linked user name and status and audits salary change
         ->assertJsonPath('data.user.email', 'original.employee@example.com')
         ->assertJsonPath('data.user.status', 'inactive')
         ->assertJsonPath('data.manager.id', $manager->id)
-        ->assertJsonMissingPath('data.user.roles');
+        ->assertJsonPath('data.user.roles', []);
 
     $activity = Activity::query()
         ->where('log_name', 'employees')

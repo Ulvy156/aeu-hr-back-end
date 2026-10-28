@@ -78,7 +78,7 @@ class EmployeeController extends Controller
     {
         $this->authorize('view', $employee);
 
-        $employee->loadMissing(['user:id,name,email,status', 'department', 'position', 'manager:id,employee_id,full_name']);
+        $employee->loadMissing(['user:id,name,email,status', 'user.roles:id,name', 'department', 'position', 'manager:id,employee_id,full_name']);
 
         return ApiResponse::success(
             data: EmployeeResource::make($employee)->resolve(request()),
