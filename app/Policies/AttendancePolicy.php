@@ -29,8 +29,7 @@ class AttendancePolicy
 
     public function correct(User $user, Attendance $attendance): bool
     {
-        return $user->hasPermissionTo('attendance.correct')
-            && ! $user->employeeWithTrashed()->whereKey($attendance->employee_id)->exists();
+        return $user->hasPermissionTo('attendance.correct');
     }
 
     public function markAbsent(User $user): bool

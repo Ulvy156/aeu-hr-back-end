@@ -593,7 +593,7 @@ test('attendance correction allows only the supported fields and writes an audit
         ->and($activity)->not->toBeNull();
 });
 
-test('hr cannot correct their own attendance but can correct another employee', function () {
+test('hr can correct their own attendance and another employee', function () {
     attendanceCompanySettings();
 
     [$hr, $hrEmployee] = attendanceEmployeeUser('hr');
@@ -620,10 +620,11 @@ test('hr cannot correct their own attendance but can correct another employee', 
 
     $this->withToken($token)
         ->putJson("/api/attendance/{$ownAttendance->id}/correction", $correction)
-        ->assertForbidden();
+        ->assertSuccessful()
+        ->assertJsonPath('data.status', 'absent');
 
-    expect($ownAttendance->fresh()->status)->toBe('present')
-        ->and($ownAttendance->fresh()->corrected_by)->toBeNull();
+    expect($ownAttendance->fresh()->status)->toBe('absent')
+        ->and($ownAttendance->fresh()->corrected_by)->toBe($hr->id);
 
     $this->withToken($token)
         ->putJson("/api/attendance/{$otherAttendance->id}/correction", $correction)
