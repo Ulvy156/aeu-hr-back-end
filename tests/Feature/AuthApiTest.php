@@ -5,6 +5,8 @@ use App\Models\Position;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Auth;
 
 uses(RefreshDatabase::class);
 
@@ -261,6 +263,92 @@ test('login on same device replaces old token', function () {
 
     loginAndGetTokens($this)['response']->assertSuccessful();
     expect($user->tokens()->count())->toBe(1);
+});
+
+test('five devices can stay logged in concurrently for one account', function () {
+    // Many intentional logins in one test; skip the 5/min login throttle.
+    $this->withoutMiddleware(ThrottleRequests::class);
+    $this->seed(RoleSeeder::class);
+
+    $email = 'multi-device@example.com';
+
+    $user = User::factory()->create([
+        'email' => $email,
+        'password' => 'secret-password',
+    ]);
+
+    $user->assignRole('admin');
+
+    $tokens = [];
+
+    foreach (range(1, 5) as $device) {
+        $result = loginAndGetTokens($this, [
+            'email' => $email,
+            'device_name' => "web-device-{$device}",
+        ]);
+
+        $result['response']->assertSuccessful();
+        $tokens[$device] = $result['access_token'];
+    }
+
+    expect($user->fresh()->tokens()->count())->toBe(5);
+    expect($user->fresh()->tokens()->pluck('name')->sort()->values()->all())->toBe([
+        'web-device-1',
+        'web-device-2',
+        'web-device-3',
+        'web-device-4',
+        'web-device-5',
+    ]);
+
+    foreach ($tokens as $token) {
+        $this->withToken($token)
+            ->getJson('/api/me')
+            ->assertSuccessful()
+            ->assertJsonPath('data.email', $email);
+    }
+
+    $replaced = loginAndGetTokens($this, [
+        'email' => $email,
+        'device_name' => 'web-device-1',
+    ]);
+    $replaced['response']->assertSuccessful();
+
+    expect($user->fresh()->tokens()->count())->toBe(5);
+
+    // Ensure each request re-resolves auth from the Authorization header.
+    $usingToken = function (string $token) {
+        Auth::forgetGuards();
+
+        return $this->withToken($token);
+    };
+
+    $usingToken($tokens[1])->getJson('/api/me')->assertUnauthorized();
+    $usingToken($replaced['access_token'])
+        ->getJson('/api/me')
+        ->assertSuccessful()
+        ->assertJsonPath('data.email', $email);
+
+    foreach (range(2, 5) as $device) {
+        $usingToken($tokens[$device])
+            ->getJson('/api/me')
+            ->assertSuccessful()
+            ->assertJsonPath('data.email', $email);
+    }
+
+    $usingToken($tokens[2])->postJson('/api/logout')->assertSuccessful();
+
+    expect($user->fresh()->tokens()->count())->toBe(4);
+    $usingToken($tokens[2])->getJson('/api/me')->assertUnauthorized();
+
+    foreach ([3, 4, 5] as $device) {
+        $usingToken($tokens[$device])
+            ->getJson('/api/me')
+            ->assertSuccessful();
+    }
+
+    $usingToken($replaced['access_token'])
+        ->getJson('/api/me')
+        ->assertSuccessful();
 });
 
 test('login requests are rate limited after five attempts per minute', function () {
