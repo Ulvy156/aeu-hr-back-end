@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\JobLevel;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeUpgradeRequest;
@@ -53,6 +54,23 @@ function upgradeEmployee(array $overrides = []): Employee
         'base_salary' => '1000.00',
         'employment_status' => 'full-time',
     ], $overrides));
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function upgradeLineManager(JobLevel $level, array $overrides = []): Employee
+{
+    $position = Position::query()->create([
+        'name' => $level->value.' '.uniqid(),
+        'department_id' => $overrides['department_id'] ?? null,
+        'job_level' => $level->value,
+        'status' => 'active',
+    ]);
+
+    return upgradeEmployee(array_merge($overrides, [
+        'position_id' => $position->id,
+    ]));
 }
 
 /**
@@ -588,8 +606,12 @@ test('upgrade request without attachments returns an empty attachments array', f
 });
 
 test('hr can create an upgrade request proposing a new manager', function () {
-    $manager = upgradeEmployee(['full_name' => 'Manager One']);
-    $employee = upgradeEmployee(['manager_id' => null]);
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    $manager = upgradeLineManager(JobLevel::Manager, [
+        'full_name' => 'Manager One',
+        'department_id' => $department->id,
+    ]);
+    $employee = upgradeEmployee(['manager_id' => null, 'department_id' => $department->id]);
 
     Sanctum::actingAs(upgradeActor('hr'));
 
@@ -650,7 +672,7 @@ test('upgrade request rejects an employee being proposed as their own manager', 
 
 test('upgrade request rejects a manager change that would create a circular reporting relationship', function () {
     $employeeA = upgradeEmployee(['full_name' => 'Employee A']);
-    $employeeB = upgradeEmployee(['full_name' => 'Employee B', 'manager_id' => $employeeA->id]);
+    $employeeB = upgradeLineManager(JobLevel::Gm, ['full_name' => 'Employee B', 'manager_id' => $employeeA->id]);
 
     Sanctum::actingAs(upgradeActor('hr'));
 
@@ -666,11 +688,14 @@ test('upgrade request rejects a manager change that would create a circular repo
         ->assertJsonValidationErrors('proposed_values.manager_id');
 });
 
-test('upgrade request accepts a manager_id proposal when the manager belongs to a different department', function () {
+test('upgrade request rejects a manager_id proposal when the manager belongs to a different department below GM', function () {
     [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
     [$otherDepartment] = upgradeDepartmentAndPosition('Engineering', 'Engineer');
 
-    $manager = upgradeEmployee(['full_name' => 'Other Dept Manager', 'department_id' => $otherDepartment->id]);
+    $manager = upgradeLineManager(JobLevel::Manager, [
+        'full_name' => 'Other Dept Manager',
+        'department_id' => $otherDepartment->id,
+    ]);
     $employee = upgradeEmployee(['department_id' => $department->id]);
 
     Sanctum::actingAs(upgradeActor('hr'));
@@ -682,8 +707,46 @@ test('upgrade request accepts a manager_id proposal when the manager belongs to 
             'manager_id' => $manager->id,
         ],
     ])
-        ->assertCreated()
-        ->assertJsonPath('data.proposed_values.manager_id.id', $manager->id);
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proposed_values.manager_id');
+});
+
+test('upgrade request for salary does not recheck an existing ineligible manager', function () {
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    $supervisor = upgradeLineManager(JobLevel::Supervisor, ['department_id' => $department->id]);
+    $employee = upgradeEmployee([
+        'department_id' => $department->id,
+        'manager_id' => $supervisor->id,
+        'base_salary' => '1000.00',
+    ]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
+        'employee_id' => $employee->id,
+        'proposed_values' => ['base_salary' => '1500.00'],
+    ])->assertCreated();
+});
+
+test('upgrade request rejects a department change that leaves a same-department manager behind', function () {
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    [$otherDepartment] = upgradeDepartmentAndPosition('Engineering', 'Engineer');
+    $manager = upgradeLineManager(JobLevel::Manager, ['department_id' => $department->id]);
+    $employee = upgradeEmployee([
+        'department_id' => $department->id,
+        'manager_id' => $manager->id,
+    ]);
+
+    Sanctum::actingAs(upgradeActor('hr'));
+
+    $this->postJson('/api/employee-upgrade-requests', [
+        'effective_date' => '2026-07-01',
+        'employee_id' => $employee->id,
+        'proposed_values' => ['department_id' => $otherDepartment->id],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('proposed_values.manager_id');
 });
 
 test('upgrade request accepts a manager_id proposal when the manager is ceo despite a different department', function () {
@@ -696,7 +759,7 @@ test('upgrade request accepts a manager_id proposal when the manager is ceo desp
         'status' => 'active',
     ]);
     $ceoUser->assignRole('ceo');
-    $ceo = upgradeEmployee([
+    $ceo = upgradeLineManager(JobLevel::Ceo, [
         'user_id' => $ceoUser->id,
         'full_name' => 'Chief Executive',
         'department_id' => $ceoDepartment->id,
@@ -717,8 +780,12 @@ test('upgrade request accepts a manager_id proposal when the manager is ceo desp
 });
 
 test('ceo can approve a manager_id upgrade request and it updates the employee and employment history', function () {
-    $manager = upgradeEmployee(['full_name' => 'Manager Two']);
-    $employee = upgradeEmployee(['manager_id' => null]);
+    [$department] = upgradeDepartmentAndPosition('Finance', 'Accountant');
+    $manager = upgradeLineManager(JobLevel::Manager, [
+        'full_name' => 'Manager Two',
+        'department_id' => $department->id,
+    ]);
+    $employee = upgradeEmployee(['manager_id' => null, 'department_id' => $department->id]);
 
     Sanctum::actingAs(upgradeActor('hr'));
 

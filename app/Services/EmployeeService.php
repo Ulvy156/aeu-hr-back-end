@@ -9,6 +9,7 @@ use App\Models\Employee;
 use App\Models\EmploymentHistory;
 use App\Models\User;
 use App\Support\FileStorage;
+use App\Support\LineManagerEligibility;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -110,23 +111,30 @@ class EmployeeService
     public function lineManagers(array $filters): Collection
     {
         $term = trim((string) ($filters['q'] ?? ''));
+        $departmentId = isset($filters['department_id']) ? (int) $filters['department_id'] : null;
 
-        if ($term === '') {
+        if ($term === '' && $departmentId === null) {
             return collect();
         }
 
-        $normalizedTerm = '%'.Str::lower($term).'%';
         $limit = (int) ($filters['per_page'] ?? 15);
         $excludeId = isset($filters['exclude_id']) ? (int) $filters['exclude_id'] : null;
 
-        return Employee::query()
+        $query = Employee::query()
             ->select(['id', 'employee_id', 'full_name', 'department_id', 'position_id'])
             ->with(['department:id,name', 'position:id,name,job_level'])
-            ->when($excludeId, fn (Builder $query) => $query->whereKeyNot($excludeId))
-            ->where(function (Builder $query) use ($normalizedTerm): void {
-                $query
-                    ->whereRaw('LOWER(full_name) LIKE ?', [$normalizedTerm])
-                    ->orWhereRaw('LOWER(employee_id) LIKE ?', [$normalizedTerm]);
+            ->when($excludeId, fn (Builder $query) => $query->whereKeyNot($excludeId));
+
+        LineManagerEligibility::constrain($query, $departmentId);
+
+        return $query
+            ->when($term !== '', function (Builder $query) use ($term): void {
+                $normalizedTerm = '%'.Str::lower($term).'%';
+                $query->where(function (Builder $query) use ($normalizedTerm): void {
+                    $query
+                        ->whereRaw('LOWER(full_name) LIKE ?', [$normalizedTerm])
+                        ->orWhereRaw('LOWER(employee_id) LIKE ?', [$normalizedTerm]);
+                });
             })
             ->orderBy('full_name')
             ->limit($limit)

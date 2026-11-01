@@ -19,6 +19,7 @@ class IndexLineManagerRequest extends FormRequest
     {
         return [
             'q' => ['nullable', 'string', 'max:255'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
             'exclude_id' => ['nullable', 'integer', 'exists:employees,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];

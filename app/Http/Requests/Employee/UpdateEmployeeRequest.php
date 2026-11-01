@@ -5,6 +5,7 @@ namespace App\Http\Requests\Employee;
 use App\Enums\EmploymentStatus;
 use App\Models\Employee;
 use App\Models\Position;
+use App\Support\LineManagerEligibility;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -177,6 +178,28 @@ class UpdateEmployeeRequest extends FormRequest
 
                     $currentId = (int) $managerOfCurrent;
                 }
+            },
+            function (Validator $validator): void {
+                $employee = $this->route('employee');
+
+                if (! $employee instanceof Employee) {
+                    return;
+                }
+
+                $currentManagerId = $employee->manager_id === null ? null : (int) $employee->manager_id;
+                $currentDepartmentId = $employee->department_id === null ? null : (int) $employee->department_id;
+                $submittedManagerId = $this->exists('manager_id')
+                    ? ($this->filled('manager_id') ? $this->integer('manager_id') : null)
+                    : $currentManagerId;
+                $submittedDepartmentId = $this->exists('department_id')
+                    ? ($this->filled('department_id') ? $this->integer('department_id') : null)
+                    : $currentDepartmentId;
+
+                if ($submittedManagerId === $currentManagerId && $submittedDepartmentId === $currentDepartmentId) {
+                    return;
+                }
+
+                LineManagerEligibility::addError($validator, $submittedManagerId, $submittedDepartmentId);
             },
         ];
     }

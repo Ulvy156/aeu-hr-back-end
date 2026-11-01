@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\JobLevel;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Position;
@@ -93,6 +94,15 @@ function createManagerEmployee(array $overrides = []): Employee
         'name' => 'Default Manager',
         'email' => 'default.manager@example.com',
     ]);
+
+    if (! array_key_exists('position_id', $overrides)) {
+        $overrides['position_id'] = Position::query()->create([
+            'name' => 'General Manager',
+            'department_id' => $overrides['department_id'] ?? null,
+            'job_level' => JobLevel::Gm->value,
+            'status' => 'active',
+        ])->id;
+    }
 
     return Employee::query()->create(array_merge([
         'user_id' => $managerUser->id,
@@ -524,12 +534,18 @@ test('employee update rejects manager_id that points to itself or creates a circ
         'name' => 'Middle Manager',
         'email' => 'middle.manager@example.com',
     ]);
+    $gmPosition = Position::query()->create([
+        'name' => 'Middle General Manager',
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Gm->value,
+        'status' => 'active',
+    ]);
     $middle = Employee::query()->create([
         'user_id' => $linkedUser->id,
         'employee_id' => 'EMP-00001',
         'full_name' => 'Middle Manager',
         'department_id' => $department->id,
-        'position_id' => $position->id,
+        'position_id' => $gmPosition->id,
         'manager_id' => $top->id,
         'join_date' => '2026-05-01',
         'base_salary' => '1500.00',
@@ -565,10 +581,19 @@ test('employee update rejects manager_id that points to itself or creates a circ
         ->assertJsonValidationErrors('manager_id');
 });
 
-test('employee create succeeds when manager belongs to a different department', function () {
+test('employee create rejects a manager from another department below GM', function () {
     [$department, $position] = employeeDepartmentAndPosition();
     $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
-    $manager = createManagerEmployee(['department_id' => $otherDepartment->id]);
+    $managerPosition = Position::query()->create([
+        'name' => 'Engineering Manager',
+        'department_id' => $otherDepartment->id,
+        'job_level' => JobLevel::Manager->value,
+        'status' => 'active',
+    ]);
+    $manager = createManagerEmployee([
+        'department_id' => $otherDepartment->id,
+        'position_id' => $managerPosition->id,
+    ]);
     $linkedUser = linkableUser();
     [, $token] = employeeActor('hr');
 
@@ -578,8 +603,33 @@ test('employee create succeeds when manager belongs to a different department', 
             'position_id' => $position->id,
             'manager_id' => $manager->id,
         ]))
-        ->assertCreated()
-        ->assertJsonPath('data.manager.id', $manager->id);
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee create rejects a supervisor in the same department', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $supervisorPosition = Position::query()->create([
+        'name' => 'Finance Supervisor',
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Supervisor->value,
+        'status' => 'active',
+    ]);
+    $supervisor = createManagerEmployee([
+        'department_id' => $department->id,
+        'position_id' => $supervisorPosition->id,
+    ]);
+    $linkedUser = linkableUser();
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->postJson('/api/employees', employeePayload($linkedUser, [
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $supervisor->id,
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('manager_id');
 });
 
 test('employee create succeeds when manager is ceo despite a different department', function () {
@@ -590,11 +640,18 @@ test('employee create succeeds when manager is ceo despite a different departmen
         'email' => 'ceo.department@example.com',
     ]);
     $ceoUser->assignRole('ceo');
+    $ceoPosition = Position::query()->create([
+        'name' => 'Chief Executive Officer',
+        'department_id' => $ceoDepartment->id,
+        'job_level' => JobLevel::Ceo->value,
+        'status' => 'active',
+    ]);
     $ceo = createManagerEmployee([
         'user_id' => $ceoUser->id,
         'employee_id' => 'MGR-00002',
         'full_name' => 'Chief Executive',
         'department_id' => $ceoDepartment->id,
+        'position_id' => $ceoPosition->id,
     ]);
     $linkedUser = linkableUser([
         'name' => 'Cross Department Report',
@@ -615,7 +672,16 @@ test('employee create succeeds when manager is ceo despite a different departmen
 
 test('employee create succeeds when manager belongs to the same department', function () {
     [$department, $position] = employeeDepartmentAndPosition();
-    $manager = createManagerEmployee(['department_id' => $department->id]);
+    $managerPosition = Position::query()->create([
+        'name' => 'Finance Manager',
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Manager->value,
+        'status' => 'active',
+    ]);
+    $manager = createManagerEmployee([
+        'department_id' => $department->id,
+        'position_id' => $managerPosition->id,
+    ]);
     $linkedUser = linkableUser();
     [, $token] = employeeActor('hr');
 
@@ -629,15 +695,22 @@ test('employee create succeeds when manager belongs to the same department', fun
         ->assertJsonPath('data.manager.id', $manager->id);
 });
 
-test('employee update succeeds when manager belongs to a different department', function () {
+test('employee update rejects a manager from another department below GM', function () {
     [$department, $position] = employeeDepartmentAndPosition();
     $otherDepartment = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
     $sameDeptManager = createManagerEmployee(['department_id' => $department->id]);
+    $otherManagerPosition = Position::query()->create([
+        'name' => 'Engineering Manager',
+        'department_id' => $otherDepartment->id,
+        'job_level' => JobLevel::Manager->value,
+        'status' => 'active',
+    ]);
     $otherDeptManager = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Other Dept Manager', 'email' => 'other.dept.manager@example.com'])->id,
         'employee_id' => 'MGR-00003',
         'full_name' => 'Other Dept Manager',
         'department_id' => $otherDepartment->id,
+        'position_id' => $otherManagerPosition->id,
         'join_date' => '2026-01-01',
         'base_salary' => '2000.00',
         'employment_status' => 'full-time',
@@ -668,8 +741,55 @@ test('employee update succeeds when manager belongs to a different department', 
             'base_salary' => '1000.00',
             'employment_status' => 'full-time',
         ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('manager_id');
+});
+
+test('employee update keeps an ineligible manager when the manager and department stay the same', function () {
+    [$department, $position] = employeeDepartmentAndPosition();
+    $supervisorPosition = Position::query()->create([
+        'name' => 'Finance Supervisor',
+        'department_id' => $department->id,
+        'job_level' => JobLevel::Supervisor->value,
+        'status' => 'active',
+    ]);
+    $supervisor = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Finance Supervisor', 'email' => 'finance.supervisor@example.com'])->id,
+        'employee_id' => 'MGR-00005',
+        'full_name' => 'Finance Supervisor',
+        'department_id' => $department->id,
+        'position_id' => $supervisorPosition->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '2000.00',
+        'employment_status' => 'full-time',
+    ]);
+    $linkedUser = linkableUser();
+    $employee = Employee::query()->create([
+        'user_id' => $linkedUser->id,
+        'employee_id' => 'EMP-00001',
+        'full_name' => 'Legacy Report',
+        'department_id' => $department->id,
+        'position_id' => $position->id,
+        'manager_id' => $supervisor->id,
+        'join_date' => '2026-05-01',
+        'base_salary' => '1000.00',
+        'employment_status' => 'full-time',
+    ]);
+    [, $token] = employeeActor('hr');
+
+    $this->withToken($token)
+        ->putJson("/api/employees/{$employee->id}", [
+            'full_name' => 'Legacy Report Updated',
+            'department_id' => $department->id,
+            'position_id' => $position->id,
+            'manager_id' => $supervisor->id,
+            'join_date' => '2026-05-01',
+            'base_salary' => '1000.00',
+            'employment_status' => 'full-time',
+        ])
         ->assertSuccessful()
-        ->assertJsonPath('data.manager.id', $otherDeptManager->id);
+        ->assertJsonPath('data.full_name', 'Legacy Report Updated')
+        ->assertJsonPath('data.manager.id', $supervisor->id);
 });
 
 test('employee update succeeds when manager is ceo despite a different department', function () {
@@ -680,11 +800,18 @@ test('employee update succeeds when manager is ceo despite a different departmen
         'email' => 'ceo.update.department@example.com',
     ]);
     $ceoUser->assignRole('ceo');
+    $ceoPosition = Position::query()->create([
+        'name' => 'Chief Executive Officer',
+        'department_id' => $ceoDepartment->id,
+        'job_level' => JobLevel::Ceo->value,
+        'status' => 'active',
+    ]);
     $ceo = Employee::query()->create([
         'user_id' => $ceoUser->id,
         'employee_id' => 'MGR-00004',
         'full_name' => 'Chief Executive',
         'department_id' => $ceoDepartment->id,
+        'position_id' => $ceoPosition->id,
         'join_date' => '2026-01-01',
         'base_salary' => '5000.00',
         'employment_status' => 'full-time',
@@ -983,28 +1110,75 @@ test('employee dropdown search forbids employee role', function () {
         ->assertForbidden();
 });
 
-test('line manager picker returns employees from any department and omits exclude_id', function () {
+test('line manager picker suggests same-department managers plus every gm and ceo', function () {
     [$finance] = employeeDepartmentAndPosition();
     $engineering = Department::query()->create(['name' => 'Engineering', 'status' => 'active']);
+    $executive = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
+
+    $financeManagerPosition = Position::query()->create([
+        'name' => 'Finance Manager',
+        'department_id' => $finance->id,
+        'job_level' => JobLevel::Manager->value,
+        'status' => 'active',
+    ]);
+    $financeSupervisorPosition = Position::query()->create([
+        'name' => 'Finance Supervisor',
+        'department_id' => $finance->id,
+        'job_level' => JobLevel::Supervisor->value,
+        'status' => 'active',
+    ]);
+    $engineeringManagerPosition = Position::query()->create([
+        'name' => 'Engineering Manager',
+        'department_id' => $engineering->id,
+        'job_level' => JobLevel::Manager->value,
+        'status' => 'active',
+    ]);
     $gmPosition = Position::query()->create([
         'name' => 'General Manager',
         'department_id' => $engineering->id,
-        'job_level' => 'gm',
+        'job_level' => JobLevel::Gm->value,
+        'status' => 'active',
+    ]);
+    $ceoPosition = Position::query()->create([
+        'name' => 'Chief Executive Officer',
+        'department_id' => $executive->id,
+        'job_level' => JobLevel::Ceo->value,
         'status' => 'active',
     ]);
 
-    $financeLead = Employee::query()->create([
-        'user_id' => linkableUser(['name' => 'Finance Lead User', 'email' => 'finance.lead@example.com'])->id,
+    $financeManager = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Finance Manager User', 'email' => 'finance.manager@example.com'])->id,
         'employee_id' => 'EMP-01001',
-        'full_name' => 'Finance Lead',
+        'full_name' => 'Finance Manager',
         'department_id' => $finance->id,
+        'position_id' => $financeManagerPosition->id,
         'join_date' => '2026-01-01',
         'base_salary' => '2000.00',
         'employment_status' => 'full-time',
     ]);
+    $financeSupervisor = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Finance Supervisor User', 'email' => 'finance.supervisor.picker@example.com'])->id,
+        'employee_id' => 'EMP-01002',
+        'full_name' => 'Finance Supervisor',
+        'department_id' => $finance->id,
+        'position_id' => $financeSupervisorPosition->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '1800.00',
+        'employment_status' => 'full-time',
+    ]);
+    $engineeringManager = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Engineering Manager User', 'email' => 'engineering.manager@example.com'])->id,
+        'employee_id' => 'EMP-01003',
+        'full_name' => 'Engineering Manager',
+        'department_id' => $engineering->id,
+        'position_id' => $engineeringManagerPosition->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '2200.00',
+        'employment_status' => 'full-time',
+    ]);
     $engineeringGm = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Engineering GM User', 'email' => 'engineering.gm@example.com'])->id,
-        'employee_id' => 'EMP-01002',
+        'employee_id' => 'EMP-01004',
         'full_name' => 'Engineering GM',
         'department_id' => $engineering->id,
         'position_id' => $gmPosition->id,
@@ -1012,35 +1186,63 @@ test('line manager picker returns employees from any department and omits exclud
         'base_salary' => '3000.00',
         'employment_status' => 'full-time',
     ]);
+    $ceo = Employee::query()->create([
+        'user_id' => linkableUser(['name' => 'Chief Executive User', 'email' => 'picker.ceo@example.com'])->id,
+        'employee_id' => 'EMP-01005',
+        'full_name' => 'Chief Executive',
+        'department_id' => $executive->id,
+        'position_id' => $ceoPosition->id,
+        'join_date' => '2026-01-01',
+        'base_salary' => '5000.00',
+        'employment_status' => 'full-time',
+    ]);
 
     [, $token] = employeeActor('hr');
 
-    $this->withToken($token)
-        ->getJson('/api/employees/managers?q=engineering')
+    $suggestions = $this->withToken($token)
+        ->getJson("/api/employees/managers?department_id={$finance->id}")
         ->assertSuccessful()
         ->assertJsonPath('success', true)
         ->assertJsonPath('message', 'Managers fetched successfully.')
-        ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.id', $engineeringGm->id)
-        ->assertJsonPath('data.0.employee_id', 'EMP-01002')
-        ->assertJsonPath('data.0.full_name', 'Engineering GM')
-        ->assertJsonPath('data.0.department.id', $engineering->id)
-        ->assertJsonPath('data.0.department.name', 'Engineering')
-        ->assertJsonPath('data.0.position.id', $gmPosition->id)
-        ->assertJsonPath('data.0.position.name', 'General Manager')
-        ->assertJsonPath('data.0.position.job_level', 'gm');
+        ->json('data');
+
+    $suggestionIds = collect($suggestions)->pluck('id');
+    expect($suggestionIds)->toContain($financeManager->id)
+        ->and($suggestionIds)->toContain($engineeringGm->id)
+        ->and($suggestionIds)->toContain($ceo->id)
+        ->and($suggestionIds)->not->toContain($financeSupervisor->id)
+        ->and($suggestionIds)->not->toContain($engineeringManager->id);
+
+    $typed = $this->withToken($token)
+        ->getJson("/api/employees/managers?department_id={$finance->id}&q=engineering")
+        ->assertSuccessful()
+        ->json('data');
+
+    $typedIds = collect($typed)->pluck('id');
+    expect($typedIds)->toContain($engineeringGm->id)
+        ->and($typedIds)->not->toContain($engineeringManager->id)
+        ->and($typedIds)->not->toContain($financeManager->id);
 
     $this->withToken($token)
-        ->getJson("/api/employees/managers?q=lead&exclude_id={$financeLead->id}")
+        ->getJson("/api/employees/managers?department_id={$finance->id}&exclude_id={$financeManager->id}")
         ->assertSuccessful()
-        ->assertJsonCount(0, 'data');
+        ->assertJsonMissing(['id' => $financeManager->id]);
 });
 
-test('line manager picker returns empty data for a blank query', function () {
+test('line manager picker returns empty data for a blank query without a department', function () {
+    $executive = Department::query()->create(['name' => 'Executive', 'status' => 'active']);
+    $gmPosition = Position::query()->create([
+        'name' => 'General Manager',
+        'department_id' => $executive->id,
+        'job_level' => JobLevel::Gm->value,
+        'status' => 'active',
+    ]);
     Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Searchable Manager User', 'email' => 'searchable.manager@example.com'])->id,
         'employee_id' => 'EMP-01003',
         'full_name' => 'Searchable Manager',
+        'department_id' => $executive->id,
+        'position_id' => $gmPosition->id,
         'join_date' => '2026-01-01',
         'base_salary' => '2000.00',
         'employment_status' => 'full-time',

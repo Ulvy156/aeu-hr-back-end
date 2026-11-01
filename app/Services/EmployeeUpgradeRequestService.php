@@ -10,6 +10,7 @@ use App\Models\EmploymentHistory;
 use App\Models\Position;
 use App\Models\User;
 use App\Support\FileStorage;
+use App\Support\LineManagerEligibility;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -245,7 +246,18 @@ class EmployeeUpgradeRequestService
         if ($position && $position->department_id && $departmentId && (int) $position->department_id !== (int) $departmentId) {
             throw ApiException::unprocessable('The selected position does not belong to the resulting department.');
         }
-        $managerId = array_key_exists('manager_id', $changes) ? $changes['manager_id'] : $employee->manager_id;
+        $managerProposed = array_key_exists('manager_id', $changes);
+        $departmentProposed = array_key_exists('department_id', $changes);
+        $managerId = $managerProposed ? $changes['manager_id'] : $employee->manager_id;
+        if ($managerProposed || $departmentProposed) {
+            $message = LineManagerEligibility::message(
+                $managerId === null ? null : (int) $managerId,
+                $departmentId === null ? null : (int) $departmentId,
+            );
+            if ($message !== null) {
+                throw ApiException::unprocessable($message);
+            }
+        }
         $visited = [$employee->id];
         while ($managerId !== null) {
             if (in_array((int) $managerId, $visited, true)) {

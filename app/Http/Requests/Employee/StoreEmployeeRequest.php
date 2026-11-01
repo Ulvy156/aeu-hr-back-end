@@ -5,6 +5,7 @@ namespace App\Http\Requests\Employee;
 use App\Enums\EmploymentStatus;
 use App\Models\Position;
 use App\Models\User;
+use App\Support\LineManagerEligibility;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -126,6 +127,17 @@ class StoreEmployeeRequest extends FormRequest
                 if ($position->department_id && $this->filled('department_id') && $position->department_id !== $this->integer('department_id')) {
                     $validator->errors()->add('position_id', 'The selected position does not belong to the selected department.');
                 }
+            },
+            function (Validator $validator): void {
+                if (! $this->filled('manager_id')) {
+                    return;
+                }
+
+                LineManagerEligibility::addError(
+                    $validator,
+                    $this->integer('manager_id'),
+                    $this->filled('department_id') ? $this->integer('department_id') : null,
+                );
             },
         ];
     }

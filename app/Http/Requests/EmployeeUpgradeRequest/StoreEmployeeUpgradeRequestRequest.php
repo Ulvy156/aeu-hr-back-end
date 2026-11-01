@@ -6,6 +6,7 @@ use App\Enums\EmploymentStatus;
 use App\Models\Employee;
 use App\Models\EmployeeUpgradeRequest;
 use App\Models\Position;
+use App\Support\LineManagerEligibility;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -128,6 +129,22 @@ class StoreEmployeeUpgradeRequestRequest extends FormRequest
                             $currentId = (int) $managerId;
                         }
                     }
+                }
+
+                $managerProposed = array_key_exists('manager_id', $proposedValues);
+                $departmentProposed = array_key_exists('department_id', $proposedValues);
+
+                if ($managerProposed || $departmentProposed) {
+                    $resultingManagerId = $managerProposed
+                        ? ($proposedValues['manager_id'] === null || $proposedValues['manager_id'] === '' ? null : (int) $proposedValues['manager_id'])
+                        : ($employee->manager_id === null ? null : (int) $employee->manager_id);
+
+                    LineManagerEligibility::addError(
+                        $validator,
+                        $resultingManagerId,
+                        $resultingDepartmentId === null || $resultingDepartmentId === '' ? null : (int) $resultingDepartmentId,
+                        'proposed_values.manager_id',
+                    );
                 }
 
                 $resultingPositionId = array_key_exists('position_id', $proposedValues)
