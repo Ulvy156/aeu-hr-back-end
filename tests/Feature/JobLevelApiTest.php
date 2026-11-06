@@ -47,6 +47,21 @@ function jobLevelUser(string $role, array $userOverrides = []): User
 
 function jobLevelEmployee(User $user, array $overrides = []): Employee
 {
+    if (! array_key_exists('position_id', $overrides)) {
+        $departmentId = $overrides['department_id'] ?? Department::query()->create([
+            'name' => 'Line Manager Dept '.random_int(1, 99999),
+            'status' => 'active',
+        ])->id;
+
+        $overrides['department_id'] = $departmentId;
+        $overrides['position_id'] = Position::query()->create([
+            'name' => 'Eligible Line Manager '.random_int(1, 99999),
+            'department_id' => $departmentId,
+            'job_level' => JobLevel::Gm->value,
+            'status' => 'active',
+        ])->id;
+    }
+
     return Employee::query()->create(array_merge([
         'user_id' => $user->id,
         'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -291,6 +306,8 @@ test('a head of HR title does not grant HR access to an employee', function () {
         ->assertCreated();
 
     expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('employees.view_salary'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.update'))->toBeFalse()
@@ -321,6 +338,8 @@ test('commercial head does not inherit hr leave or payroll approve permissions',
         ->assertCreated();
 
     expect($linkedUser->fresh()->hasRole('employee'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('employees.view_salary'))->toBeTrue()
+        ->and($linkedUser->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.generate'))->toBeFalse()
         ->and($linkedUser->fresh()->hasPermissionTo('payrolls.approve'))->toBeFalse();

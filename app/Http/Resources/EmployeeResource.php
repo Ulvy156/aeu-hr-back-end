@@ -27,7 +27,10 @@ class EmployeeResource extends JsonResource
             'address' => $this->address,
             'join_date' => $this->join_date?->toDateString(),
             'last_working_date' => $this->last_working_date?->toDateString(),
-            'base_salary' => (string) $this->base_salary,
+            'base_salary' => $this->when(
+                $request->user()?->can('viewSalary', $this->resource) ?? false,
+                (string) $this->base_salary,
+            ),
             'employment_status' => $this->employment_status,
             'probation_end_date' => $this->probation_end_date?->toDateString(),
             'intern_end_date' => $this->intern_end_date?->toDateString(),

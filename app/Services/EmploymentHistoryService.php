@@ -64,8 +64,9 @@ class EmploymentHistoryService
 
     /**
      * @param  array<string, mixed>  $filters
+     * @param  list<string>  $excludeFields
      */
-    public function paginate(Employee $employee, array $filters = []): LengthAwarePaginator
+    public function paginate(Employee $employee, array $filters = [], array $excludeFields = []): LengthAwarePaginator
     {
         $perPage = (int) ($filters['per_page'] ?? 15);
 
@@ -73,6 +74,7 @@ class EmploymentHistoryService
             ->where('employee_id', $employee->id)
             ->with('changedBy:id,name')
             ->when($filters['field'] ?? null, fn (Builder $query, string $field) => $query->where('field', $field))
+            ->when($excludeFields !== [], fn (Builder $query) => $query->whereNotIn('field', $excludeFields))
             ->when($filters['date_from'] ?? null, fn (Builder $query, string $date) => $query->whereDate('effective_date', '>=', $date))
             ->when($filters['date_to'] ?? null, fn (Builder $query, string $date) => $query->whereDate('effective_date', '<=', $date))
             ->orderByDesc('effective_date')

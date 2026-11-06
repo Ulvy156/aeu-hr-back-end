@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Position;
 use App\Models\User;
+use App\Services\JobLevelRoleService;
 use App\Services\UserPermissionService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,7 +44,7 @@ function leadershipAnnouncementPayload(): array
 }
 
 test('leadership job levels can manage announcements without extra HR or payroll access', function (JobLevel $level) {
-    [$user] = announcementLeader($level);
+    [$user, $employee] = announcementLeader($level);
     Sanctum::actingAs($user);
     $payload = leadershipAnnouncementPayload();
     $id = $this->postJson('/api/announcements', $payload)->assertCreated()->json('data.id');
@@ -60,8 +61,16 @@ test('leadership job levels can manage announcements without extra HR or payroll
         ->and($user->hasPermissionTo('payrolls.approve'))->toBeFalse()
         ->and($user->hasPermissionTo('leaves.approve_hr'))->toBeFalse()
         ->and($user->hasPermissionTo('announcement_categories.create'))->toBeFalse();
-    $this->getJson('/api/employees')->assertForbidden();
     $this->getJson('/api/payrolls')->assertForbidden();
+
+    if (in_array($level, [JobLevel::Head, JobLevel::Gm], true)) {
+        app(JobLevelRoleService::class)->syncForEmployee($employee);
+        Sanctum::actingAs($user->fresh());
+        $this->getJson('/api/employees')->assertSuccessful();
+        expect($user->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse();
+    } else {
+        $this->getJson('/api/employees')->assertForbidden();
+    }
 })->with([JobLevel::Head, JobLevel::Ceo, JobLevel::Gm, JobLevel::Manager]);
 
 test('other job levels cannot manage announcements', function (JobLevel $level) {

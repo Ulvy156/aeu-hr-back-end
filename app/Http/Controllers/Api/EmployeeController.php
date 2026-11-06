@@ -25,7 +25,7 @@ class EmployeeController extends Controller
     {
         $this->authorize('viewAny', Employee::class);
 
-        $paginator = $this->employeeService->paginate($request->validated());
+        $paginator = $this->employeeService->paginate($request->validated(), $request->user());
         $paginator->through(fn (Employee $employee) => EmployeeResource::make($employee)->resolve($request));
 
         return ApiResponse::paginated(

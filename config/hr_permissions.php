@@ -16,6 +16,19 @@ return [
         ],
     ],
 
+    'employee_job_level_permissions' => [
+        'gm' => [
+            'employees.view',
+            'employees.view_any',
+            'employees.view_salary',
+        ],
+        'head' => [
+            'employees.view',
+            'employees.view_any',
+            'employees.view_salary',
+        ],
+    ],
+
     'groups' => [
         'departments' => [
             'departments.view_any' => 'View the list of departments',
@@ -38,6 +51,7 @@ return [
             'employees.create' => 'Create a new employee',
             'employees.update' => 'Update an existing employee',
             'employees.delete' => 'Delete an employee',
+            'employees.view_salary' => 'View an employee\'s base salary',
             'employees.update_salary' => 'Update an employee\'s salary information',
         ],
         'company_settings' => [
@@ -278,6 +292,7 @@ return [
                 'employees.view_any',
                 'employees.view',
                 'employees.search',
+                'employees.view_salary',
                 'leaves.view_any',
                 'leaves.view_own',
                 'leave_balances.view_any',

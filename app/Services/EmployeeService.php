@@ -8,6 +8,7 @@ use App\Exceptions\ApiException;
 use App\Models\Employee;
 use App\Models\EmploymentHistory;
 use App\Models\User;
+use App\Support\EmployeeVisibility;
 use App\Support\FileStorage;
 use App\Support\LineManagerEligibility;
 use Carbon\Carbon;
@@ -25,16 +26,17 @@ class EmployeeService
         protected AuditLogService $auditLogService,
         protected JobLevelRoleService $jobLevelRoleService,
         protected SalaryHistoryService $salaryHistoryService,
+        protected EmployeeVisibility $employeeVisibility,
     ) {}
 
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function paginate(array $filters = []): LengthAwarePaginator
+    public function paginate(array $filters = [], ?User $viewer = null): LengthAwarePaginator
     {
         $perPage = (int) ($filters['per_page'] ?? 15);
 
-        return Employee::query()
+        $query = Employee::query()
             ->with(['user:id,name,email,status', 'user.roles:id,name', 'department', 'position', 'manager'])
             ->when($filters['search'] ?? null, function (Builder $query, string $search) {
                 $normalizedSearch = '%'.Str::lower($search).'%';
@@ -61,7 +63,13 @@ class EmployeeService
                 'position',
                 fn (Builder $positionQuery) => $positionQuery->where('job_level', $jobLevel),
             ))
-            ->when($filters['employment_status'] ?? null, fn (Builder $query, $status) => $query->where('employment_status', $status))
+            ->when($filters['employment_status'] ?? null, fn (Builder $query, $status) => $query->where('employment_status', $status));
+
+        if ($viewer !== null) {
+            $this->employeeVisibility->constrainQuery($query, $viewer);
+        }
+
+        return $query
             ->orderByDesc('created_at')
             ->paginate($perPage);
     }

@@ -51,20 +51,24 @@ class JobLevelRoleService
             }
         }
 
-        $this->syncReportPermissions($user, $jobLevel);
+        $this->syncMappedPermissions($user, $jobLevel, 'hr_permissions.report_job_level_permissions');
+        $this->syncMappedPermissions($user, $jobLevel, 'hr_permissions.employee_job_level_permissions');
     }
 
-    protected function syncReportPermissions(User $user, ?JobLevel $jobLevel): void
+    /**
+     * @param  non-empty-string  $configKey
+     */
+    protected function syncMappedPermissions(User $user, ?JobLevel $jobLevel, string $configKey): void
     {
-        $permissionsByLevel = (array) config('hr_permissions.report_job_level_permissions', []);
-        $allReportPermissions = collect($permissionsByLevel)
+        $permissionsByLevel = (array) config($configKey, []);
+        $allPermissions = collect($permissionsByLevel)
             ->flatten()
             ->filter(fn ($permission) => is_string($permission) && $permission !== '')
             ->unique()
             ->values()
             ->all();
 
-        if ($allReportPermissions === []) {
+        if ($allPermissions === []) {
             return;
         }
 
@@ -76,7 +80,7 @@ class JobLevelRoleService
             ));
 
         $toRevoke = array_values(array_intersect(
-            array_diff($allReportPermissions, $granted),
+            array_diff($allPermissions, $granted),
             $user->getDirectPermissions()->pluck('name')->all()
         ));
 

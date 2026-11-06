@@ -51,10 +51,22 @@ function effectiveRequest(Employee $employee, User $requester, array $changes = 
 function correctSalaryPayload(Employee $employee, int $salary): array
 {
     $department = Department::query()->create(['name' => 'Correction Department', 'status' => 'active']);
+    $managerPosition = Position::query()->create([
+        'name' => 'Correction Line Manager',
+        'department_id' => $department->id,
+        'job_level' => 'manager',
+        'status' => 'active',
+    ]);
     $managerUser = User::factory()->create(['status' => 'active']);
     $manager = Employee::query()->create([
-        'user_id' => $managerUser->id, 'employee_id' => 'EMP-CORRECTION-MANAGER', 'full_name' => 'Manager',
-        'join_date' => '2027-01-01', 'base_salary' => 1000, 'employment_status' => 'full-time',
+        'user_id' => $managerUser->id,
+        'employee_id' => 'EMP-CORRECTION-MANAGER-'.random_int(1000, 9999),
+        'full_name' => 'Manager',
+        'department_id' => $department->id,
+        'position_id' => $managerPosition->id,
+        'join_date' => '2027-01-01',
+        'base_salary' => 1000,
+        'employment_status' => 'full-time',
     ]);
 
     return [

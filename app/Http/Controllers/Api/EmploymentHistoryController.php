@@ -21,7 +21,11 @@ class EmploymentHistoryController extends Controller
     {
         $this->authorize('view', $employee);
 
-        $paginator = $this->employmentHistoryService->paginate($employee, $request->validated());
+        $excludeFields = $request->user()?->can('viewSalary', $employee)
+            ? []
+            : [EmploymentHistory::FIELD_BASE_SALARY];
+
+        $paginator = $this->employmentHistoryService->paginate($employee, $request->validated(), $excludeFields);
         $paginator->through(fn (EmploymentHistory $history) => EmploymentHistoryResource::make($history)->resolve($request));
 
         return ApiResponse::paginated(

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->decimal('clock_in_longitude', 11, 8)->nullable();
             $table->decimal('clock_out_latitude', 10, 8)->nullable();
             $table->decimal('clock_out_longitude', 11, 8)->nullable();
-            $table->enum('status', ['present', 'late', 'absent', 'missing_clock_out']);
+            $table->enum('status', ['present', 'late', 'absent', 'missing_clock_out', 'missing_clock_in', 'missing_both']);
             $table->boolean('is_late')->default(false);
             $table->text('correction_reason')->nullable();
             $table->foreignId('corrected_by')->nullable()->index()->constrained('users')->nullOnDelete();

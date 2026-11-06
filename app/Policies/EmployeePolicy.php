@@ -4,9 +4,14 @@ namespace App\Policies;
 
 use App\Models\Employee;
 use App\Models\User;
+use App\Support\EmployeeVisibility;
 
 class EmployeePolicy
 {
+    public function __construct(
+        protected EmployeeVisibility $employeeVisibility,
+    ) {}
+
     public function viewAny(User $user): bool
     {
         return $user->hasPermissionTo('employees.view_any');
@@ -19,7 +24,12 @@ class EmployeePolicy
 
     public function view(User $user, Employee $employee): bool
     {
-        return $user->hasPermissionTo('employees.view');
+        return $this->employeeVisibility->canViewEmployee($user, $employee);
+    }
+
+    public function viewSalary(User $user, Employee $employee): bool
+    {
+        return $this->employeeVisibility->canViewSalary($user, $employee);
     }
 
     public function create(User $user): bool

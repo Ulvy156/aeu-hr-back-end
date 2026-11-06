@@ -104,6 +104,17 @@ test('managerial job titles retain employee access without payroll or peer paysl
     $this->getJson("/api/payslips/{$items[1]->id}")->assertForbidden();
     expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
         ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue();
+
+    if ($level === JobLevel::Head) {
+        $this->getJson('/api/employees')->assertSuccessful()
+            ->assertJsonFragment(['id' => $peer->id]);
+        $this->getJson("/api/employees/{$peer->id}")
+            ->assertSuccessful()
+            ->assertJsonPath('data.base_salary', '1000.00');
+        expect($user->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse();
+    } else {
+        $this->getJson('/api/employees')->assertForbidden();
+    }
 })->with([JobLevel::Manager, JobLevel::Head]);
 
 test('gm job level grants report view and export while keeping employee payroll access limits', function () {
@@ -140,19 +151,29 @@ test('gm job level grants report view and export while keeping employee payroll 
     $this->getJson('/api/payslips')->assertSuccessful()->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $items[0]->id);
     $this->getJson("/api/payslips/{$items[1]->id}")->assertForbidden();
+    $this->getJson('/api/employees')->assertSuccessful()
+        ->assertJsonFragment(['id' => $peer->id]);
+    $this->getJson("/api/employees/{$peer->id}")
+        ->assertSuccessful()
+        ->assertJsonPath('data.base_salary', '1000.00');
     expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
         ->and($user->fresh()->hasDirectPermission('reports.payroll_export'))->toBeTrue()
-        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue();
+        ->and($user->fresh()->hasDirectPermission('employees.view_salary'))->toBeTrue()
+        ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue()
+        ->and($user->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse();
 
     $position->update(['job_level' => JobLevel::Junior]);
     app(JobLevelRoleService::class)->syncForPosition($position->fresh());
 
     $user = $user->fresh();
     expect($user->hasDirectPermission('reports.payroll_export'))->toBeFalse()
-        ->and($user->hasPermissionTo('reports.payroll_view'))->toBeFalse();
+        ->and($user->hasPermissionTo('reports.payroll_view'))->toBeFalse()
+        ->and($user->hasPermissionTo('employees.view_salary'))->toBeFalse()
+        ->and($user->hasPermissionTo('employees.view_any'))->toBeFalse();
 
     Sanctum::actingAs($user);
     $this->getJson('/api/reports/payroll?report_type=employee_list&month=5&year=2026')->assertForbidden();
+    $this->getJson('/api/employees')->assertForbidden();
 });
 
 test('role migration retires automatic head grants while preserving unrelated direct grants', function () {
