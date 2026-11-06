@@ -111,9 +111,14 @@ test('managerial job titles retain employee access without payroll or peer paysl
         $this->getJson("/api/employees/{$peer->id}")
             ->assertSuccessful()
             ->assertJsonPath('data.base_salary', '1000.00');
+        $this->getJson('/api/departments?per_page=1')->assertSuccessful();
+        $this->getJson('/api/positions?per_page=100')->assertSuccessful();
+        $this->getJson('/api/employees/search?q=Peer')->assertSuccessful();
         expect($user->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse();
     } else {
         $this->getJson('/api/employees')->assertForbidden();
+        $this->getJson('/api/departments')->assertForbidden();
+        $this->getJson('/api/positions')->assertForbidden();
     }
 })->with([JobLevel::Manager, JobLevel::Head]);
 
@@ -159,8 +164,13 @@ test('gm job level grants report view and export while keeping employee payroll 
     expect($user->fresh()->getRoleNames()->all())->toBe(['employee'])
         ->and($user->fresh()->hasDirectPermission('reports.payroll_export'))->toBeTrue()
         ->and($user->fresh()->hasDirectPermission('employees.view_salary'))->toBeTrue()
+        ->and($user->fresh()->hasDirectPermission('employees.search'))->toBeTrue()
         ->and($user->fresh()->hasPermissionTo('announcements.create'))->toBeTrue()
         ->and($user->fresh()->hasPermissionTo('employees.update_salary'))->toBeFalse();
+
+    $this->getJson('/api/departments?per_page=1')->assertSuccessful();
+    $this->getJson('/api/positions?per_page=100')->assertSuccessful();
+    $this->getJson('/api/employees/search?q=Peer')->assertSuccessful();
 
     $position->update(['job_level' => JobLevel::Junior]);
     app(JobLevelRoleService::class)->syncForPosition($position->fresh());

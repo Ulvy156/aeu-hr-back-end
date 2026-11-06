@@ -233,3 +233,36 @@ test('position create fails when job_level is missing', function () {
         ->assertUnprocessable()
         ->assertJsonValidationErrors('job_level');
 });
+
+test('ceo can list positions but cannot create them', function () {
+    $this->seed(RoleSeeder::class);
+
+    $department = Department::query()->create([
+        'name' => 'Executive',
+        'status' => 'active',
+    ]);
+    Position::query()->create([
+        'name' => 'Chief Executive Officer',
+        'department_id' => $department->id,
+        'job_level' => 'ceo',
+        'status' => 'active',
+    ]);
+
+    $ceo = User::factory()->create();
+    $ceo->assignRole('ceo');
+    $token = $ceo->createToken('ceo-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/positions?per_page=100')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.name', 'Chief Executive Officer');
+
+    $this->withToken($token)
+        ->postJson('/api/positions', [
+            'name' => 'New Role',
+            'department_id' => $department->id,
+            'job_level' => 'junior',
+            'status' => 'active',
+        ])
+        ->assertForbidden();
+});

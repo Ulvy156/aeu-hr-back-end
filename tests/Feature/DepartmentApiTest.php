@@ -101,3 +101,46 @@ test('employees cannot manage departments', function () {
         ->getJson('/api/departments')
         ->assertForbidden();
 });
+
+test('ceo can list departments but cannot create them', function () {
+    $this->seed(RoleSeeder::class);
+
+    Department::query()->create([
+        'name' => 'Executive',
+        'status' => 'active',
+    ]);
+
+    $ceo = User::factory()->create();
+    $ceo->assignRole('ceo');
+    $token = $ceo->createToken('ceo-device')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/departments?per_page=1')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.name', 'Executive');
+
+    $this->withToken($token)
+        ->postJson('/api/departments', [
+            'name' => 'New Dept',
+            'status' => 'active',
+        ])
+        ->assertForbidden();
+});
+
+test('admin and hr can list departments used by attendance and recruitment filters', function (string $role) {
+    $this->seed(RoleSeeder::class);
+
+    Department::query()->create([
+        'name' => 'Filter Dept',
+        'status' => 'active',
+    ]);
+
+    $user = User::factory()->create();
+    $user->assignRole($role);
+    $token = $user->createToken("{$role}-device")->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/departments?per_page=1')
+        ->assertSuccessful()
+        ->assertJsonPath('data.0.name', 'Filter Dept');
+})->with(['admin', 'hr']);

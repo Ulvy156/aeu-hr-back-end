@@ -145,7 +145,7 @@ test('public holiday date must remain unique on create and update', function () 
         ->assertJsonValidationErrors('holiday_date');
 });
 
-test('employees and ceo cannot manage public holidays', function () {
+test('employees and ceo can view public holidays but ceo cannot manage them', function () {
     $employee = User::factory()->create();
     $employee->assignRole('employee');
     $employeeToken = $employee->createToken('employee-device')->plainTextToken;
@@ -157,6 +157,10 @@ test('employees and ceo cannot manage public holidays', function () {
     $ceo = User::factory()->create();
     $ceo->assignRole('ceo');
     $ceoToken = $ceo->createToken('ceo-device')->plainTextToken;
+
+    $this->withToken($ceoToken)
+        ->getJson('/api/public-holidays')
+        ->assertSuccessful();
 
     $this->withToken($ceoToken)
         ->postJson('/api/public-holidays', [
