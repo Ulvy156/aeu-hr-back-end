@@ -59,7 +59,7 @@ function attendanceEmployeeUser(string $role = 'employee', array $userOverrides 
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-05-01',
         'base_salary' => 1000,
@@ -347,7 +347,7 @@ test('attendance list scopes employees to their own records', function () {
     [, $otherEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'other.employee@example.com',
     ], [
-        'employee_id' => 'EMP-90001',
+        'employee_id' => 'PDM-90001',
         'full_name' => 'Other Employee',
         'email' => 'other.employee@example.com',
     ]);
@@ -384,7 +384,7 @@ test('attendance list allows hr to filter by employee and status', function () {
     [, $otherEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'other.employee@example.com',
     ], [
-        'employee_id' => 'EMP-90001',
+        'employee_id' => 'PDM-90001',
         'full_name' => 'Other Employee',
         'email' => 'other.employee@example.com',
     ]);
@@ -737,7 +737,7 @@ test('mark absent uses today when no attendance date is provided', function () {
     attendanceEmployeeUser('employee', [
         'email' => 'employee.two@example.com',
     ], [
-        'employee_id' => 'EMP-20002',
+        'employee_id' => 'PDM-20002',
         'full_name' => 'Employee Two',
         'email' => 'employee.two@example.com',
     ]);
@@ -1082,7 +1082,7 @@ test('mark absent skips employees with approved leave', function () {
     [, $availableEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'available.employee@example.com',
     ], [
-        'employee_id' => 'EMP-30003',
+        'employee_id' => 'PDM-30003',
         'full_name' => 'Available Employee',
         'email' => 'available.employee@example.com',
     ]);
@@ -1119,7 +1119,7 @@ test('mark absent respects employee join date and last working date', function (
     [, $futureJoinEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'future.join@example.com',
     ], [
-        'employee_id' => 'EMP-40004',
+        'employee_id' => 'PDM-40004',
         'full_name' => 'Future Join',
         'email' => 'future.join@example.com',
         'join_date' => '2026-05-06',
@@ -1127,7 +1127,7 @@ test('mark absent respects employee join date and last working date', function (
     [, $endedEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'ended.employee@example.com',
     ], [
-        'employee_id' => 'EMP-50005',
+        'employee_id' => 'PDM-50005',
         'full_name' => 'Ended Employee',
         'email' => 'ended.employee@example.com',
         'employment_status' => 'terminated',
@@ -1136,7 +1136,7 @@ test('mark absent respects employee join date and last working date', function (
     [, $lastDayEmployee] = attendanceEmployeeUser('employee', [
         'email' => 'last.day@example.com',
     ], [
-        'employee_id' => 'EMP-60006',
+        'employee_id' => 'PDM-60006',
         'full_name' => 'Last Day Employee',
         'email' => 'last.day@example.com',
         'employment_status' => 'resigned',
@@ -1503,14 +1503,14 @@ test('mark missing clock-out updates eligible records after grace hours', functi
     [, $stillWithinGrace] = attendanceEmployeeUser('employee', [
         'email' => 'within.grace@example.com',
     ], [
-        'employee_id' => 'EMP-70007',
+        'employee_id' => 'PDM-70007',
         'full_name' => 'Within Grace',
         'email' => 'within.grace@example.com',
     ]);
     [, $alreadyClockedOut] = attendanceEmployeeUser('employee', [
         'email' => 'clocked.out@example.com',
     ], [
-        'employee_id' => 'EMP-70008',
+        'employee_id' => 'PDM-70008',
         'full_name' => 'Clocked Out',
         'email' => 'clocked.out@example.com',
     ]);
@@ -2206,21 +2206,21 @@ test('hr can proxy attendance using the numeric id returned by employee search',
     Carbon::setTestNow('2026-05-05 13:00:00');
     attendanceCompanySettings();
     [$hr] = attendanceEmployeeUser('hr');
-    [, $employee] = attendanceEmployeeUser('employee', [], ['employee_id' => 'EMP-PROXY-LOOKUP', 'full_name' => 'Proxy Lookup Employee']);
+    [, $employee] = attendanceEmployeeUser('employee', [], ['employee_id' => 'PDM-PROXY-LOOKUP', 'full_name' => 'Proxy Lookup Employee']);
     $token = $hr->createToken('hr-device')->plainTextToken;
 
-    $option = $this->withToken($token)->getJson('/api/employees/search?q=EMP-PROXY-LOOKUP')
+    $option = $this->withToken($token)->getJson('/api/employees/search?q=PDM-PROXY-LOOKUP')
         ->assertSuccessful()
         ->assertJsonCount(1)
         ->assertJsonPath('0.id', $employee->id)
-        ->assertJsonPath('0.employee_id', 'EMP-PROXY-LOOKUP')
+        ->assertJsonPath('0.employee_id', 'PDM-PROXY-LOOKUP')
         ->json('0');
     expect($option['id'])->toBeInt();
 
     $this->withToken($token)->postJson('/api/attendance/proxy-'.$action, [
         'employee_id' => $option['id'],
         'attendance_date' => '2026-05-05',
-    ])->assertSuccessful()->assertJsonPath('data.employee.employee_id', 'EMP-PROXY-LOOKUP');
+    ])->assertSuccessful()->assertJsonPath('data.employee.employee_id', 'PDM-PROXY-LOOKUP');
 
     $record = $employee->attendances()->sole();
     expect($action === 'clock-in' ? $record->clock_in_time : $record->clock_out_time)->not->toBeNull();

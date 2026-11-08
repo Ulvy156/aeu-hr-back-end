@@ -55,7 +55,7 @@ function reportEmployeeUser(string $role = 'employee', array $userOverrides = []
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 3000,
@@ -143,11 +143,11 @@ test('hr and ceo can view and export payroll reports', function () {
     $hr = reportManagerUser('hr', ['email' => 'hr.report@example.com']);
     $ceo = reportManagerUser('ceo', ['email' => 'ceo.report@example.com']);
     [, $employee] = reportEmployeeUser('employee', ['email' => 'employee.report@example.com'], [
-        'employee_id' => 'EMP-70001',
+        'employee_id' => 'PDM-70001',
         'full_name' => 'Report Employee',
     ]);
     [, $otherEmployee] = reportEmployeeUser('employee', ['email' => 'other.report@example.com'], [
-        'employee_id' => 'EMP-70002',
+        'employee_id' => 'PDM-70002',
         'full_name' => 'Other Report Employee',
     ]);
 
@@ -198,11 +198,11 @@ test('attendance reports return monthly summary and correction exports while emp
     $hr = reportManagerUser('hr', ['email' => 'hr.attendance@example.com']);
     $ceo = reportManagerUser('ceo', ['email' => 'ceo.attendance@example.com']);
     [$employeeUser, $employee] = reportEmployeeUser('employee', ['email' => 'employee.attendance@example.com'], [
-        'employee_id' => 'EMP-71001',
+        'employee_id' => 'PDM-71001',
         'full_name' => 'Attendance Employee',
     ]);
     [, $otherEmployee] = reportEmployeeUser('employee', ['email' => 'other.attendance@example.com'], [
-        'employee_id' => 'EMP-71002',
+        'employee_id' => 'PDM-71002',
         'full_name' => 'Other Attendance Employee',
     ]);
 
@@ -255,11 +255,11 @@ test('leave reports support status filtered lists leave balance exports and perm
     $hr = reportManagerUser('hr', ['email' => 'hr.leave.report@example.com']);
     $ceo = reportManagerUser('ceo', ['email' => 'ceo.leave.report@example.com']);
     [$employeeUser, $employee] = reportEmployeeUser('employee', ['email' => 'employee.leave.report@example.com'], [
-        'employee_id' => 'EMP-72001',
+        'employee_id' => 'PDM-72001',
         'full_name' => 'Leave Report Employee',
     ]);
     [, $otherEmployee] = reportEmployeeUser('employee', ['email' => 'other.leave.report@example.com'], [
-        'employee_id' => 'EMP-72002',
+        'employee_id' => 'PDM-72002',
         'full_name' => 'Other Leave Employee',
     ]);
 
@@ -335,7 +335,7 @@ test('attendance daily list export uses readable status and local times', functi
     reportCompanySettings();
     $hr = reportManagerUser('hr');
     [, $employee] = reportEmployeeUser('employee', ['email' => 'employee.attendance.export@example.com'], [
-        'employee_id' => 'EMP-0019',
+        'employee_id' => 'PDM-0019',
         'full_name' => 'Leach Sreykea',
     ]);
 
@@ -368,7 +368,7 @@ test('attendance daily list export uses readable status and local times', functi
         'Corrected At',
         'Reason',
     ])
-        ->and($row[array_search('Employee ID', $headings)])->toBe('EMP-0019')
+        ->and($row[array_search('Employee ID', $headings)])->toBe('PDM-0019')
         ->and($row[array_search('Employee Name', $headings)])->toBe('Leach Sreykea')
         ->and($row[array_search('Attendance Date', $headings)])->toBe('Oct 14, 2026')
         ->and($row[array_search('Status', $headings)])->toBe('Missing Clock-Out')
@@ -409,13 +409,13 @@ test('monthly leave report returns leave absence totals exports and forbids empl
     reportCompanySettings();
     $hr = reportManagerUser('hr', ['email' => 'hr.monthly.leave@example.com']);
     [$employeeUser, $employee] = reportEmployeeUser('employee', ['email' => 'employee.monthly.leave@example.com'], [
-        'employee_id' => 'EMP-73001',
+        'employee_id' => 'PDM-73001',
         'full_name' => 'Alpha Monthly Leave',
         'gender' => 'female',
         'join_date' => '2025-01-01',
     ]);
     [, $formerEmployee] = reportEmployeeUser('employee', ['email' => 'former.monthly.leave@example.com'], [
-        'employee_id' => 'EMP-73002',
+        'employee_id' => 'PDM-73002',
         'full_name' => 'Former Monthly Leave',
         'join_date' => '2024-01-01',
         'last_working_date' => '2026-04-30',

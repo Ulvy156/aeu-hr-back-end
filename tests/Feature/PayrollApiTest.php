@@ -60,7 +60,7 @@ function payrollEmployeeUser(string $role = 'employee', array $userOverrides = [
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 3000,
@@ -167,11 +167,11 @@ test('generated paid days use the monthly rate while absences use scheduled date
     Sanctum::actingAs($hr);
 
     [, $fullMonthEmployee] = payrollEmployeeUser('employee', [], [
-        'employee_id' => 'EMP-90001',
+        'employee_id' => 'PDM-90001',
         'join_date' => '2025-01-01',
     ]);
     [, $partialMonthEmployee] = payrollEmployeeUser('employee', [], [
-        'employee_id' => 'EMP-90002',
+        'employee_id' => 'PDM-90002',
         'join_date' => $partialJoinDate,
     ]);
 
@@ -245,13 +245,13 @@ test('head of hr can generate payroll with proration deductions and NSSF only', 
     [, $fullEmployee] = payrollEmployeeUser('employee', [
         'email' => 'full.employee@example.com',
     ], [
-        'employee_id' => 'EMP-10001',
+        'employee_id' => 'PDM-10001',
         'full_name' => 'Full Employee',
     ]);
     [, $joinedMidMonthEmployee] = payrollEmployeeUser('employee', [
         'email' => 'joined.mid@example.com',
     ], [
-        'employee_id' => 'EMP-10002',
+        'employee_id' => 'PDM-10002',
         'full_name' => 'Joined Mid Month',
         'join_date' => '2026-04-16',
     ]);
@@ -406,7 +406,7 @@ test('hr can review submit and ceo can approve payroll while approved batches re
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'editable.employee@example.com',
     ], [
-        'employee_id' => 'EMP-20001',
+        'employee_id' => 'PDM-20001',
         'full_name' => 'Editable Employee',
     ]);
 
@@ -502,7 +502,7 @@ test('rejection requires a reason and rejected payroll can be revised back to dr
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'reject.employee@example.com',
     ], [
-        'employee_id' => 'EMP-30001',
+        'employee_id' => 'PDM-30001',
     ]);
 
     foreach (range(1, 30) as $day) {
@@ -578,7 +578,7 @@ test('NSSF snapshot remains stable after config changes and payslip reads stored
     [$employeeUser, $employee] = payrollEmployeeUser('employee', [
         'email' => 'employee.snapshot@example.com',
     ], [
-        'employee_id' => 'EMP-35001',
+        'employee_id' => 'PDM-35001',
     ]);
 
     foreach (range(1, 30) as $day) {
@@ -646,13 +646,13 @@ test('employees can view and download only their own approved payslips while man
     [$employeeUser, $employee] = payrollEmployeeUser('employee', [
         'email' => 'employee.payslip@example.com',
     ], [
-        'employee_id' => 'EMP-40001',
+        'employee_id' => 'PDM-40001',
         'full_name' => 'Payslip Owner',
     ]);
     [, $otherEmployee] = payrollEmployeeUser('employee', [
         'email' => 'other.payslip@example.com',
     ], [
-        'employee_id' => 'EMP-40002',
+        'employee_id' => 'PDM-40002',
         'full_name' => 'Other Payslip Owner',
     ]);
 
@@ -761,7 +761,7 @@ test('maternity leave deducts 50% of daily rate for employees with at least 1 ye
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'employee.maternity@example.com',
     ], [
-        'employee_id' => 'EMP-60001',
+        'employee_id' => 'PDM-60001',
         'full_name' => 'Maternity Employee',
         'join_date' => '2024-01-01',
         'base_salary' => 5000,
@@ -829,7 +829,7 @@ test('maternity leave is fully deducted for employees with less than 1 year of s
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'employee.maternity-junior@example.com',
     ], [
-        'employee_id' => 'EMP-60002',
+        'employee_id' => 'PDM-60002',
         'full_name' => 'Junior Maternity Employee',
         'join_date' => '2026-01-01',
         'base_salary' => 5000,
@@ -878,7 +878,7 @@ test('nssf deduction uses lower threshold for low salary payroll items', functio
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'employee.nssf@example.com',
     ], [
-        'employee_id' => 'EMP-50001',
+        'employee_id' => 'PDM-50001',
         'base_salary' => 200,
     ]);
 
@@ -949,7 +949,7 @@ test('HR can generate and submit payroll while only CEO can approve or reject', 
     [, $employee] = payrollEmployeeUser('employee', [
         'email' => 'payroll.head.employee@example.com',
     ], [
-        'employee_id' => 'EMP-80002',
+        'employee_id' => 'PDM-80002',
     ]);
 
     foreach (range(1, 30) as $day) {
@@ -999,7 +999,7 @@ test('HR can hard delete draft payroll while employees and CEO cannot', function
     ]);
     Employee::query()->create([
         'user_id' => $hrHead->id,
-        'employee_id' => 'EMP-80010',
+        'employee_id' => 'PDM-80010',
         'full_name' => $hrHead->name,
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -1007,7 +1007,7 @@ test('HR can hard delete draft payroll while employees and CEO cannot', function
         'base_salary' => 1100,
         'employment_status' => 'full-time',
     ]);
-    payrollEmployeeUser('employee', ['email' => 'delete.employee@example.com'], ['employee_id' => 'EMP-80011']);
+    payrollEmployeeUser('employee', ['email' => 'delete.employee@example.com'], ['employee_id' => 'PDM-80011']);
 
     Sanctum::actingAs($hrHead);
     $draftId = $this->postJson('/api/payrolls', ['month' => 4, 'year' => 2026])

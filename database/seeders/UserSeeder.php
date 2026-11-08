@@ -40,7 +40,7 @@ class UserSeeder extends Seeder
             [
                 'user' => ['name' => 'Tum Punleu', 'email' => 'tum.punleu@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0001',
+                    'employee_id' => 'PDM-0001',
                     'full_name' => 'Tum Punleu',
                     'gender' => 'male',
                     'department_id' => $executiveDept?->id,
@@ -54,7 +54,7 @@ class UserSeeder extends Seeder
             [
                 'user' => ['name' => 'Sim Sea', 'email' => 'sim.sea@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0002',
+                    'employee_id' => 'PDM-0002',
                     'full_name' => 'Sim Sea',
                     'gender' => 'male',
                     'department_id' => $executiveDept?->id,
@@ -68,7 +68,7 @@ class UserSeeder extends Seeder
             [
                 'user' => ['name' => 'Thun Chan', 'email' => 'thun.chan@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0003',
+                    'employee_id' => 'PDM-0003',
                     'full_name' => 'Thun Chan',
                     'gender' => 'male',
                     'department_id' => $commercialDept?->id,
@@ -80,16 +80,16 @@ class UserSeeder extends Seeder
                 ],
             ],
             ...$this->salesExecutives($commercialDept?->id, $salesExecutivePos?->id, 'thun.chan@gmail.com', $joinDate, $fullTime, [
-                ['EMP-0004', 'Nhel Visal', 'nhel.visal@gmail.com'],
-                ['EMP-0005', 'Chum Mab', 'chum.mab@gmail.com'],
-                ['EMP-0006', 'Van Oudom', 'van.oudom@gmail.com'],
-                ['EMP-0007', 'Varak Soyhah', 'varak.soyhah@gmail.com'],
-                ['EMP-0008', 'Soung Rotha', 'soung.rotha@gmail.com'],
+                ['PDM-0004', 'Nhel Visal', 'nhel.visal@gmail.com'],
+                ['PDM-0005', 'Chum Mab', 'chum.mab@gmail.com'],
+                ['PDM-0006', 'Van Oudom', 'van.oudom@gmail.com'],
+                ['PDM-0007', 'Varak Soyhah', 'varak.soyhah@gmail.com'],
+                ['PDM-0008', 'Soung Rotha', 'soung.rotha@gmail.com'],
             ]),
             [
                 'user' => ['name' => 'Chea Sombo', 'email' => 'chea.sombo@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0009',
+                    'employee_id' => 'PDM-0009',
                     'full_name' => 'Chea Sombo',
                     'gender' => 'male',
                     'department_id' => $commercialDept?->id,
@@ -101,14 +101,14 @@ class UserSeeder extends Seeder
                 ],
             ],
             ...$this->salesExecutives($commercialDept?->id, $salesExecutivePos?->id, 'chea.sombo@gmail.com', $joinDate, $fullTime, [
-                ['EMP-0010', 'Chum Sopeakny', 'chum.sopeakny@gmail.com'],
-                ['EMP-0011', 'Meach Chay', 'meach.chay@gmail.com'],
-                ['EMP-0012', 'Chuob Vireak', 'chuob.vireak@gmail.com'],
+                ['PDM-0010', 'Chum Sopeakny', 'chum.sopeakny@gmail.com'],
+                ['PDM-0011', 'Meach Chay', 'meach.chay@gmail.com'],
+                ['PDM-0012', 'Chuob Vireak', 'chuob.vireak@gmail.com'],
             ]),
             [
                 'user' => ['name' => 'Khea Chhunly', 'email' => 'khea.chhunly@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0013',
+                    'employee_id' => 'PDM-0013',
                     'full_name' => 'Khea Chhunly',
                     'gender' => 'male',
                     'department_id' => $commercialDept?->id,
@@ -120,14 +120,14 @@ class UserSeeder extends Seeder
                 ],
             ],
             ...$this->salesExecutives($commercialDept?->id, $salesExecutivePos?->id, 'khea.chhunly@gmail.com', $joinDate, $fullTime, [
-                ['EMP-0014', 'Vieng Rothnea', 'vieng.rothnea@gmail.com'],
-                ['EMP-0015', 'Tit Phearan', 'tit.phearan@gmail.com'],
-                ['EMP-0016', 'Pan Sobon', 'pan.sobon@gmail.com'],
+                ['PDM-0014', 'Vieng Rothnea', 'vieng.rothnea@gmail.com'],
+                ['PDM-0015', 'Tit Phearan', 'tit.phearan@gmail.com'],
+                ['PDM-0016', 'Pan Sobon', 'pan.sobon@gmail.com'],
             ]),
             [
                 'user' => ['name' => 'Roth Narak', 'email' => 'roth.narak@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0017',
+                    'employee_id' => 'PDM-0017',
                     'full_name' => 'Roth Narak',
                     'gender' => 'male',
                     'department_id' => $marketingDept?->id,
@@ -141,7 +141,7 @@ class UserSeeder extends Seeder
             [
                 'user' => ['name' => 'Ouk Dara', 'email' => 'ouk.dara@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0018',
+                    'employee_id' => 'PDM-0018',
                     'full_name' => 'Ouk Dara',
                     'gender' => 'male',
                     'department_id' => $marketingDept?->id,
@@ -155,7 +155,7 @@ class UserSeeder extends Seeder
             [
                 'user' => ['name' => 'Leach Sreykea', 'email' => 'leach.sreykea@gmail.com', 'status' => Status::Active->value],
                 'employee' => [
-                    'employee_id' => 'EMP-0019',
+                    'employee_id' => 'PDM-0019',
                     'full_name' => 'Leach Sreykea',
                     'gender' => 'female',
                     'department_id' => $accountingDept?->id,
@@ -170,7 +170,7 @@ class UserSeeder extends Seeder
                 'user' => ['name' => 'Kean Da', 'email' => 'hr@gmail.com', 'status' => Status::Active->value],
                 'role' => 'hr',
                 'employee' => [
-                    'employee_id' => 'EMP-0020',
+                    'employee_id' => 'PDM-0020',
                     'full_name' => 'Kean Da',
                     'gender' => null,
                     'department_id' => $hrAdminDept?->id,
@@ -282,11 +282,11 @@ class UserSeeder extends Seeder
         }
 
         $highestNumber = Employee::withTrashed()
-            ->where('employee_id', 'like', 'EMP-%')
+            ->where('employee_id', 'like', 'PDM-%')
             ->pluck('employee_id')
             ->map(fn (string $employeeId) => (int) substr($employeeId, 4))
             ->max() ?? 0;
 
-        return 'EMP-'.str_pad((string) ($highestNumber + 1), 5, '0', STR_PAD_LEFT);
+        return 'PDM-'.str_pad((string) ($highestNumber + 1), 5, '0', STR_PAD_LEFT);
     }
 }

@@ -552,16 +552,16 @@ class EmployeeService
     public function generateEmployeeId(): string
     {
         // Ordering by employee_id as a string breaks once the zero-padded
-        // width changes (e.g. "EMP-0014" sorts after "EMP-00015"), so the
+        // width changes (e.g. "PDM-0014" sorts after "PDM-00015"), so the
         // numeric suffix is compared in PHP instead of via SQL ordering.
         $highestNumber = Employee::withTrashed()
-            ->where('employee_id', 'like', 'EMP-%')
+            ->where('employee_id', 'like', 'PDM-%')
             ->lockForUpdate()
             ->pluck('employee_id')
             ->map(fn (string $employeeId) => (int) substr($employeeId, 4))
             ->max() ?? 0;
 
-        return 'EMP-'.str_pad((string) ($highestNumber + 1), 5, '0', STR_PAD_LEFT);
+        return 'PDM-'.str_pad((string) ($highestNumber + 1), 5, '0', STR_PAD_LEFT);
     }
 
     /**

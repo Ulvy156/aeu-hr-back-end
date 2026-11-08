@@ -31,7 +31,7 @@ beforeEach(function () {
     $user = User::factory()->create(['status' => 'active']);
     $user->assignRole('employee');
     $this->employee = Employee::query()->create([
-        'user_id' => $user->id, 'employee_id' => 'EMP-TEST-001', 'full_name' => 'Salary Employee',
+        'user_id' => $user->id, 'employee_id' => 'PDM-TEST-001', 'full_name' => 'Salary Employee',
         'join_date' => '2026-01-01', 'base_salary' => 400, 'employment_status' => 'full-time',
     ]);
     CompanySetting::query()->create([
@@ -60,7 +60,7 @@ function correctSalaryPayload(Employee $employee, int $salary): array
     $managerUser = User::factory()->create(['status' => 'active']);
     $manager = Employee::query()->create([
         'user_id' => $managerUser->id,
-        'employee_id' => 'EMP-CORRECTION-MANAGER-'.random_int(1000, 9999),
+        'employee_id' => 'PDM-CORRECTION-MANAGER-'.random_int(1000, 9999),
         'full_name' => 'Manager',
         'department_id' => $department->id,
         'position_id' => $managerPosition->id,
@@ -295,7 +295,7 @@ test('application rechecks existing payroll and continues applying other employe
     app(PayrollService::class)->generate(10, 2026, $this->hr)->update(['month' => 11]);
     $otherUser = User::factory()->create(['status' => 'active']);
     $other = Employee::query()->create([
-        'user_id' => $otherUser->id, 'employee_id' => 'EMP-OTHER', 'full_name' => 'Other',
+        'user_id' => $otherUser->id, 'employee_id' => 'PDM-OTHER', 'full_name' => 'Other',
         'join_date' => '2026-01-01', 'base_salary' => 400, 'employment_status' => 'full-time',
     ]);
     $otherRequest = effectiveRequest($other, $this->hr);

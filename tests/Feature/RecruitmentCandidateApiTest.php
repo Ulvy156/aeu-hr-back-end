@@ -277,7 +277,7 @@ test('candidate can be updated while not hired', function () {
     $interviewerUserA = User::factory()->create(['name' => 'John HR']);
     $interviewerA = Employee::query()->create([
         'user_id' => $interviewerUserA->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'John HR',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -287,7 +287,7 @@ test('candidate can be updated while not hired', function () {
     $interviewerUserB = User::factory()->create(['name' => 'Mary CEO']);
     $interviewerB = Employee::query()->create([
         'user_id' => $interviewerUserB->id,
-        'employee_id' => 'EMP-00002',
+        'employee_id' => 'PDM-00002',
         'full_name' => 'Mary CEO',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',

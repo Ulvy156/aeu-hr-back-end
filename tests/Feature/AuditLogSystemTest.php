@@ -20,7 +20,7 @@ test('login and logout actions are written to the spatie activity log', function
     $user->assignRole('admin');
     Employee::query()->create([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-AUDIT-001',
+        'employee_id' => 'PDM-AUDIT-001',
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,

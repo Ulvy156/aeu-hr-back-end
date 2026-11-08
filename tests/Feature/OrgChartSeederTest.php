@@ -23,7 +23,7 @@ test('org chart seeders create occupied seats with job levels and reporting', fu
 
     expect($ceo)->not->toBeNull()
         ->and($ceo->hasRole('ceo'))->toBeTrue()
-        ->and($ceo->employee->employee_id)->toBe('EMP-0001')
+        ->and($ceo->employee->employee_id)->toBe('PDM-0001')
         ->and($ceo->employee->position->name)->toBe('Chief Executive Officer')
         ->and($ceo->employee->position->job_level)->toBe(JobLevel::Ceo)
         ->and($ceo->employee->manager_id)->toBeNull()
@@ -74,15 +74,15 @@ test('HR receives payroll preparation permission independently of job level', fu
 
 test('user seeder fills zero salaries and preserves customized salaries', function () {
     $expected = [
-        'EMP-0001' => '3200.00',
-        'EMP-0002' => '2200.00',
-        'EMP-0003' => '900.00',
-        'EMP-0004' => '350.00',
-        'EMP-0009' => '650.00',
-        'EMP-0017' => '700.00',
-        'EMP-0018' => '450.00',
-        'EMP-0019' => '500.00',
-        'EMP-0020' => '1100.00',
+        'PDM-0001' => '3200.00',
+        'PDM-0002' => '2200.00',
+        'PDM-0003' => '900.00',
+        'PDM-0004' => '350.00',
+        'PDM-0009' => '650.00',
+        'PDM-0017' => '700.00',
+        'PDM-0018' => '450.00',
+        'PDM-0019' => '500.00',
+        'PDM-0020' => '1100.00',
     ];
 
     foreach ($expected as $employeeId => $salary) {
@@ -91,13 +91,13 @@ test('user seeder fills zero salaries and preserves customized salaries', functi
 
     expect(Employee::query()->where('base_salary', '<=', 0)->count())->toBe(0);
 
-    Employee::query()->where('employee_id', 'EMP-0004')->update(['base_salary' => '475.00']);
-    Employee::query()->where('employee_id', 'EMP-0005')->update(['base_salary' => '0.00']);
+    Employee::query()->where('employee_id', 'PDM-0004')->update(['base_salary' => '475.00']);
+    Employee::query()->where('employee_id', 'PDM-0005')->update(['base_salary' => '0.00']);
 
     $this->seed(UserSeeder::class);
 
-    expect(Employee::query()->where('employee_id', 'EMP-0004')->value('base_salary'))->toBe('475.00')
-        ->and(Employee::query()->where('employee_id', 'EMP-0005')->value('base_salary'))->toBe('350.00');
+    expect(Employee::query()->where('employee_id', 'PDM-0004')->value('base_salary'))->toBe('475.00')
+        ->and(Employee::query()->where('employee_id', 'PDM-0005')->value('base_salary'))->toBe('350.00');
 });
 
 test('vacant org chart titles are positions without employees', function () {

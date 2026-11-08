@@ -57,7 +57,7 @@ function announcementEmployee(string $role = 'employee', array $permissions = []
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,

@@ -49,7 +49,7 @@ function leaveEmployeeUser(string $role = 'employee', array $userOverrides = [],
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,
@@ -97,7 +97,7 @@ function leaveHrHeadUser(array $userOverrides = []): User
 
     $employee = Employee::query()->create([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,
@@ -355,7 +355,7 @@ test('employee can view only their own leave requests in list and detail endpoin
     [, $otherEmployee] = leaveEmployeeUser('employee', [
         'email' => 'other.employee@example.com',
     ], [
-        'employee_id' => 'EMP-90001',
+        'employee_id' => 'PDM-90001',
         'full_name' => 'Other Employee',
         'email' => 'other.employee@example.com',
     ]);
@@ -393,7 +393,7 @@ test('hr ceo and admin can view leave requests based on their permissions', func
     [, $otherEmployee] = leaveEmployeeUser('employee', [
         'email' => 'other.viewer@example.com',
     ], [
-        'employee_id' => 'EMP-90002',
+        'employee_id' => 'PDM-90002',
         'full_name' => 'Other Viewer',
         'email' => 'other.viewer@example.com',
     ]);
@@ -526,8 +526,8 @@ test('monthly summary requires authentication and permission to view leave', fun
 test('monthly summary can filter by date range leave type and employee', function () {
     leaveCompanySettings();
     [$hr] = leaveEmployeeUser('hr');
-    [, $alice] = leaveEmployeeUser('employee', ['name' => 'Alice'], ['full_name' => 'Alice', 'employee_id' => 'EMP-ALICE']);
-    [, $bob] = leaveEmployeeUser('employee', ['name' => 'Bob'], ['full_name' => 'Bob', 'employee_id' => 'EMP-BOB']);
+    [, $alice] = leaveEmployeeUser('employee', ['name' => 'Alice'], ['full_name' => 'Alice', 'employee_id' => 'PDM-ALICE']);
+    [, $bob] = leaveEmployeeUser('employee', ['name' => 'Bob'], ['full_name' => 'Bob', 'employee_id' => 'PDM-BOB']);
 
     makeLeave($alice, [
         'leave_type' => 'annual',
@@ -571,7 +571,7 @@ test('monthly summary can filter by date range leave type and employee', functio
         ->assertJsonPath('data.awaiting_approval', 0);
 
     $this->withToken($token)
-        ->getJson('/api/leaves/summary?date_from=2026-05-01&date_to=2026-05-31&employee_id=EMP-ALICE')
+        ->getJson('/api/leaves/summary?date_from=2026-05-01&date_to=2026-05-31&employee_id=PDM-ALICE')
         ->assertSuccessful()
         ->assertJsonPath('data.on_leave_today', 1)
         ->assertJsonPath('data.employees_taking_leave', 1)
@@ -708,7 +708,7 @@ test('employee cannot request another employees leave balance', function () {
     [, $otherEmployee] = leaveEmployeeUser('employee', [
         'email' => 'leave.balance.other@example.com',
     ], [
-        'employee_id' => 'EMP-90010',
+        'employee_id' => 'PDM-90010',
         'full_name' => 'Leave Balance Other',
         'email' => 'leave.balance.other@example.com',
     ]);
@@ -1060,7 +1060,7 @@ test('employee cannot cancel another employees leave', function () {
     [, $otherEmployee] = leaveEmployeeUser('employee', [
         'email' => 'another.employee@example.com',
     ], [
-        'employee_id' => 'EMP-90003',
+        'employee_id' => 'PDM-90003',
         'full_name' => 'Another Employee',
         'email' => 'another.employee@example.com',
     ]);

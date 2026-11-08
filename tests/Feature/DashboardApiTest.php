@@ -56,7 +56,7 @@ function dashboardEmployeeUser(string $role = 'employee', array $userOverrides =
 
     $employee = Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 3000,
@@ -143,13 +143,13 @@ test('employee dashboard returns own attendance leave balance and latest approve
     [$employeeUser, $employee] = dashboardEmployeeUser('employee', [
         'email' => 'employee.dashboard@example.com',
     ], [
-        'employee_id' => 'EMP-60001',
+        'employee_id' => 'PDM-60001',
         'full_name' => 'Dashboard Employee',
     ]);
     [, $otherEmployee] = dashboardEmployeeUser('employee', [
         'email' => 'other.dashboard@example.com',
     ], [
-        'employee_id' => 'EMP-60002',
+        'employee_id' => 'PDM-60002',
         'full_name' => 'Other Employee',
     ]);
 

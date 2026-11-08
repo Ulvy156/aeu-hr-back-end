@@ -39,7 +39,7 @@ function hierarchyEmployee(array $overrides = []): Employee
 
     return Employee::query()->create(array_merge([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-H'.str_pad((string) $counter, 4, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-H'.str_pad((string) $counter, 4, '0', STR_PAD_LEFT),
         'full_name' => "Hierarchy Employee {$counter}",
         'join_date' => '2026-01-01',
         'base_salary' => '1000.00',

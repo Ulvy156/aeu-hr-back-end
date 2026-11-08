@@ -64,7 +64,7 @@ function jobLevelEmployee(User $user, array $overrides = []): Employee
 
     return Employee::query()->create(array_merge([
         'user_id' => $user->id,
-        'employee_id' => 'EMP-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+        'employee_id' => 'PDM-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
         'full_name' => $user->name,
         'join_date' => '2026-01-01',
         'base_salary' => 1000,
@@ -158,12 +158,12 @@ test('changing a position job_level syncs assigned users except protected roles'
     jobLevelEmployee($employeeUser, [
         'department_id' => $department->id,
         'position_id' => $position->id,
-        'employee_id' => 'EMP-70001',
+        'employee_id' => 'PDM-70001',
     ]);
     jobLevelEmployee($hrUser, [
         'department_id' => $department->id,
         'position_id' => $position->id,
-        'employee_id' => 'EMP-70002',
+        'employee_id' => 'PDM-70002',
     ]);
 
     $hr = jobLevelUser('hr', ['email' => 'hr.promote@example.com']);
@@ -190,13 +190,13 @@ test('employees can be filtered by job_level', function () {
         'full_name' => 'Junior Staff',
         'department_id' => $department->id,
         'position_id' => $junior->id,
-        'employee_id' => 'EMP-80001',
+        'employee_id' => 'PDM-80001',
     ]);
     jobLevelEmployee(jobLevelUser('employee', ['email' => 'supervisor.filter@example.com']), [
         'full_name' => 'Supervisor Staff',
         'department_id' => $department->id,
         'position_id' => $supervisor->id,
-        'employee_id' => 'EMP-80002',
+        'employee_id' => 'PDM-80002',
     ]);
 
     $hr = jobLevelUser('hr', ['email' => 'hr.filter@example.com']);
@@ -216,7 +216,7 @@ test('a manager cannot view payroll batches', function () {
     jobLevelEmployee($managerUser, [
         'department_id' => $department->id,
         'position_id' => $position->id,
-        'employee_id' => 'EMP-93001',
+        'employee_id' => 'PDM-93001',
     ]);
 
     Sanctum::actingAs($managerUser);
@@ -235,7 +235,7 @@ test('updating an employee position_id keeps the employee access role', function
         'department_id' => $department->id,
         'position_id' => $junior->id,
         'manager_id' => $manager->id,
-        'employee_id' => 'EMP-95001',
+        'employee_id' => 'PDM-95001',
     ]);
     $hr = jobLevelUser('hr', ['email' => 'hr.position.change@example.com']);
 
@@ -264,7 +264,7 @@ test('updating an employee without changing position_id does not overwrite the c
         'department_id' => $department->id,
         'position_id' => $managerPosition->id,
         'manager_id' => $manager->id,
-        'employee_id' => 'EMP-95002',
+        'employee_id' => 'PDM-95002',
         'full_name' => 'Keep Role',
     ]);
     $hr = jobLevelUser('hr', ['email' => 'hr.keep.role@example.com']);

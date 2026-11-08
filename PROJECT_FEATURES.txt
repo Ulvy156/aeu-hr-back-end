@@ -49,7 +49,7 @@ be linked to a department.
 --------------------------
 Manage employee profiles: name, contact info, department, position,
 salary, photo, and linked login account. Each employee gets an
-auto-generated ID like EMP-00001.
+auto-generated ID like PDM-00001.
 
 7. EMPLOYEE ORG CHART (HIERARCHY)
 --------------------------

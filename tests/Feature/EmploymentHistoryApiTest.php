@@ -37,7 +37,7 @@ function historyEmployee(array $overrides = []): Employee
 
     return Employee::query()->create(array_merge([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'History Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1200.50',

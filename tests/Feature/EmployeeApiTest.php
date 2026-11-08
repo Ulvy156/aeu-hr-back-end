@@ -138,7 +138,7 @@ test('admin and hr can create employee with a valid existing user id', function 
     $response
         ->assertCreated()
         ->assertJsonPath('message', 'Employee created successfully.')
-        ->assertJsonPath('data.employee_id', 'EMP-00001')
+        ->assertJsonPath('data.employee_id', 'PDM-00001')
         ->assertJsonPath('data.user.id', $linkedUser->id)
         ->assertJsonPath('data.user.name', 'Updated Linked Employee')
         ->assertJsonPath('data.user.email', 'original.linked@example.com')
@@ -148,7 +148,7 @@ test('admin and hr can create employee with a valid existing user id', function 
 
     $employee = Employee::query()->where('user_id', $linkedUser->id)->firstOrFail();
 
-    expect($employee->employee_id)->toBe('EMP-00001')
+    expect($employee->employee_id)->toBe('PDM-00001')
         ->and($employee->manager_id)->toBe($manager->id)
         ->and($employee->user->name)->toBe('Updated Linked Employee')
         ->and($employee->user->email)->toBe('original.linked@example.com')
@@ -254,7 +254,7 @@ test('employee update fails when department_id is missing', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Has Department',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -400,7 +400,7 @@ test('employee create fails when selected user already has an employee profile',
     $linkedUser = linkableUser();
     Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Existing Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -439,7 +439,7 @@ test('employee update cannot change user id', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Locked User',
         'join_date' => '2026-05-01',
         'base_salary' => '750.00',
@@ -468,7 +468,7 @@ test('employee update fails when manager_id is missing for a non-ceo employee', 
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Employee Without Manager',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -504,7 +504,7 @@ test('employee update allows missing manager_id for the ceo', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Chief Executive',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -542,7 +542,7 @@ test('employee update rejects manager_id that points to itself or creates a circ
     ]);
     $middle = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Middle Manager',
         'department_id' => $department->id,
         'position_id' => $gmPosition->id,
@@ -719,7 +719,7 @@ test('employee update rejects a manager from another department below GM', funct
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Department Bound Employee',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -766,7 +766,7 @@ test('employee update keeps an ineligible manager when the manager and departmen
     $linkedUser = linkableUser();
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Legacy Report',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -821,7 +821,7 @@ test('employee update succeeds when manager is ceo despite a different departmen
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Falls Back To Ceo',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -853,7 +853,7 @@ test('admin can filter the employee list by department while still including the
 
     $inDepartment = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Finance Staff', 'email' => 'finance.staff@example.com'])->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Finance Staff',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -865,7 +865,7 @@ test('admin can filter the employee list by department while still including the
     $ceoUser->assignRole('ceo');
     $ceo = Employee::query()->create([
         'user_id' => $ceoUser->id,
-        'employee_id' => 'EMP-00002',
+        'employee_id' => 'PDM-00002',
         'full_name' => 'Chief Executive',
         'department_id' => $otherDepartment->id,
         'join_date' => '2026-01-01',
@@ -875,7 +875,7 @@ test('admin can filter the employee list by department while still including the
 
     $otherStaff = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Engineering Staff', 'email' => 'engineering.staff@example.com'])->id,
-        'employee_id' => 'EMP-00003',
+        'employee_id' => 'PDM-00003',
         'full_name' => 'Engineering Staff',
         'department_id' => $otherDepartment->id,
         'join_date' => '2026-05-01',
@@ -927,7 +927,7 @@ test('employee response includes only minimal linked user info', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Minimal Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '900.00',
@@ -959,7 +959,7 @@ test('employee list filtering works for hr and employees cannot access employee 
     ]);
     Employee::query()->create([
         'user_id' => $aliceUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Alice Active',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -974,7 +974,7 @@ test('employee list filtering works for hr and employees cannot access employee 
     ]);
     Employee::query()->create([
         'user_id' => $bobUser->id,
-        'employee_id' => 'EMP-00002',
+        'employee_id' => 'PDM-00002',
         'full_name' => 'Bob Resigned',
         'join_date' => '2026-05-01',
         'last_working_date' => '2026-05-10',
@@ -988,7 +988,7 @@ test('employee list filtering works for hr and employees cannot access employee 
         ->getJson("/api/employees?department_id={$department->id}&employment_status=full-time&search=Alice")
         ->assertSuccessful()
         ->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.0.employee_id', 'EMP-00001');
+        ->assertJsonPath('data.0.employee_id', 'PDM-00001');
 
     [$employeeUser] = employeeActor('employee');
     Sanctum::actingAs($employeeUser);
@@ -1005,7 +1005,7 @@ test('employee dropdown search returns lightweight matches for admin hr and ceo 
     ]);
     Employee::query()->create([
         'user_id' => $alphaUser->id,
-        'employee_id' => 'EMP-00100',
+        'employee_id' => 'PDM-00100',
         'full_name' => 'Vy Rith',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1018,7 +1018,7 @@ test('employee dropdown search returns lightweight matches for admin hr and ceo 
     ]);
     Employee::query()->create([
         'user_id' => $betaUser->id,
-        'employee_id' => 'EMP-00101',
+        'employee_id' => 'PDM-00101',
         'full_name' => 'Borey',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1031,9 +1031,9 @@ test('employee dropdown search returns lightweight matches for admin hr and ceo 
         ->getJson('/api/employees/search?q=vy')
         ->assertSuccessful()
         ->assertJsonCount(1)
-        ->assertJsonPath('0.employee_id', 'EMP-00100')
+        ->assertJsonPath('0.employee_id', 'PDM-00100')
         ->assertJsonPath('0.full_name', 'Vy Rith')
-        ->assertJsonPath('0.display', 'EMP-00100 - Vy Rith')
+        ->assertJsonPath('0.display', 'PDM-00100 - Vy Rith')
         ->assertJsonMissingPath('0.email')
         ->assertJsonMissingPath('meta');
 })->with(['admin', 'hr', 'ceo']);
@@ -1045,7 +1045,7 @@ test('employee dropdown search supports employee id matching case insensitively 
     ]);
     Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00999',
+        'employee_id' => 'PDM-00999',
         'full_name' => 'Target Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1055,10 +1055,10 @@ test('employee dropdown search supports employee id matching case insensitively 
     [, $token] = employeeActor('hr');
 
     $this->withToken($token)
-        ->getJson('/api/employees/search?q=emp-009')
+        ->getJson('/api/employees/search?q=pdm-009')
         ->assertSuccessful()
         ->assertJsonCount(1)
-        ->assertJsonPath('0.employee_id', 'EMP-00999');
+        ->assertJsonPath('0.employee_id', 'PDM-00999');
 
     $this->withToken($token)
         ->getJson('/api/employees/search?q=')
@@ -1080,7 +1080,7 @@ test('employee dropdown search is limited to 15 results and ordered by full name
 
         Employee::query()->create([
             'user_id' => $linkedUser->id,
-            'employee_id' => 'EMP-'.str_pad((string) $index, 5, '0', STR_PAD_LEFT),
+            'employee_id' => 'PDM-'.str_pad((string) $index, 5, '0', STR_PAD_LEFT),
             'full_name' => sprintf('Aaron %02d', 17 - $index),
             'join_date' => '2026-05-01',
             'base_salary' => '1000.00',
@@ -1148,7 +1148,7 @@ test('line manager picker suggests same-department managers plus every gm and ce
 
     $financeManager = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Finance Manager User', 'email' => 'finance.manager@example.com'])->id,
-        'employee_id' => 'EMP-01001',
+        'employee_id' => 'PDM-01001',
         'full_name' => 'Finance Manager',
         'department_id' => $finance->id,
         'position_id' => $financeManagerPosition->id,
@@ -1158,7 +1158,7 @@ test('line manager picker suggests same-department managers plus every gm and ce
     ]);
     $financeSupervisor = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Finance Supervisor User', 'email' => 'finance.supervisor.picker@example.com'])->id,
-        'employee_id' => 'EMP-01002',
+        'employee_id' => 'PDM-01002',
         'full_name' => 'Finance Supervisor',
         'department_id' => $finance->id,
         'position_id' => $financeSupervisorPosition->id,
@@ -1168,7 +1168,7 @@ test('line manager picker suggests same-department managers plus every gm and ce
     ]);
     $engineeringManager = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Engineering Manager User', 'email' => 'engineering.manager@example.com'])->id,
-        'employee_id' => 'EMP-01003',
+        'employee_id' => 'PDM-01003',
         'full_name' => 'Engineering Manager',
         'department_id' => $engineering->id,
         'position_id' => $engineeringManagerPosition->id,
@@ -1178,7 +1178,7 @@ test('line manager picker suggests same-department managers plus every gm and ce
     ]);
     $engineeringGm = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Engineering GM User', 'email' => 'engineering.gm@example.com'])->id,
-        'employee_id' => 'EMP-01004',
+        'employee_id' => 'PDM-01004',
         'full_name' => 'Engineering GM',
         'department_id' => $engineering->id,
         'position_id' => $gmPosition->id,
@@ -1188,7 +1188,7 @@ test('line manager picker suggests same-department managers plus every gm and ce
     ]);
     $ceo = Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Chief Executive User', 'email' => 'picker.ceo@example.com'])->id,
-        'employee_id' => 'EMP-01005',
+        'employee_id' => 'PDM-01005',
         'full_name' => 'Chief Executive',
         'department_id' => $executive->id,
         'position_id' => $ceoPosition->id,
@@ -1239,7 +1239,7 @@ test('line manager picker returns empty data for a blank query without a departm
     ]);
     Employee::query()->create([
         'user_id' => linkableUser(['name' => 'Searchable Manager User', 'email' => 'searchable.manager@example.com'])->id,
-        'employee_id' => 'EMP-01003',
+        'employee_id' => 'PDM-01003',
         'full_name' => 'Searchable Manager',
         'department_id' => $executive->id,
         'position_id' => $gmPosition->id,
@@ -1271,7 +1271,7 @@ test('default employee list excludes soft deleted employees', function () {
     ]);
     Employee::query()->create([
         'user_id' => $visibleUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Visible Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1284,7 +1284,7 @@ test('default employee list excludes soft deleted employees', function () {
     ]);
     $deletedEmployee = Employee::query()->create([
         'user_id' => $deletedUser->id,
-        'employee_id' => 'EMP-00002',
+        'employee_id' => 'PDM-00002',
         'full_name' => 'Deleted Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1298,13 +1298,13 @@ test('default employee list excludes soft deleted employees', function () {
         ->getJson('/api/employees')
         ->assertSuccessful()
         ->assertJsonFragment([
-            'employee_id' => 'EMP-00001',
+            'employee_id' => 'PDM-00001',
         ])
         ->assertJsonFragment([
             'email' => 'visible.employee.user@example.com',
         ])
         ->assertJsonMissing([
-            'employee_id' => 'EMP-00002',
+            'employee_id' => 'PDM-00002',
         ])
         ->assertJsonMissing([
             'email' => 'deleted.employee.user@example.com',
@@ -1321,7 +1321,7 @@ test('deleting an employee soft deletes the employee and linked user without har
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Delete Target Employee',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1358,7 +1358,7 @@ test('employee update syncs linked user name and status and audits salary change
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Original Name',
         'department_id' => $department->id,
         'position_id' => $position->id,
@@ -1529,7 +1529,7 @@ test('employee update can add documents to an existing employee', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Doc Test',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -1574,7 +1574,7 @@ test('employee update can remove specific documents by index', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Remove Doc Test',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -1622,7 +1622,7 @@ test('employee update can simultaneously remove and add documents', function () 
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Swap Doc Test',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -1667,7 +1667,7 @@ test('employee update rejects out-of-bounds remove_documents index', function ()
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'OOB Test',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1700,7 +1700,7 @@ test('employee update rejects total documents exceeding 5 after removal and addi
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Max Doc Test',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1745,7 +1745,7 @@ test('deleting an employee removes documents from storage', function () {
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Del Doc Test',
         'join_date' => '2026-05-01',
         'base_salary' => '1000.00',
@@ -1774,7 +1774,7 @@ test('setting employment status to resigned or terminated revokes the employee a
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Revoke Token Test',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
@@ -1810,7 +1810,7 @@ test('employee update keeps active tokens when employment status stays active', 
 
     $employee = Employee::query()->create([
         'user_id' => $linkedUser->id,
-        'employee_id' => 'EMP-00001',
+        'employee_id' => 'PDM-00001',
         'full_name' => 'Keep Token Test',
         'department_id' => $department->id,
         'join_date' => '2026-05-01',
