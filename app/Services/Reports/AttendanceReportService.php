@@ -187,13 +187,13 @@ class AttendanceReportService
             return [
                 $attendance->employee?->employee_id,
                 $attendance->employee?->full_name,
-                $attendance->attendance_date?->toDateString(),
-                $attendance->status,
-                implode(' + ', $attendance->absent_periods ?? []),
+                $attendance->attendance_date?->format('M j, Y'),
+                $this->formatAttendanceStatusLabel($attendance->status),
+                $this->formatAbsentPeriodsLabel($attendance->absent_periods ?? []),
                 $attendance->is_late ? 'Yes' : 'No',
-                $attendance->clock_in_time?->toISOString(),
-                $attendance->clock_out_time?->toISOString(),
-                $attendance->corrected_at?->toISOString(),
+                $attendance->clock_in_time?->timezone(config('app.timezone'))->format('h:i A'),
+                $attendance->clock_out_time?->timezone(config('app.timezone'))->format('h:i A'),
+                $attendance->corrected_at?->timezone(config('app.timezone'))->format('M j, Y h:i A'),
             ];
         })->all();
 
@@ -204,6 +204,38 @@ class AttendanceReportService
                 rows: $rows,
             ),
         ];
+    }
+
+    protected function formatAttendanceStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'present' => 'Present',
+            'late' => 'Late',
+            'absent' => 'Absent',
+            'missing_clock_out' => 'Missing Clock-Out',
+            'missing_clock_in' => 'Missing clock in',
+            'missing_both' => 'Missing both',
+            default => (string) $status,
+        };
+    }
+
+    /**
+     * @param  list<string>|null  $periods
+     */
+    protected function formatAbsentPeriodsLabel(?array $periods): string
+    {
+        if ($periods === null || $periods === []) {
+            return '';
+        }
+
+        return implode(' + ', array_map(
+            fn (string $period): string => match ($period) {
+                'morning' => 'Morning',
+                'afternoon' => 'Afternoon',
+                default => ucfirst($period),
+            },
+            $periods,
+        ));
     }
 
     /**

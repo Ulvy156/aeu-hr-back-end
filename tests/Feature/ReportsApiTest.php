@@ -331,6 +331,53 @@ test('payroll report exports align NSSF and net salary columns', function () {
     }
 });
 
+test('attendance daily list export uses readable status and local times', function () {
+    reportCompanySettings();
+    $hr = reportManagerUser('hr');
+    [, $employee] = reportEmployeeUser('employee', ['email' => 'employee.attendance.export@example.com'], [
+        'employee_id' => 'EMP-0019',
+        'full_name' => 'Leach Sreykea',
+    ]);
+
+    reportAttendance($employee, '2026-10-14', 'missing_clock_out', [
+        'clock_in_time' => '2026-10-14 08:00:00',
+        'clock_out_time' => null,
+        'corrected_at' => Carbon::parse('2026-10-14 08:03:58', config('app.timezone')),
+        'corrected_by' => $hr->id,
+        'correction_reason' => 'Forgot to clock out',
+    ]);
+
+    $export = app(AttendanceReportService::class)->export([
+        'report_type' => 'daily_list',
+        'month' => 10,
+        'year' => 2026,
+    ])['export'];
+
+    $headings = $export->headings();
+    $row = $export->array()[0];
+
+    expect($headings)->toBe([
+        'Employee ID',
+        'Employee Name',
+        'Attendance Date',
+        'Status',
+        'Absent Periods',
+        'Is Late',
+        'Clock In Time',
+        'Clock Out Time',
+        'Corrected At',
+    ])
+        ->and($row[array_search('Employee ID', $headings)])->toBe('EMP-0019')
+        ->and($row[array_search('Employee Name', $headings)])->toBe('Leach Sreykea')
+        ->and($row[array_search('Attendance Date', $headings)])->toBe('Oct 14, 2026')
+        ->and($row[array_search('Status', $headings)])->toBe('Missing Clock-Out')
+        ->and($row[array_search('Absent Periods', $headings)])->toBe('')
+        ->and($row[array_search('Is Late', $headings)])->toBe('No')
+        ->and($row[array_search('Clock In Time', $headings)])->toBe('08:00 AM')
+        ->and($row[array_search('Clock Out Time', $headings)])->toBeNull()
+        ->and($row[array_search('Corrected At', $headings)])->toBe('Oct 14, 2026 08:03 AM');
+});
+
 test('attendance reports and exports include both missing issues without absence', function () {
     Carbon::setTestNow('2026-05-05 17:30:00');
     reportCompanySettings();
