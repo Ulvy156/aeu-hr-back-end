@@ -366,6 +366,7 @@ test('attendance daily list export uses readable status and local times', functi
         'Clock In Time',
         'Clock Out Time',
         'Corrected At',
+        'Reason',
     ])
         ->and($row[array_search('Employee ID', $headings)])->toBe('EMP-0019')
         ->and($row[array_search('Employee Name', $headings)])->toBe('Leach Sreykea')
@@ -375,7 +376,8 @@ test('attendance daily list export uses readable status and local times', functi
         ->and($row[array_search('Is Late', $headings)])->toBe('No')
         ->and($row[array_search('Clock In Time', $headings)])->toBe('08:00 AM')
         ->and($row[array_search('Clock Out Time', $headings)])->toBeNull()
-        ->and($row[array_search('Corrected At', $headings)])->toBe('Oct 14, 2026 08:03 AM');
+        ->and($row[array_search('Corrected At', $headings)])->toBe('Oct 14, 2026 08:03 AM')
+        ->and($row[array_search('Reason', $headings)])->toBe('Forgot to clock out');
 });
 
 test('attendance reports and exports include both missing issues without absence', function () {

@@ -194,13 +194,14 @@ class AttendanceReportService
                 $attendance->clock_in_time?->timezone(config('app.timezone'))->format('h:i A'),
                 $attendance->clock_out_time?->timezone(config('app.timezone'))->format('h:i A'),
                 $attendance->corrected_at?->timezone(config('app.timezone'))->format('M j, Y h:i A'),
+                $attendance->correction_reason,
             ];
         })->all();
 
         return [
             'file_name' => "attendance-{$suffix}-report.xlsx",
             'export' => new ArrayReportExport(
-                headings: ['Employee ID', 'Employee Name', 'Attendance Date', 'Status', 'Absent Periods', 'Is Late', 'Clock In Time', 'Clock Out Time', 'Corrected At'],
+                headings: ['Employee ID', 'Employee Name', 'Attendance Date', 'Status', 'Absent Periods', 'Is Late', 'Clock In Time', 'Clock Out Time', 'Corrected At', 'Reason'],
                 rows: $rows,
             ),
         ];
